@@ -18,9 +18,9 @@ assignees: ''
 * ...
 
 ## Definition of done (DoD)
-* Added only after week 5
-* The same for all features
-* Here goes the project specific part
+* Acceptance criteria are met.
+* Generell Coding Standards are met (Formatting, Comments, Logging)
+
 
 ## DoD general criteria
 * Feature has been fully implemented
