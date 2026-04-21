@@ -1,2 +1,1 @@
-# Fabulous Project (AMOS SS 20xx)
-Something something something
+# Taskorbit Conversational Agent (AMOS SS 2026)
