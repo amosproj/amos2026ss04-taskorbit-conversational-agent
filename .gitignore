@@ -34,3 +34,10 @@ bin/
 
 # MacOS
 .DS_Store
+
+# Environment variables
+.env
+backend/.env
+
+# Logs
+backend/logs/
