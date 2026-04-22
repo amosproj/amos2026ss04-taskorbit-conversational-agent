@@ -2,14 +2,14 @@ Title	URL	Assignees	Status	Estimated size	Real size
 System Architecture	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/12		Product Backlog		
 Initialize Software Bill of Materials	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/13		Product Backlog		
 Setup Development Environment	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/17		Product Backlog		
-Backend Foundation & Architecture Spike	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/7		Product Backlog		
 First UI Design	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/5		Product Backlog		
-Logging & Monitoring Foundation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/11		Product Backlog		
+Backend Foundation & Architecture Spike	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/7		Product Backlog		
+CI/CD Foundation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/10		Product Backlog		
 Audio Input via LiveKit (Speech-to-Text)	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/14		Product Backlog		
 Audio Output via LiveKit (Text-to-Speech)	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/15		Product Backlog		
-CI/CD Foundation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/10		Product Backlog		
+Logging & Monitoring Foundation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/11		Product Backlog		
 Task Schema Foundation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/6		Product Backlog		
 Intent Matching & Slot Extraction Prototype	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/8		Product Backlog		
 Context Model Foundation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/9		Product Backlog		
 Basic LLM Integration (Single Prompt Agent)	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/18		Product Backlog		
-Design Team Logo	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/1	abdulmoeez1225	In Progress		
+Design Team Logo	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/1	abdulmoeez1225	Awaiting Review		
