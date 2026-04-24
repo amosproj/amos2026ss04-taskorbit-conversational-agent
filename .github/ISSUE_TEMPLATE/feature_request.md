@@ -18,9 +18,10 @@ assignees: ''
 * ...
 
 ## Definition of done (DoD)
-* Acceptance criteria are met.
-* Generell Coding Standards are met (Formatting, Comments, Logging)
-
+* Generell Coding Standards are met (eg. Formatting, Comments, Logging, no API-Keys in Repo)
+* Every PR is peer-reviewed by at least one other developer.
+* Documentation is updated (eg. System Architecture, SBOM)
+* Unit tests for new features have been written.
 
 ## DoD general criteria
 * Feature has been fully implemented
