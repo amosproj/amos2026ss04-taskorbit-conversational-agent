@@ -74,3 +74,6 @@ dist-ssr/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local-only files
+LOCAL_NOTES.md
