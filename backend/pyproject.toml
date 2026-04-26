@@ -1,0 +1,100 @@
+[tool.poetry]
+name = "taskorbit-backend"
+version = "0.1.0"
+description = "TaskOrbit Conversational Agent — backend (orchestration, LiveKit voice worker, persistence)"
+authors = ["AMOS Team SS2026 <amosproj@cs.fau.de>"]
+license = "MIT"
+readme = "README.md"
+packages = [{ include = "taskorbit", from = "src" }]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.15"
+
+# --- HTTP API ---
+fastapi = "^0.115.0"
+uvicorn = { extras = ["standard"], version = "^0.32.0" }
+pydantic = "^2.9.0"
+pydantic-settings = "^2.6.0"
+python-dotenv = "^1.0.1"
+
+# --- LiveKit voice agent ---
+# The framework + plugin extras for the providers planned in the
+# architecture document. Implementation lands in downstream tickets;
+# the dependency is declared here so those tickets don't need to
+# touch pyproject.toml.
+livekit-agents = { extras = ["deepgram", "elevenlabs", "openai", "google", "silero"], version = "^1.5.0" }
+
+# --- Persistence ---
+# PostgreSQL is part of the planned architecture (chat history,
+# messages, confirmations, agent traces, tool-call results). The dev
+# environment installs the ORM, the migration tool, and a Postgres
+# driver so the database ticket can start work without re-touching
+# this file.
+sqlalchemy = { extras = ["asyncio"], version = "^2.0.36" }
+alembic = "^1.14.0"
+psycopg = { extras = ["binary"], version = "^3.2.0" }
+
+# --- Logging ---
+structlog = "^24.4.0"
+
+# --- Utility ---
+httpx = ">=0.28.1,<1.0.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+pytest-asyncio = "^0.24.0"
+ruff = "^0.7.0"
+mypy = "^1.13.0"
+pre-commit = "^4.0.0"
+
+[tool.poetry.scripts]
+# `poetry run taskorbit-api` → starts the FastAPI HTTP server.
+# A `taskorbit-agent` script will be added by the ticket that
+# implements `livekit_agent/`.
+taskorbit-api = "taskorbit.cli:run_api"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+# ============================================================
+# Tooling configuration
+# ============================================================
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "N",    # pep8-naming
+]
+ignore = [
+    "E501", # line length handled by formatter
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B", "N"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q"
+testpaths = ["tests"]
+asyncio_mode = "auto"
