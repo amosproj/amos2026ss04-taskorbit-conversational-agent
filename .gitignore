@@ -3,6 +3,7 @@ logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 node_modules/
 pids
 *.pid
@@ -16,21 +17,60 @@ pids
 .classpath
 
 # Python
-*.pyc
+*.py[cod]
+*$py.class
+*.so
 __pycache__/
+*.egg-info/
+.eggs/
+build/
+.Python
 
-# vscode
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# Python tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Editors / IDEs
 .vscode/
-web-build/
-dist/
-
-# IDEA / IntelliJ
 .idea/
 out/
+*.swp
+*.swo
+*~
 
 # Eclipse IDE
 .project
 bin/
 
-# MacOS
+# Build / cache
+web-build/
+dist/
+dist-ssr/
+.cache/
+.parcel-cache/
+*.local
+
+# Secrets / env — keep .env.example committed; never commit real .env
+.env
+.env.local
+.env.*.local
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs (general)
+*.log
+
+# OS
 .DS_Store
+Thumbs.db
