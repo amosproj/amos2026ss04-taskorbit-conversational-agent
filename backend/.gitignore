@@ -1,0 +1,30 @@
+# Python build artefacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtualenvs
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Secrets — keep .env.example committed, real .env never
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
