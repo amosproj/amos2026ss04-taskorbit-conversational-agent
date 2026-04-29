@@ -6,8 +6,8 @@
 /* ------------------------------------------------------------------
  * shadcn/ui design tokens (new-york style, neutral base).
  * The team can override these in the wiki-defined design system
- * (issue #5: Basic visual guidelines for colors, typography, spacing, and
- * reusable UI components — also described on the project wiki).
+ * (issue #19's "Basic visual guidelines for colors, typography,
+ * spacing, and reusable UI components").
  * ------------------------------------------------------------------ */
 :root {
   --radius: 0.625rem;
