@@ -6,13 +6,13 @@ Audio Input via LiveKit (Speech-to-Text)	https://github.com/amosproj/amos2026ss0
 Audio Output via LiveKit (Text-to-Speech)	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/15		Product Backlog		
 Schema Foundation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/6		Product Backlog		
 Logging & Monitoring Foundation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/11		Product Backlog		
-CI/CD Foundation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/10		Product Backlog		
 Basic LLM Integration (Single Prompt Agent)	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/18		Product Backlog		
+CI/CD Foundation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/10		Product Backlog		
 Prepare Cloud Environment	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/21		Product Backlog		
 Context Model Foundation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/9		Product Backlog		
 Intent Matching & Slot Extraction Prototype	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/8		Product Backlog		
-First UI Design	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/5	Asadraza17, shikharthakur2404	In Progress	5	
 Setup Development Environment	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/17	K-Vineesh	In Progress	3	
 Initialize Software Bill of Materials	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/13	1Endri	Awaiting Review	3	
 System Architecture	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/12	abdulmoeez1225, djv03, qiblatainf	Awaiting Review	5	
+First UI Design	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/5	Asadraza17, shikharthakur2404	Awaiting Review	5	
 Design Team Logo	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/1	abdulmoeez1225	Feature Archive	1	1
