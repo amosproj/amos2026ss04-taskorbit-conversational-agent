@@ -1,212 +1,60 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { Mic } from "lucide-react";
 
-import { AgentIdentityCard } from "@/components/chat/AgentIdentityCard";
-import { CallControls } from "@/components/chat/CallControls";
-import { CallStatusIndicator } from "@/components/chat/CallStatusIndicator";
-import { ConfirmationPrompt } from "@/components/chat/ConfirmationPrompt";
-import { PreCallDiagnostics } from "@/components/chat/PreCallDiagnostics";
-import { TranscriptBubble } from "@/components/history/TranscriptBubble";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { useBackendHealth } from "@/hooks/useBackendHealth";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { JOHN_DOE_AGENT } from "@/lib/mockAgents";
-import type {
-  CallStatus,
-  ConfirmationPromptState,
-  LiveTranscriptTurn,
-} from "@/types/callState";
 
-const CONNECTING_DELAY_MS = 800;
-const THINKING_DELAY_MS = 1200;
-const SPEAKING_DELAY_MS = 2600;
+type ChatMessage = { id: string; role: "user" | "assistant"; text: string };
 
-function generateId(prefix: string): string {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return `${prefix}-${crypto.randomUUID()}`;
-  }
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const INITIAL_MESSAGES: ChatMessage[] = [
+  {
+    id: "welcome",
+    role: "assistant",
+    text: "Hi — I am a mock agent for now. Type a message to try the UI; responses are faked for issue #5.",
+  },
+];
+
+function mockAssistantReply(userText: string) {
+  return `You said: “${userText}”. (Mock reply — the real LLM + LiveKit path comes in later stories.)`;
 }
 
-function mockAgentReply(userText: string): string {
-  const trimmed = userText.trim().toLowerCase();
-  if (!trimmed) return "Could you repeat that?";
-  if (trimmed.includes("hello") || trimmed.includes("hi")) {
-    return "Hi! How can I help you today?";
-  }
-  if (trimmed.includes("name")) {
-    return "Got it. Anything else you'd like to share?";
-  }
-  if (trimmed.includes("bye")) {
-    return "Thanks for calling — goodbye!";
-  }
-  return `I heard "${userText.trim()}". This is a mock reply — the real LLM lands in Sprint 3 (#18).`;
-}
-
-const mockConfirmationPrompt: ConfirmationPromptState = {
-  id: "demo-confirmation",
-  tool_name: "collect_user_info",
-  prompt: "I'll save the details we just discussed to your account. Is that okay?",
-};
-
-/**
- * Live call surface for the Meisterwerk-customer end of the agent
- * pipeline. Models the call as an explicit state machine — `idle`,
- * `connecting`, `listening`, `thinking`, `speaking`,
- * `awaiting_confirmation`, `ended` — so each phase has a single source
- * of truth for the UI shape. Sprint 2 mocks the transitions with timers;
- * Sprint 3 (#14, #15, #26) will drive the same states from LiveKit room
- * events without restructuring this component.
- */
 export function ConversationalChat() {
-  const agent = JOHN_DOE_AGENT;
   const appName = import.meta.env.VITE_APP_NAME ?? "TaskOrbit";
+  const livekitUrl = import.meta.env.VITE_LIVEKIT_URL ?? "";
+  const { health, apiUrl } = useBackendHealth();
+  const formId = useId();
+  const inputId = `${formId}-text`;
 
-  const [status, setStatus] = useState<CallStatus>("idle");
-  const [transcript, setTranscript] = useState<LiveTranscriptTurn[]>([]);
-  const [confirmation, setConfirmation] =
-    useState<ConfirmationPromptState | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
+  const [draft, setDraft] = useState("");
 
-  const timerRef = useRef<number | null>(null);
-  const transcriptEndRef = useRef<HTMLDivElement>(null);
-  // Mirror status in a ref so async timers can read the latest phase
-  // without going stale across rapid transitions.
-  const statusRef = useRef<CallStatus>(status);
+  const endRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
-    statusRef.current = status;
-  }, [status]);
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
-  // Auto-scroll transcript to the latest turn.
-  useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [transcript]);
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const text = draft.trim();
+    if (!text) return;
 
-  // Cancel any pending timer on unmount so we don't fire setState on an
-  // unmounted component during teardown.
-  useEffect(() => {
-    return () => {
-      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-    };
-  }, []);
+    setDraft("");
+    const userId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `u-${Date.now()}`;
 
-  const clearTimer = useCallback(() => {
-    if (timerRef.current !== null) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  }, []);
+    setMessages((m) => [...m, { id: userId, role: "user", text }]);
 
-  const appendAssistantTurn = useCallback((text: string) => {
-    setTranscript((t) => [
-      ...t,
-      { id: generateId("a"), role: "assistant", text },
-    ]);
-  }, []);
-
-  const appendUserTurn = useCallback((text: string) => {
-    setTranscript((t) => [...t, { id: generateId("u"), role: "user", text }]);
-  }, []);
-
-  // After a user turn, run thinking → speaking → back to listening. The
-  // confirmation flow is reachable only via the "Demo confirmation"
-  // button so the harness stays operator-driven and doesn't assert
-  // behaviour the agent's `confirmations` block hasn't enabled.
-  const runAgentResponseCycle = useCallback(
-    (userText: string) => {
-      clearTimer();
-      setStatus("thinking");
-      timerRef.current = window.setTimeout(() => {
-        if (statusRef.current !== "thinking") return;
-        const reply = mockAgentReply(userText);
-        appendAssistantTurn(reply);
-        setStatus("speaking");
-        timerRef.current = window.setTimeout(() => {
-          if (statusRef.current !== "speaking") return;
-          setStatus("listening");
-        }, SPEAKING_DELAY_MS);
-      }, THINKING_DELAY_MS);
-    },
-    [appendAssistantTurn, clearTimer],
-  );
-
-  const handleStart = useCallback(() => {
-    clearTimer();
-    setTranscript([]);
-    setConfirmation(null);
-    setStatus("connecting");
-    timerRef.current = window.setTimeout(() => {
-      if (statusRef.current !== "connecting") return;
-      appendAssistantTurn(agent.first_message.message);
-      setStatus("listening");
-    }, CONNECTING_DELAY_MS);
-  }, [agent.first_message.message, appendAssistantTurn, clearTimer]);
-
-  const handleEnd = useCallback(() => {
-    clearTimer();
-    setConfirmation(null);
-    setStatus("ended");
-  }, [clearTimer]);
-
-  const handleRestart = useCallback(() => {
-    clearTimer();
-    setTranscript([]);
-    setConfirmation(null);
-    setStatus("idle");
-  }, [clearTimer]);
-
-  const handleSendText = useCallback(
-    (text: string) => {
-      if (status !== "listening") return;
-      appendUserTurn(text);
-      runAgentResponseCycle(text);
-    },
-    [appendUserTurn, runAgentResponseCycle, status],
-  );
-
-  const handleTriggerConfirmation = useCallback(() => {
-    if (
-      status !== "listening" &&
-      status !== "thinking" &&
-      status !== "speaking"
-    ) {
-      return;
-    }
-    clearTimer();
-    setConfirmation(mockConfirmationPrompt);
-    setStatus("awaiting_confirmation");
-  }, [clearTimer, status]);
-
-  const handleApprove = useCallback(() => {
-    setConfirmation(null);
-    appendAssistantTurn(
-      "Thanks for confirming — I've saved that. Anything else?",
-    );
-    setStatus("speaking");
-    clearTimer();
-    timerRef.current = window.setTimeout(() => {
-      if (statusRef.current !== "speaking") return;
-      setStatus("listening");
-    }, SPEAKING_DELAY_MS);
-  }, [appendAssistantTurn, clearTimer]);
-
-  const handleDeny = useCallback(() => {
-    setConfirmation(null);
-    appendAssistantTurn("Understood — I won't save that. Anything else?");
-    setStatus("speaking");
-    clearTimer();
-    timerRef.current = window.setTimeout(() => {
-      if (statusRef.current !== "speaking") return;
-      setStatus("listening");
-    }, SPEAKING_DELAY_MS);
-  }, [appendAssistantTurn, clearTimer]);
-
-  const isPreCall = status === "idle";
-  const isPostCall = status === "ended";
-  const isInCall = !isPreCall && !isPostCall;
+    window.setTimeout(() => {
+      const aid =
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `a-${Date.now()}`;
+      setMessages((m) => [...m, { id: aid, role: "assistant", text: mockAssistantReply(text) }]);
+    }, 400);
+  }
 
   return (
     <main className="min-h-svh bg-background text-foreground">
@@ -215,86 +63,111 @@ export function ConversationalChat() {
           <p className="text-sm font-medium tracking-widest text-muted-foreground uppercase">
             Conversational agent
           </p>
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            {appName}
-          </h1>
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{appName}</h1>
           <p className="text-sm text-muted-foreground">
-            Start a voice session with the configured agent. Voice lands
-            in Sprint 3 — for now, the call surface is mocked end-to-end
-            so the flow can be reviewed.
+            Prototype UI (issue #5) — text chat is live; voice is a placeholder; backend status below.
           </p>
         </header>
 
-        {isPreCall ? (
-          <>
-            <AgentIdentityCard agent={agent} />
-            <PreCallDiagnostics />
-          </>
-        ) : null}
-
-        {isInCall ? (
-          <Card>
-            <CardHeader className="flex flex-row items-start justify-between gap-3 border-b">
-              <div className="space-y-1">
-                <CardTitle>{agent.name}</CardTitle>
-                <CardDescription>
-                  Live call · transcript updates as the conversation
-                  progresses.
-                </CardDescription>
+        <Card>
+          <CardHeader className="border-b">
+            <CardTitle>Chat</CardTitle>
+            <CardDescription>History and messages scroll here. System replies are mocked.</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <ScrollArea className="h-[min(50vh,28rem)] pr-3">
+              <ul className="flex flex-col gap-4" aria-label="Chat messages">
+                {messages.map((msg) => (
+                  <li
+                    key={msg.id}
+                    className={msg.role === "user" ? "flex flex-col items-end gap-1" : "flex flex-col items-start gap-1"}
+                  >
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {msg.role === "user" ? "You" : "Agent"}
+                    </span>
+                    <div
+                      className={
+                        msg.role === "user"
+                          ? "max-w-[min(100%,20rem)] rounded-2xl rounded-tr-sm bg-primary px-4 py-2.5 text-sm text-primary-foreground"
+                          : "max-w-[min(100%,20rem)] rounded-2xl rounded-tl-sm bg-muted px-4 py-2.5 text-sm text-foreground"
+                      }
+                    >
+                      {msg.text}
+                    </div>
+                  </li>
+                ))}
+                <div ref={endRef} className="h-px" aria-hidden />
+              </ul>
+            </ScrollArea>
+          </CardContent>
+          <CardFooter className="flex flex-col gap-3 border-t sm:flex-row sm:items-end">
+            <form id={formId} onSubmit={onSubmit} className="flex w-full flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="flex shrink-0 justify-center sm:justify-start">
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  disabled
+                  className="size-10"
+                  title="Voice — LiveKit + agent worker will connect here in a follow-up (placeholder for #5)."
+                  aria-label="Voice (not available in this build)"
+                >
+                  <Mic className="size-4" />
+                </Button>
               </div>
-              <CallStatusIndicator status={status} agentName={agent.name} />
-            </CardHeader>
-            <CardContent className="pt-6">
-              <ScrollArea className="h-[min(50vh,28rem)] pr-3">
-                <ul className="flex flex-col gap-4" aria-label="Transcript">
-                  {transcript.map((turn) => (
-                    <TranscriptBubble key={turn.id} turn={turn} />
-                  ))}
-                  <div ref={transcriptEndRef} className="h-px" aria-hidden />
-                </ul>
-              </ScrollArea>
-            </CardContent>
-          </Card>
-        ) : null}
+              <div className="flex w-full min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+                <label htmlFor={inputId} className="sr-only">
+                  Message
+                </label>
+                <Input
+                  id={inputId}
+                  name="message"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder="Type a message (debug / fallback)…"
+                  autoComplete="off"
+                  className="min-w-0 flex-1"
+                />
+                <Button type="submit" className="shrink-0 sm:min-w-[5rem]">
+                  Send
+                </Button>
+              </div>
+            </form>
+          </CardFooter>
+        </Card>
 
-        {isPostCall ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Call ended</CardTitle>
-              <CardDescription>
-                {transcript.length > 0
-                  ? `${transcript.length} turn${transcript.length === 1 ? "" : "s"} recorded.`
-                  : "No turns recorded."}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ScrollArea className="h-[min(40vh,24rem)] pr-3">
-                <ul className="flex flex-col gap-4" aria-label="Transcript">
-                  {transcript.map((turn) => (
-                    <TranscriptBubble key={turn.id} turn={turn} />
-                  ))}
-                </ul>
-              </ScrollArea>
-            </CardContent>
-          </Card>
-        ) : null}
-
-        {confirmation !== null ? (
-          <ConfirmationPrompt
-            prompt={confirmation}
-            onApprove={handleApprove}
-            onDeny={handleDeny}
-          />
-        ) : (
-          <CallControls
-            status={status}
-            onStart={handleStart}
-            onEnd={handleEnd}
-            onSendText={handleSendText}
-            onTriggerConfirmation={handleTriggerConfirmation}
-            onRestart={handleRestart}
-          />
-        )}
+        <Card>
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-base">Development wiring</CardTitle>
+            <CardDescription>Verifies the same setup as the #17 health check. Optional when only UI work is needed.</CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm">
+            <dl className="space-y-2">
+              <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+                <dt className="text-muted-foreground">Backend /health</dt>
+                <dd className="font-mono text-right">
+                  {health.status === "loading" && "checking…"}
+                  {health.status === "ok" && (
+                    <span className="text-green-600 dark:text-green-400">
+                      ok · {health.service} v{health.version}
+                    </span>
+                  )}
+                  {health.status === "error" && (
+                    <span className="text-destructive">unreachable · {health.message}</span>
+                  )}
+                </dd>
+              </div>
+              <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+                <dt className="text-muted-foreground">VITE_API_URL</dt>
+                <dd className="font-mono break-all text-right">{apiUrl || "(using Vite /api proxy)"}</dd>
+              </div>
+              <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+                <dt className="text-muted-foreground">VITE_LIVEKIT_URL</dt>
+                <dd className="font-mono break-all text-right">{livekitUrl || "(unset)"}</dd>
+              </div>
+            </dl>
+          </CardContent>
+        </Card>
       </div>
     </main>
   );
