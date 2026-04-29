@@ -77,3 +77,6 @@ Thumbs.db
 
 # Local-only files
 LOCAL_NOTES.md
+
+# TypeScript build cache (regenerated on every build, never commit)
+frontend/tsconfig.*.tsbuildinfo
