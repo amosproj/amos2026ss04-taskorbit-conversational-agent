@@ -1,9 +1,11 @@
-import { ConversationalChat } from "@/components/ConversationalChat";
+import { RouterProvider } from "react-router-dom";
+
+import { router } from "@/router";
 
 /**
- * First conversational agent screen (AMOS #5) — shadcn-based chat, mocked
- * replies, voice placeholder, and the #17 dev wiring panel.
+ * App entry — delegates to the data router which wires Layout + the three
+ * routes for the conversational agent (chat / config / history) per #5.
  */
 export function App() {
-  return <ConversationalChat />;
+  return <RouterProvider router={router} />;
 }
