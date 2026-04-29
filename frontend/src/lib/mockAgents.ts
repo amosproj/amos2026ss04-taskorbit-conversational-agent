@@ -1,16 +1,16 @@
 import type { AgentConfig } from "@/types/agentConfig";
 
 /**
- * SARAH_AGENT — Meisterwerk's reference example shared by Preet on
- * 2026-04-27 (Slack #stakeholder). Used as the default form value so the
- * config screen always loads with a realistic, end-to-end agent ready to
- * inspect or save.
+ * JOHN_DOE_AGENT — Meisterwerk's reference example shared by Preet on
+ * 2026-04-27 (Slack #stakeholder), with the persona name swapped to "John
+ * Doe" for the demo. Used as the default form value so the config screen
+ * always loads with a realistic, end-to-end agent ready to inspect or save.
  */
-export const SARAH_AGENT: AgentConfig = {
+export const JOHN_DOE_AGENT: AgentConfig = {
   agent_id: "preet-agent",
-  name: "Sarah",
+  name: "John Doe",
   instructions: `# PERSONA
-You are Sarah, a friendly and professional customer service agent for TechStore.
+You are John Doe, a friendly and professional customer service agent for TechStore.
 
 # ROLE
 You are the main orchestrator who guides customers through the service flow:
@@ -29,11 +29,11 @@ You are the main orchestrator who guides customers through the service flow:
   first_message: {
     type: "text",
     message:
-      "Hi there! I'm Sarah from TechStore customer support. Before we begin, are you a new customer or do you already have an account with us?",
+      "Hi there! I'm John from TechStore customer support. Before we begin, are you a new customer or do you already have an account with us?",
     prompt: "",
   },
   variables: {
-    name: "Sarah",
+    name: "John Doe",
   },
   stt: {
     provider: "deepgram",
@@ -86,6 +86,19 @@ You are the main orchestrator who guides customers through the service flow:
           required: false,
         },
       ],
+    },
+    {
+      type: "end_call",
+      name: "end_call",
+      description:
+        "End the call gracefully when the customer says goodbye or the conversation goal is met.",
+    },
+    {
+      type: "agent_transfer",
+      name: "transfer_to_billing",
+      description:
+        "Hand off the call to the billing team for invoice or payment questions.",
+      targets: ["billing-agent"],
     },
   ],
   engine: {},
