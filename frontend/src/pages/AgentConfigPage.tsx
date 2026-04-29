@@ -11,7 +11,7 @@ import { ToolsSection } from "@/components/agent-config/ToolsSection";
 import { VariablesSection } from "@/components/agent-config/VariablesSection";
 import { Button } from "@/components/ui/button";
 
-import { EMPTY_AGENT, SARAH_AGENT } from "@/lib/mockAgents";
+import { EMPTY_AGENT, JOHN_DOE_AGENT } from "@/lib/mockAgents";
 import { serializeAgent, type AgentConfig } from "@/types/agentConfig";
 
 function isComplete(agent: AgentConfig) {
@@ -23,7 +23,7 @@ function isComplete(agent: AgentConfig) {
 }
 
 export function AgentConfigPage() {
-  const [agent, setAgent] = useState<AgentConfig>(SARAH_AGENT);
+  const [agent, setAgent] = useState<AgentConfig>(JOHN_DOE_AGENT);
   const [showErrors, setShowErrors] = useState(false);
 
   const reset = () => {
@@ -33,7 +33,7 @@ export function AgentConfigPage() {
   };
 
   const loadPreset = () => {
-    setAgent(SARAH_AGENT);
+    setAgent(JOHN_DOE_AGENT);
     setShowErrors(false);
     toast.success("Preset loaded.");
   };

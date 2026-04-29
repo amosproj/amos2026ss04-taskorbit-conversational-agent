@@ -97,7 +97,7 @@ export function VariablesSection({ value, onChange }: Props) {
           <Empty
             icon={Variable}
             title="No variables yet"
-            description="Add a key/value pair (e.g. name = Sarah) to make it available to the agent at runtime."
+            description="Add a key/value pair (e.g. name = John Doe) to make it available to the agent at runtime."
           />
         ) : (
           <ul className="flex flex-col gap-2">

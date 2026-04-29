@@ -64,7 +64,7 @@ export function IdentitySection({ value, onChange, showErrors }: Props) {
               id={idName}
               value={value.name}
               onChange={(e) => onChange({ ...value, name: e.target.value })}
-              placeholder="Sarah"
+              placeholder="John Doe"
               aria-invalid={nameInvalid || undefined}
             />
             <FieldDescription>
