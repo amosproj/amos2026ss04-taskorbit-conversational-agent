@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from taskorbit import __version__
 from taskorbit.api import health
+from taskorbit.api.routes import conversations, livekit
 from taskorbit.config import get_settings
 from taskorbit.logging.setup import configure_logging, get_logger
 
@@ -62,6 +63,8 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health.router)
+    app.include_router(conversations.router)
+    app.include_router(livekit.router)
 
     return app
 
