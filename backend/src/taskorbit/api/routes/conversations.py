@@ -24,6 +24,7 @@ async def process_conversation(
 ) -> ConversationResponse:
     """Process one turn of a conversation through the TaskOrbit orchestration engine."""
     try:
+        #process the message through the orchestration engine and return the response
         return await orchestrator.process_message(request)
     except NotImplementedError as exc:
         raise HTTPException(

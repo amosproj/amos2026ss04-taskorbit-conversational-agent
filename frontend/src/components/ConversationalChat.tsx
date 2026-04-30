@@ -185,6 +185,7 @@ export function ConversationalChat() {
     setStatus("idle");
   }, [clearTimer]);
 
+  //handles the text message send by the user
   const handleSendText = useCallback(
     (text: string) => {
       if (status !== "listening") return;

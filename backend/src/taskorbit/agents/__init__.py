@@ -49,6 +49,7 @@ class AgentRegistry:
         orchestrator: ConversationOrchestrator,
     ) -> BaseAgent:
         """Instantiate the right agent for the given config.
+        Route agent_id to the right agent.
 
         Selection logic (e.g. based on config.id prefix or a type field)
         is implemented in downstream tickets.

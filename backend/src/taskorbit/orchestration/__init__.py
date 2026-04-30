@@ -51,9 +51,23 @@ class ConversationOrchestrator:
             (m for m in reversed(request.messages) if m.role == MessageRole.USER),
             None,
         )
+        #return response on the frontend
+
+
         if last_user:
+            """
+            TO-DO: replace with actual LLM response once implemented. 
+            For now we just echo the user's last message to confirm the pipeline is 
+            working end-to-end."""
+            
             text = f'[Backend echo] I received: "{last_user.content}"'
+
         else:
+            """TO-DO: handle edge case where no user message is found. 
+            This shouldn't happen in normal flow since the frontend should 
+            always send the user's message as part of the ConversationRequest, 
+            but we should still handle it just in case."""
+
             text = f"Hello! I'm {request.agent_config.name}. How can I help you?"
 
         return ConversationResponse(
@@ -66,10 +80,12 @@ class ConversationOrchestrator:
         agent_config: AgentConfig,
         active_tool: ToolDefinition | None,
     ) -> str:
-        """Construct a focused system prompt for the current task.
+        """
+        TO-DO:
+        Construct a system prompt (LLM context)for the current task.
 
         Only includes context relevant to `active_tool` (or the agent
-        persona if no tool is active). This is what keeps the LLM bounded.
+        persona if no tool is active). 
         """
         raise NotImplementedError
 
@@ -78,7 +94,12 @@ class ConversationOrchestrator:
         messages: list[Message],
         agent_config: AgentConfig,
     ) -> ToolDefinition | None:
-        """Decide which tool should be in scope for this turn, if any.
+    
+        """
+        TO-DO:
+        Decide which tool should be in scope for this turn, if any.
+
+        Determine which tool (if any) should be active based on message history.
 
         Returns None when the conversation is in a free-form phase (e.g.
         greeting, small-talk before a task begins).
@@ -90,7 +111,9 @@ class ConversationOrchestrator:
         system_prompt: str,
         messages: list[Message],
     ) -> str:
-        """Call the LLM provider configured in settings.
+        """
+        TO-DO:
+        Call/Route to the LLM provider configured in settings (Open AI etc.).
 
         Returns the raw assistant text. Tool-call parsing happens in the
         caller so this method stays provider-agnostic.
@@ -102,7 +125,9 @@ class ConversationOrchestrator:
         tool: ToolDefinition,
         context: dict[str, Any],
     ) -> dict[str, Any]:
-        """Execute a tool after the user has confirmed (if required).
+        """
+        TO-DO:
+        Execute a tool after the user has confirmed (if required).
 
         Delegates to the concrete BaseTool implementation in taskorbit.tools.
         Returns the tool's result payload.

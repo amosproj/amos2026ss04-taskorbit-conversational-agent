@@ -82,7 +82,7 @@ function adaptAgentConfig(agent: AgentConfig): BackendAgentConfig {
     stt: { provider: agent.stt.provider, language: "multi", model: agent.stt.model },
     llm: { provider: agent.llm.provider, model: agent.llm.model },
     tts: { provider: agent.tts.provider, voice_id: agent.tts.voice_id, model: agent.tts.model },
-    tools: agent.tools.map(adaptTool),
+    tools: agent.tools.map(adaptTool), //maps tools
   };
 }
 
@@ -104,17 +104,22 @@ export async function sendMessage(
   conversationId: string,
   signal?: AbortSignal,
 ): Promise<string> {
+  // STEP A: Map transcript -> backend Message[] 
+  //Result: [{ role: "user", content: "Hello" }]  
   const messages: BackendMessage[] = transcript.map((turn) => ({
     role: turn.role === "user" ? "user" : "assistant",
     content: turn.text,
   }));
 
+  //STEP B: adaptAgentConfig(agent) — maps frontend fields -> backend fields  
+  // e.g. agent.agent_id -> id
   const body: ConversationRequest = {
     conversation_id: conversationId,
     agent_config: adaptAgentConfig(agent),
     messages,
   };
 
+  //Request body with backend api, sent to /api/v1/conversations/process through Vite proxy
   const res = await fetch("/api/v1/conversations/process", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

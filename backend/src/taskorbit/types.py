@@ -116,8 +116,8 @@ class ConversationResponse(BaseModel):
     conversation_id: str
     reply: Message
     tool_invoked: ToolDefinition | None = None
-    requires_confirmation: bool = False
-    confirmation_prompt: str = ""
+    requires_confirmation: bool = False 
+    confirmation_prompt: str = "" #e.g. "I'll save your contact info. OK?" 
 
 
 # ---------------------------------------------------------------------------

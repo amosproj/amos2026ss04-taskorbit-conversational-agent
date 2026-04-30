@@ -62,9 +62,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Add routers here as we build more apis
     app.include_router(health.router)
-    app.include_router(conversations.router)
-    app.include_router(livekit.router)
+    app.include_router(conversations.router) #/v1/conversations/process
+    app.include_router(livekit.router) #/v1/livekit/process
 
     return app
 
