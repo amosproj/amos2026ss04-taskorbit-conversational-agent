@@ -25,11 +25,15 @@ _VALID_PAYLOAD = {
 }
 
 
-def test_process_conversation_returns_501_when_not_implemented() -> None:
+def test_process_conversation_returns_200_with_echo() -> None:
     app = create_app()
     with TestClient(app) as client:
         response = client.post("/v1/conversations/process", json=_VALID_PAYLOAD)
-    assert response.status_code == 501
+    assert response.status_code == 200
+    body = response.json()
+    assert body["conversation_id"] == "conv-1"
+    assert "Hello" in body["reply"]["content"]
+    assert body["reply"]["role"] == "assistant"
 
 
 def test_process_conversation_returns_200_with_mock_orchestrator() -> None:

@@ -42,8 +42,24 @@ class ConversationOrchestrator:
 
         Returns a ConversationResponse containing the assistant reply and,
         when applicable, a pending tool invocation requiring confirmation.
+
+        Current implementation: dummy echo — confirms the pipeline is wired
+        end-to-end. Replace with _select_active_tool → _build_system_prompt
+        → _call_llm → _dispatch_tool when the LLM integration lands.
         """
-        raise NotImplementedError
+        last_user = next(
+            (m for m in reversed(request.messages) if m.role == MessageRole.USER),
+            None,
+        )
+        if last_user:
+            text = f'[Backend echo] I received: "{last_user.content}"'
+        else:
+            text = f"Hello! I'm {request.agent_config.name}. How can I help you?"
+
+        return ConversationResponse(
+            conversation_id=request.conversation_id,
+            reply=self._make_assistant_message(text),
+        )
 
     def _build_system_prompt(
         self,

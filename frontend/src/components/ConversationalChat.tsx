@@ -14,6 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { sendMessage } from "@/lib/conversationApi";
 import { JOHN_DOE_AGENT } from "@/lib/mockAgents";
 import type {
   CallStatus,
@@ -22,7 +23,6 @@ import type {
 } from "@/types/callState";
 
 const CONNECTING_DELAY_MS = 800;
-const THINKING_DELAY_MS = 1200;
 const SPEAKING_DELAY_MS = 2600;
 
 function generateId(prefix: string): string {
@@ -32,19 +32,8 @@ function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function mockAgentReply(userText: string): string {
-  const trimmed = userText.trim().toLowerCase();
-  if (!trimmed) return "Could you repeat that?";
-  if (trimmed.includes("hello") || trimmed.includes("hi")) {
-    return "Hi! How can I help you today?";
-  }
-  if (trimmed.includes("name")) {
-    return "Got it. Anything else you'd like to share?";
-  }
-  if (trimmed.includes("bye")) {
-    return "Thanks for calling — goodbye!";
-  }
-  return `I heard "${userText.trim()}". This is a mock reply — the real LLM lands in Sprint 3 (#18).`;
+function generateConversationId(): string {
+  return `conv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 const mockConfirmationPrompt: ConfirmationPromptState = {
@@ -70,26 +59,38 @@ export function ConversationalChat() {
   const [transcript, setTranscript] = useState<LiveTranscriptTurn[]>([]);
   const [confirmation, setConfirmation] =
     useState<ConfirmationPromptState | null>(null);
+  const [conversationId, setConversationId] = useState<string>("");
 
   const timerRef = useRef<number | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
-  // Mirror status in a ref so async timers can read the latest phase
+  // Mirror status in a ref so async callbacks can read the latest phase
   // without going stale across rapid transitions.
   const statusRef = useRef<CallStatus>(status);
   useEffect(() => {
     statusRef.current = status;
   }, [status]);
 
+  // Mirror transcript in a ref so the async sendMessage call always
+  // sees the latest turns (including the user turn just appended).
+  const transcriptRef = useRef<LiveTranscriptTurn[]>(transcript);
+  useEffect(() => {
+    transcriptRef.current = transcript;
+  }, [transcript]);
+
+  // AbortController for the in-flight backend request — cancelled when
+  // the user ends the call or starts a new one.
+  const abortRef = useRef<AbortController | null>(null);
+
   // Auto-scroll transcript to the latest turn.
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [transcript]);
 
-  // Cancel any pending timer on unmount so we don't fire setState on an
-  // unmounted component during teardown.
+  // Cancel pending timers and in-flight requests on unmount.
   useEffect(() => {
     return () => {
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+      abortRef.current?.abort();
     };
   }, []);
 
@@ -111,30 +112,53 @@ export function ConversationalChat() {
     setTranscript((t) => [...t, { id: generateId("u"), role: "user", text }]);
   }, []);
 
-  // After a user turn, run thinking → speaking → back to listening. The
-  // confirmation flow is reachable only via the "Demo confirmation"
-  // button so the harness stays operator-driven and doesn't assert
-  // behaviour the agent's `confirmations` block hasn't enabled.
+  // After a user turn is appended to transcript, call the backend and
+  // run the thinking → speaking → listening transition. The thinking phase
+  // lasts until the backend responds (real latency replaces the old timer).
   const runAgentResponseCycle = useCallback(
-    (userText: string) => {
+    (convId: string) => {
       clearTimer();
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       setStatus("thinking");
-      timerRef.current = window.setTimeout(() => {
-        if (statusRef.current !== "thinking") return;
-        const reply = mockAgentReply(userText);
-        appendAssistantTurn(reply);
-        setStatus("speaking");
-        timerRef.current = window.setTimeout(() => {
-          if (statusRef.current !== "speaking") return;
+
+      // Use a microtask so React has flushed the latest transcript into
+      // transcriptRef before we read it for the API call.
+      void Promise.resolve().then(async () => {
+        try {
+          const reply = await sendMessage(
+            agent,
+            transcriptRef.current,
+            convId,
+            controller.signal,
+          );
+          if (statusRef.current !== "thinking") return;
+          appendAssistantTurn(reply);
+          setStatus("speaking");
+          timerRef.current = window.setTimeout(() => {
+            if (statusRef.current !== "speaking") return;
+            setStatus("listening");
+          }, SPEAKING_DELAY_MS);
+        } catch (err) {
+          if ((err as Error).name === "AbortError") return;
+          if (statusRef.current !== "thinking") return;
+          appendAssistantTurn(
+            `[Connection error: ${(err as Error).message}]`,
+          );
           setStatus("listening");
-        }, SPEAKING_DELAY_MS);
-      }, THINKING_DELAY_MS);
+        }
+      });
     },
-    [appendAssistantTurn, clearTimer],
+    [agent, appendAssistantTurn, clearTimer],
   );
 
   const handleStart = useCallback(() => {
     clearTimer();
+    abortRef.current?.abort();
+    const newConvId = generateConversationId();
+    setConversationId(newConvId);
     setTranscript([]);
     setConfirmation(null);
     setStatus("connecting");
@@ -147,13 +171,16 @@ export function ConversationalChat() {
 
   const handleEnd = useCallback(() => {
     clearTimer();
+    abortRef.current?.abort();
     setConfirmation(null);
     setStatus("ended");
   }, [clearTimer]);
 
   const handleRestart = useCallback(() => {
     clearTimer();
+    abortRef.current?.abort();
     setTranscript([]);
+    setConversationId("");
     setConfirmation(null);
     setStatus("idle");
   }, [clearTimer]);
@@ -162,9 +189,9 @@ export function ConversationalChat() {
     (text: string) => {
       if (status !== "listening") return;
       appendUserTurn(text);
-      runAgentResponseCycle(text);
+      runAgentResponseCycle(conversationId);
     },
-    [appendUserTurn, runAgentResponseCycle, status],
+    [appendUserTurn, conversationId, runAgentResponseCycle, status],
   );
 
   const handleTriggerConfirmation = useCallback(() => {
