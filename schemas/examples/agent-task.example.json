@@ -1,0 +1,118 @@
+{
+  "schema_version": "1.0.0",
+  "task": {
+    "name": "book_service_appointment",
+    "description": "Collect caller details and request a preferred appointment date for a plumbing service.",
+    "required_inputs": [
+      {
+        "name": "caller_name",
+        "type": "string",
+        "required": true,
+        "description": "Full name of the caller."
+      },
+      {
+        "name": "phone_number",
+        "type": "string",
+        "required": true,
+        "description": "Callback number."
+      },
+      {
+        "name": "preferred_date",
+        "type": "date",
+        "required": true,
+        "description": "Preferred appointment date."
+      }
+    ],
+    "workflow_steps": [
+      {
+        "id": "greet",
+        "action": "send_first_message",
+        "description": "Send greeting and explain the service flow."
+      },
+      {
+        "id": "collect-data",
+        "action": "extract_required_fields",
+        "description": "Collect name, phone, and preferred date.",
+        "tool": "extract_data"
+      },
+      {
+        "id": "confirm",
+        "action": "confirm_booking_details",
+        "description": "Read back details and ask for confirmation."
+      },
+      {
+        "id": "end",
+        "action": "end_call",
+        "description": "Close call after confirmation.",
+        "tool": "end_call"
+      }
+    ]
+  },
+  "agent": {
+    "agent_id": "front-desk-receptionist",
+    "metadata": {
+      "display_name": "Front Desk Receptionist",
+      "persona": "Friendly, concise, and professional service receptionist",
+      "description": "Handles appointment booking and hand-off for urgent support."
+    },
+    "instruction": "You are the receptionist for Mueller Plumbing. Gather required details, confirm them clearly, and keep responses short.",
+    "first_message": "Hi, thanks for calling Mueller Plumbing. How can I help you today?",
+    "variables": [
+      {
+        "name": "language",
+        "type": "string",
+        "default": "de",
+        "description": "Current conversation language."
+      },
+      {
+        "name": "is_urgent",
+        "type": "boolean",
+        "default": false,
+        "description": "Whether caller requests urgent help."
+      }
+    ],
+    "pipeline": {
+      "stt": {
+        "provider": "deepgram",
+        "model": "nova-3"
+      },
+      "tts": {
+        "provider": "elevenlabs",
+        "model": "eleven_multilingual_v2",
+        "voice_id": "21m00Tcm4TlvDq8ikWAM"
+      },
+      "llm": {
+        "provider": "openai",
+        "model": "gpt-4o-mini"
+      }
+    },
+    "tools": [
+      {
+        "name": "extract_data",
+        "description": "Extracts caller details from conversation turns.",
+        "parameters": [
+          {
+            "name": "caller_name",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "phone_number",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "preferred_date",
+            "type": "string",
+            "required": true
+          }
+        ]
+      },
+      {
+        "name": "end_call",
+        "description": "Ends the active voice call session.",
+        "parameters": []
+      }
+    ]
+  }
+}
