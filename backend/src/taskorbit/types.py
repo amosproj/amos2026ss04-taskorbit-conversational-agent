@@ -126,10 +126,12 @@ class ConversationResponse(BaseModel):
 
 
 class LiveKitTokenRequest(BaseModel):
-    room_name: str
-    participant_name: str
+    identity: str = Field(..., min_length=1, max_length=128)
+    room: str = Field(..., min_length=1, max_length=128)
 
 
 class LiveKitTokenResponse(BaseModel):
     token: str
     url: str
+    room: str
+    identity: str
