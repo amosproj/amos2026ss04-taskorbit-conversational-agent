@@ -1,0 +1,316 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taskorbit.dev/schemas/agent-task.schema.json",
+  "title": "TaskOrbit Agent Task Definition",
+  "description": "Schema foundation for defining a task and its conversational agent configuration.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task",
+    "agent"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.0\\.0$",
+      "description": "Schema contract version."
+    },
+    "task": {
+      "$ref": "#/$defs/taskDefinition"
+    },
+    "agent": {
+      "$ref": "#/$defs/agentDefinition"
+    }
+  },
+  "$defs": {
+    "taskDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "description",
+        "required_inputs",
+        "workflow_steps"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required_inputs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/inputField"
+          }
+        },
+        "workflow_steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/workflowStep"
+          }
+        }
+      }
+    },
+    "agentDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "agent_id",
+        "metadata",
+        "instruction",
+        "first_message",
+        "variables",
+        "pipeline",
+        "tools"
+      ],
+      "properties": {
+        "agent_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+$"
+        },
+        "metadata": {
+          "$ref": "#/$defs/agentMetadata"
+        },
+        "instruction": {
+          "type": "string",
+          "minLength": 1
+        },
+        "first_message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "variables": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/variableField"
+          }
+        },
+        "pipeline": {
+          "$ref": "#/$defs/pipelineConfig"
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/toolDefinition"
+          }
+        }
+      }
+    },
+    "agentMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "display_name",
+        "persona"
+      ],
+      "properties": {
+        "display_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "persona": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "pipelineConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stt",
+        "tts",
+        "llm"
+      ],
+      "properties": {
+        "stt": {
+          "$ref": "#/$defs/providerConfig"
+        },
+        "tts": {
+          "$ref": "#/$defs/providerConfig"
+        },
+        "llm": {
+          "$ref": "#/$defs/providerConfig"
+        }
+      }
+    },
+    "providerConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "model"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "voice_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "toolDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "description",
+        "parameters"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z_][a-z0-9_]*$"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/toolParameter"
+          }
+        }
+      }
+    },
+    "toolParameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "type",
+        "required"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "number",
+            "boolean",
+            "integer",
+            "object",
+            "array"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "inputField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "type",
+        "required"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "number",
+            "boolean",
+            "integer",
+            "date"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "workflowStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "action"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+$"
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string",
+          "pattern": "^[a-z_][a-z0-9_]*$"
+        }
+      }
+    },
+    "variableField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "type",
+        "default"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "number",
+            "boolean",
+            "integer",
+            "object",
+            "array"
+          ]
+        },
+        "default": {
+          "$comment": "Intentionally untyped to support polymorphic default values (string, boolean, object, etc.) as defined by the 'type' field.",
+          "description": "Default session value for this variable."
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
