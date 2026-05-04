@@ -48,10 +48,8 @@ mypy = "^1.13.0"
 pre-commit = "^4.0.0"
 
 [tool.poetry.scripts]
-# `poetry run taskorbit-api` → starts the FastAPI HTTP server.
-# A `taskorbit-agent` script will be added by the ticket that
-# implements `livekit_agent/`.
 taskorbit-api = "taskorbit.cli:run_api"
+taskorbit-worker = "taskorbit.livekit_agent:run_worker"
 
 [build-system]
 requires = ["poetry-core"]
