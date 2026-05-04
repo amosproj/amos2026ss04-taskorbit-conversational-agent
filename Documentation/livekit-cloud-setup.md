@@ -130,7 +130,7 @@ Service URLs:
 | Backend (FastAPI) | http://localhost:8000 |
 | OpenAPI docs | http://localhost:8000/docs |
 | Frontend (Vite) | http://localhost:5173 |
-| Postgres | `localhost:5432` (user `taskorbit`, db `taskorbit`) |
+| Postgres | `localhost:5435` (user `taskorbit`, db `taskorbit`) |
 
 ---
 

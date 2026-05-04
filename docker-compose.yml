@@ -8,7 +8,7 @@
 #   docker compose up --build
 #
 # Services:
-#   postgres  → :5432  persistent store for chat history, traces, etc.
+#   postgres  → :5435 (host) → :5432 in container; avoids clashing with a local Postgres on 5432.
 #   backend   → :8000  FastAPI HTTP API
 #   frontend  → :5173  Vite dev server with HMR
 #
@@ -26,7 +26,7 @@ services:
       POSTGRES_PASSWORD: taskorbit
       POSTGRES_DB: taskorbit
     ports:
-      - "5432:5432"
+      - "5435:5432"
     volumes:
       - taskorbit-postgres-data:/var/lib/postgresql/data
     healthcheck:
