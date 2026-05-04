@@ -34,24 +34,25 @@
     
     # ---------- Builder: install deps into /app/.venv ----------
     FROM base AS builder
-    
-    COPY pyproject.toml poetry.lock* ./
+
+    COPY pyproject.toml poetry.lock* README.md ./
     # `--no-root` so the project itself is not installed yet — sources are copied in the next step.
     RUN poetry install --only main --no-root --no-ansi
-    
+
     COPY src ./src
     RUN poetry install --only main --no-ansi
-    
+
     # ---------- Dev image ----------
     FROM base AS dev
-    
-    ENV PATH="/app/.venv/bin:${PATH}"
-    
-    COPY --from=builder /app/.venv /app/.venv
-    COPY pyproject.toml poetry.lock* ./
+
+    COPY pyproject.toml poetry.lock* README.md ./
     COPY src ./src
     COPY tests ./tests
-    
+
+    RUN poetry install --no-ansi
+
+    ENV PATH="/app/.venv/bin:${PATH}"
+
     EXPOSE 8000
     CMD ["poetry", "run", "taskorbit-api", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     
