@@ -24,6 +24,10 @@ This directory contains the initial JSON Schema contract for TaskOrbit task and 
     - `end_call` — no `params` / `targets`
     - `agent_transfer` — `targets[]` (non-empty)
     - Aligns with `ToolDefinition` in `frontend/src/types/agentConfig.ts`
+  - **Optional** architecture / FE extensions (omit for strict Preet-minimal payloads):
+    - `confirmations` — `{ required, tools[] }` (`ConfirmationsConfig`)
+    - `language` — `{ default, auto_detect, supported[] }` (`LanguageConfig`)
+    - `vad` — `{ provider, silence_threshold_ms }` (`VadConfig`)
 
 ## Notes
 

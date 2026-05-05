@@ -100,6 +100,74 @@
             "$ref": "#/$defs/toolDefinition"
           },
           "description": "Discriminated union aligned with frontend ToolDefinition (agentConfig.ts)."
+        },
+        "confirmations": {
+          "$ref": "#/$defs/confirmationsConfig",
+          "description": "Optional — architecture §4.1 / FE AgentConfig.confirmations."
+        },
+        "language": {
+          "$ref": "#/$defs/languageConfig",
+          "description": "Optional — multilingual defaults; FE AgentConfig.language."
+        },
+        "vad": {
+          "$ref": "#/$defs/vadConfig",
+          "description": "Optional — voice activity detection; FE AgentConfig.vad."
+        }
+      }
+    },
+    "confirmationsConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "tools"],
+      "properties": {
+        "required": {
+          "type": "boolean",
+          "description": "Global switch: whether actions require explicit user confirmation."
+        },
+        "tools": {
+          "type": "array",
+          "description": "Allow-list of tool names that bypass confirmation when non-empty semantics apply per product rules.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "languageConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["default", "auto_detect", "supported"],
+      "properties": {
+        "default": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Default language tag (e.g. BCP-47)."
+        },
+        "auto_detect": {
+          "type": "boolean"
+        },
+        "supported": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "vadConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "silence_threshold_ms"],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["cerebrio", "none"]
+        },
+        "silence_threshold_ms": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },

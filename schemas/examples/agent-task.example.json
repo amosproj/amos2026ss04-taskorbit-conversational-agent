@@ -127,6 +127,19 @@
         "name": "end_call",
         "description": "Ends the active voice call session."
       }
-    ]
+    ],
+    "confirmations": {
+      "required": true,
+      "tools": []
+    },
+    "language": {
+      "default": "de",
+      "auto_detect": true,
+      "supported": ["de", "en"]
+    },
+    "vad": {
+      "provider": "cerebrio",
+      "silence_threshold_ms": 500
+    }
   }
 }
