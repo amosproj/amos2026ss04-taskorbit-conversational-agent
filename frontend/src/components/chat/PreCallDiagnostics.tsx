@@ -28,7 +28,8 @@ const toneClasses: Record<CheckTone, string> = {
  * disclosure so it's available without dominating the surface.
  */
 export function PreCallDiagnostics() {
-  const { health, apiUrl } = useBackendHealth();
+  const { health } = useBackendHealth();
+  const apiUrl = import.meta.env.VITE_API_URL ?? "";
   const livekitUrl = import.meta.env.VITE_LIVEKIT_URL ?? "";
   const [showDetail, setShowDetail] = useState(false);
 
