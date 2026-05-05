@@ -19,7 +19,7 @@ This directory contains the initial JSON Schema contract for TaskOrbit task and 
   - `first_message`: object `{ "type": "text", "message", "prompt" }` (see `frontend/src/types/agentConfig.ts`)
   - `variables` for session state
   - technical provider configuration for `stt`, `tts`, `llm`
-  - tool definitions including parameter `name`, `type`, and `required`
+  - tool definitions including parameter `variable_name`, `type`, and `required` (matches `ToolParam` in `frontend/src/types/agentConfig.ts`)
 
 ## Notes
 

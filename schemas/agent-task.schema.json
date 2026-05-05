@@ -214,14 +214,15 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "name",
+        "variable_name",
         "type",
         "required"
       ],
       "properties": {
-        "name": {
+        "variable_name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "Aligned with frontend ToolParam.variable_name (Preet contract)."
         },
         "type": {
           "type": "string",

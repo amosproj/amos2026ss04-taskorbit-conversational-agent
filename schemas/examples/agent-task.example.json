@@ -96,17 +96,20 @@
         "description": "Extracts caller details from conversation turns.",
         "parameters": [
           {
-            "name": "caller_name",
+            "variable_name": "caller_name",
+            "description": "Caller's full name.",
             "type": "string",
             "required": true
           },
           {
-            "name": "phone_number",
+            "variable_name": "phone_number",
+            "description": "Callback number.",
             "type": "string",
             "required": true
           },
           {
-            "name": "preferred_date",
+            "variable_name": "preferred_date",
+            "description": "Preferred appointment date.",
             "type": "string",
             "required": true
           }
