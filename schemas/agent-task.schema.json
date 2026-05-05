@@ -98,7 +98,8 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/toolDefinition"
-          }
+          },
+          "description": "Discriminated union aligned with frontend ToolDefinition (agentConfig.ts)."
         }
       }
     },
@@ -186,14 +187,27 @@
       }
     },
     "toolDefinition": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/dataExtractionTool"
+        },
+        {
+          "$ref": "#/$defs/endCallTool"
+        },
+        {
+          "$ref": "#/$defs/agentTransferTool"
+        }
+      ]
+    },
+    "dataExtractionTool": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "name",
-        "description",
-        "parameters"
-      ],
+      "required": ["type", "name", "description", "params"],
       "properties": {
+        "type": {
+          "type": "string",
+          "const": "data_extraction"
+        },
         "name": {
           "type": "string",
           "pattern": "^[a-z_][a-z0-9_]*$"
@@ -202,10 +216,57 @@
           "type": "string",
           "minLength": 1
         },
-        "parameters": {
+        "params": {
           "type": "array",
+          "description": "Matches frontend DataExtractionTool.params (ToolParam[]).",
           "items": {
             "$ref": "#/$defs/toolParameter"
+          }
+        }
+      }
+    },
+    "endCallTool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "name", "description"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "end_call"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "agentTransferTool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "name", "description", "targets"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "agent_transfer"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
           }
         }
       }
@@ -226,14 +287,8 @@
         },
         "type": {
           "type": "string",
-          "enum": [
-            "string",
-            "number",
-            "boolean",
-            "integer",
-            "object",
-            "array"
-          ]
+          "enum": ["string", "number", "boolean", "date"],
+          "description": "Matches frontend ParamType."
         },
         "required": {
           "type": "boolean"

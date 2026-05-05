@@ -92,9 +92,10 @@
     },
     "tools": [
       {
+        "type": "data_extraction",
         "name": "extract_data",
         "description": "Extracts caller details from conversation turns.",
-        "parameters": [
+        "params": [
           {
             "variable_name": "caller_name",
             "description": "Caller's full name.",
@@ -110,15 +111,21 @@
           {
             "variable_name": "preferred_date",
             "description": "Preferred appointment date.",
-            "type": "string",
+            "type": "date",
             "required": true
           }
         ]
       },
       {
+        "type": "agent_transfer",
+        "name": "transfer_to_emergency",
+        "description": "Hand off urgent callers to the emergency line agent.",
+        "targets": ["emergency-line-agent"]
+      },
+      {
+        "type": "end_call",
         "name": "end_call",
-        "description": "Ends the active voice call session.",
-        "parameters": []
+        "description": "Ends the active voice call session."
       }
     ]
   }

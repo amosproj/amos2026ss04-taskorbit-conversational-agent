@@ -1,6 +1,8 @@
 import json
-import pytest
+from copy import deepcopy
 from pathlib import Path
+
+import pytest
 from jsonschema import validate, ValidationError
 
 # Resolve paths relative to project root
@@ -40,5 +42,19 @@ def test_schema_validation_fails_invalid_id(schema, valid_example):
     invalid_data = valid_example.copy()
     invalid_data["agent"]["agent_id"] = "Invalid ID With Spaces"
     
+    with pytest.raises(ValidationError):
+        validate(instance=invalid_data, schema=schema)
+
+
+def test_schema_rejects_params_on_end_call(schema, valid_example):
+    """end_call tools must not carry params (additionalProperties=false)."""
+    invalid_data = deepcopy(valid_example)
+    for tool in invalid_data["agent"]["tools"]:
+        if tool.get("type") == "end_call":
+            tool["params"] = []
+            break
+    else:
+        pytest.fail("example must include an end_call tool")
+
     with pytest.raises(ValidationError):
         validate(instance=invalid_data, schema=schema)
