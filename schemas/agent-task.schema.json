@@ -83,8 +83,7 @@
           "minLength": 1
         },
         "first_message": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/firstMessage"
         },
         "variables": {
           "type": "array",
@@ -100,6 +99,26 @@
           "items": {
             "$ref": "#/$defs/toolDefinition"
           }
+        }
+      }
+    },
+    "firstMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "message", "prompt"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "text",
+          "description": "Matches frontend FirstMessage.type — voice UI uses \"text\" today."
+        },
+        "message": {
+          "type": "string",
+          "description": "Primary greeting shown/spoken when the session starts."
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Optional auxiliary prompt (may be empty)."
         }
       }
     },

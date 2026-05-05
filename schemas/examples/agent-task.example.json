@@ -56,7 +56,11 @@
       "description": "Handles appointment booking and hand-off for urgent support."
     },
     "instruction": "You are the receptionist for Mueller Plumbing. Gather required details, confirm them clearly, and keep responses short.",
-    "first_message": "Hi, thanks for calling Mueller Plumbing. How can I help you today?",
+    "first_message": {
+      "type": "text",
+      "message": "Hi, thanks for calling Mueller Plumbing. How can I help you today?",
+      "prompt": ""
+    },
     "variables": [
       {
         "name": "language",

@@ -16,7 +16,7 @@ This directory contains the initial JSON Schema contract for TaskOrbit task and 
 - Agent definition:
   - metadata (`display_name`, `persona`, `description`)
   - `instruction`
-  - `first_message`
+  - `first_message`: object `{ "type": "text", "message", "prompt" }` (see `frontend/src/types/agentConfig.ts`)
   - `variables` for session state
   - technical provider configuration for `stt`, `tts`, `llm`
   - tool definitions including parameter `name`, `type`, and `required`
