@@ -28,7 +28,8 @@ const toneClasses: Record<CheckTone, string> = {
  * disclosure so it's available without dominating the surface.
  */
 export function PreCallDiagnostics() {
-  const { health, apiUrl } = useBackendHealth();
+  // const { health, apiUrl } = useBackendHealth();
+  const { health } = useBackendHealth(); 
   const livekitUrl = import.meta.env.VITE_LIVEKIT_URL ?? "";
   const [showDetail, setShowDetail] = useState(false);
 
@@ -115,7 +116,8 @@ export function PreCallDiagnostics() {
             ))}
             <dt className="font-medium text-muted-foreground">VITE_API_URL</dt>
             <dd className="font-mono break-all text-muted-foreground">
-              {apiUrl || "(using Vite /api proxy)"}
+              {/* {apiUrl || "(using Vite /api proxy)"} */}
+              {"/api (using Vite /api proxy)"} 
             </dd>
             <dt className="font-medium text-muted-foreground">
               VITE_LIVEKIT_URL

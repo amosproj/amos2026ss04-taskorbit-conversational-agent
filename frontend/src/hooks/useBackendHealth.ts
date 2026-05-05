@@ -11,13 +11,14 @@ export type HealthState =
  * UI is still mocked (#5).
  */
 export function useBackendHealth() {
-  const apiUrl = import.meta.env.VITE_API_URL ?? "";
+  // const apiUrl = import.meta.env.VITE_API_URL ?? "";
 
   const [health, setHealth] = useState<HealthState>({ status: "loading" });
 
   useEffect(() => {
     const controller = new AbortController();
-    const url = apiUrl ? `${apiUrl}/health` : "/api/health";
+    // const url = apiUrl ? `${apiUrl}/health` : "/api/health";
+    const url = "/api/health"; //using relative url 
 
     fetch(url, { signal: controller.signal })
       .then(async (res) => {
@@ -31,7 +32,9 @@ export function useBackendHealth() {
       });
 
     return () => controller.abort();
-  }, [apiUrl]);
+  // }, [apiUrl]);
+  }, []); 
 
-  return { health, apiUrl };
+  // return { health, apiUrl };
+  return { health};
 }
