@@ -89,7 +89,16 @@ poetry run ruff check .       # linting
 poetry run taskorbit-api      # start API
 curl http://localhost:8000/health
 # → {"status":"ok","service":"taskorbit-backend","version":"0.1.0"}
+
+# LiveKit token endpoint (ticket #26). Requires LIVEKIT_* vars in .env.
+curl -X POST http://localhost:8000/v1/livekit/token \
+  -H "Content-Type: application/json" \
+  -d '{"identity":"dev-user","room":"taskorbit-dev-room"}'
+# → {"token":"...","url":"wss://...","room":"...","identity":"..."}
 ```
+
+See [`docs/livekit-cloud-setup.md`](../docs/livekit-cloud-setup.md) for
+the full LiveKit Cloud developer setup.
 
 ---
 
