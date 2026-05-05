@@ -17,7 +17,7 @@ config = context.config
 settings = get_settings()
 config.set_main_option(
     "sqlalchemy.url",
-    f"postgresql+psycopg://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
+    settings.database_url.replace("postgresql://", "postgresql+psycopg://")
 )
 
 if config.config_file_name is not None:
