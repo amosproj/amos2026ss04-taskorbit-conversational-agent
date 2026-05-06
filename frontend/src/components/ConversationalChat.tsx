@@ -1,3 +1,4 @@
+import { LiveKitRoom, RoomAudioRenderer } from "@livekit/components-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AgentIdentityCard } from "@/components/chat/AgentIdentityCard";
@@ -15,12 +16,15 @@ import {
 } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { sendMessage } from "@/lib/conversationApi";
+import { fetchLiveKitToken } from "@/lib/livekitToken";
 import { JOHN_DOE_AGENT } from "@/lib/mockAgents";
 import type {
   CallStatus,
   ConfirmationPromptState,
   LiveTranscriptTurn,
 } from "@/types/callState";
+
+type LiveKitCredentials = { url: string; token: string };
 
 const CONNECTING_DELAY_MS = 800;
 const SPEAKING_DELAY_MS = 2600;
@@ -60,6 +64,8 @@ export function ConversationalChat() {
   const [confirmation, setConfirmation] =
     useState<ConfirmationPromptState | null>(null);
   const [conversationId, setConversationId] = useState<string>("");
+  const [livekitCredentials, setLivekitCredentials] =
+    useState<LiveKitCredentials | null>(null);
 
   const timerRef = useRef<number | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
@@ -161,7 +167,17 @@ export function ConversationalChat() {
     setConversationId(newConvId);
     setTranscript([]);
     setConfirmation(null);
+    setLivekitCredentials(null);
     setStatus("connecting");
+
+    // Fetch a LiveKit token so the browser can receive TTS audio from the
+    // agent worker. Runs in parallel with the connecting timer; a failure
+    // here only disables audio — the text fallback continues to work.
+    void fetchLiveKitToken("user", newConvId).then((creds) => {
+      if (statusRef.current === "idle" || statusRef.current === "ended") return;
+      setLivekitCredentials({ url: creds.url, token: creds.token });
+    });
+
     timerRef.current = window.setTimeout(() => {
       if (statusRef.current !== "connecting") return;
       appendAssistantTurn(agent.first_message.message);
@@ -173,6 +189,7 @@ export function ConversationalChat() {
     clearTimer();
     abortRef.current?.abort();
     setConfirmation(null);
+    setLivekitCredentials(null);
     setStatus("ended");
   }, [clearTimer]);
 
@@ -182,6 +199,7 @@ export function ConversationalChat() {
     setTranscript([]);
     setConversationId("");
     setConfirmation(null);
+    setLivekitCredentials(null);
     setStatus("idle");
   }, [clearTimer]);
 
@@ -324,6 +342,19 @@ export function ConversationalChat() {
           />
         )}
       </div>
+
+      {/* Renders no visible UI — auto-plays all remote audio tracks from the
+          agent worker so TTS audio is heard without additional wiring. */}
+      {livekitCredentials !== null && (
+        <LiveKitRoom
+          serverUrl={livekitCredentials.url}
+          token={livekitCredentials.token}
+          connect
+          audio={false}
+        >
+          <RoomAudioRenderer />
+        </LiveKitRoom>
+      )}
     </main>
   );
 }
