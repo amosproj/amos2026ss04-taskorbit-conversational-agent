@@ -17,6 +17,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { sendMessage } from "@/lib/conversationApi";
 import { fetchLiveKitToken } from "@/lib/livekitToken";
+import { synthesizeSpeech } from "@/lib/ttsApi";
 import { JOHN_DOE_AGENT } from "@/lib/mockAgents";
 import type {
   CallStatus,
@@ -143,6 +144,17 @@ export function ConversationalChat() {
           if (statusRef.current !== "thinking") return;
           appendAssistantTurn(reply);
           setStatus("speaking");
+
+          // Synthesize and play TTS audio. Non-blocking — a failure here
+          // only silences audio; the text reply is already visible.
+          void synthesizeSpeech(reply, controller.signal)
+            .then((audioUrl) => {
+              const audio = new Audio(audioUrl);
+              audio.onended = () => URL.revokeObjectURL(audioUrl);
+              return audio.play();
+            })
+            .catch(() => {});
+
           timerRef.current = window.setTimeout(() => {
             if (statusRef.current !== "speaking") return;
             setStatus("listening");
