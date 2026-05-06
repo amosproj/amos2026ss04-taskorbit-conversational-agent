@@ -344,7 +344,7 @@ export function ConversationalChat() {
       </div>
 
       {/* Renders no visible UI — auto-plays all remote audio tracks from the
-          agent worker so TTS audio is heard without additional wiring. */}
+          agent worker so TTS audio is heard without additional wiring. Use this on later stages */}
       {livekitCredentials !== null && (
         <LiveKitRoom
           serverUrl={livekitCredentials.url}
