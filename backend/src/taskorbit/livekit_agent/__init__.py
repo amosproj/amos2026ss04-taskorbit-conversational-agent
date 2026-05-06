@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
+from livekit.plugins import elevenlabs
+
 from taskorbit.config import Settings, get_settings
 from taskorbit.orchestration import ConversationOrchestrator
 
@@ -37,13 +39,25 @@ class TaskOrbitVoiceAgent:
     async def _run_stt(self, audio_stream: AsyncIterator[bytes]) -> AsyncIterator[str]:
         """Convert a stream of raw audio bytes to text segments via Deepgram."""
         raise NotImplementedError
-        # make mypy happy — body is unreachable but satisfies the return type
-        yield ""  # type: ignore[misc]
+        yield ""
 
     async def _run_tts(self, text: str) -> AsyncIterator[bytes]:
-        """Convert assistant text to audio bytes via ElevenLabs."""
-        raise NotImplementedError
-        yield b""  # type: ignore[misc]
+        """Convert assistant text to audio bytes via ElevenLabs.
+
+        Yields raw PCM audio chunks as they stream back from ElevenLabs.
+        The caller is responsible for forwarding chunks to the LiveKit room.
+        """
+        tts = elevenlabs.TTS(
+            voice_id=self._settings.elevenlabs_voice_id,
+            model=self._settings.elevenlabs_model,
+            api_key=self._settings.elevenlabs_api_key,
+        )
+        try:
+            async with tts.synthesize(text) as stream:
+                async for audio in stream:
+                    yield bytes(audio.frame.data)
+        finally:
+            await tts.aclose()
 
 
 def run_worker() -> None:
