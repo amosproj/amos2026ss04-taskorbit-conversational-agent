@@ -1,0 +1,81 @@
+# Frontend CI for the TaskOrbit Conversational Agent.
+#
+# Runs on every push (any branch) and every pull request that touches the
+# frontend or this workflow file. The job installs Node, restores the npm
+# cache, performs a deterministic install from the committed lockfile, and
+# runs the lint and Prettier formatting checks. Any failing step fails the
+# whole job, which makes the status check red on the corresponding PR.
+#
+# Frontend tests are intentionally NOT executed because the project has no
+# test suite yet. When tests are introduced, add a `npm test -- --run`
+# step after `format:check` and update Documentation/ci-cd.md.
+#
+# Local equivalents (run from `frontend/`):
+#   npm ci
+#   npm run lint
+#   npm run format:check
+
+name: Frontend CI
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend.yml"
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend.yml"
+  # Allow manual re-runs from the Actions tab without a code push.
+  workflow_dispatch:
+
+# Cancel any in-flight run on the same ref when a new commit lands.
+concurrency:
+  group: frontend-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least-privilege token. The job only needs to read the source tree.
+permissions:
+  contents: read
+
+# Pinned Node version. Bumping it invalidates the npm cache automatically.
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  frontend-ci:
+    name: Lint & format (frontend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          # Built-in cache keyed on the lockfile hash. No extra cache step
+          # is needed - this restores ~/.npm so subsequent `npm ci` is fast.
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        # `npm ci` requires a committed lockfile and refuses to mutate it,
+        # which is exactly the deterministic behaviour we want in CI.
+        run: npm ci
+
+      - name: Lint with ESLint
+        # `--max-warnings=0` promotes warnings to failures so the gate is
+        # strict without forcing every rule to be `error` in the config.
+        run: npm run lint -- --max-warnings=0
+
+      - name: Check formatting with Prettier
+        # `format:check` is non-mutating; the local `format` script keeps
+        # the `--write` behaviour for fixing files in your editor.
+        run: npm run format:check

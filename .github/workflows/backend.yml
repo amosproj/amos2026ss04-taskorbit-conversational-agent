@@ -1,0 +1,104 @@
+# Backend CI for the TaskOrbit Conversational Agent.
+#
+# Runs on every push (any branch) and every pull request that touches the
+# backend or this workflow file. The job installs the Python toolchain and
+# Poetry, restores cached dependencies, runs the linter and formatter
+# checks, and finally executes the test suite. Any failing step fails the
+# whole job, which makes the status check red on the corresponding PR.
+#
+# Local equivalents (run from `backend/`):
+#   poetry install --with dev
+#   poetry run ruff check .
+#   poetry run ruff format --check .
+#   poetry run pytest
+#
+# See Documentation/ci-cd.md for the full team-facing guide.
+
+name: Backend CI
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend.yml"
+  # Allow manual re-runs from the Actions tab without a code push.
+  workflow_dispatch:
+
+# Cancel any in-flight run on the same ref when a new commit lands. Saves
+# CI minutes and keeps the queue short on fast-pushed branches.
+concurrency:
+  group: backend-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least-privilege token. The job only needs to read the source tree.
+permissions:
+  contents: read
+
+# Pinned versions for the toolchain. Updating one of these will invalidate
+# the cache key automatically because the lockfile hash is part of it.
+env:
+  PYTHON_VERSION: "3.11"
+  POETRY_VERSION: "1.8.4"
+
+jobs:
+  backend-ci:
+    name: Lint, format & tests (backend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        # All steps run from `backend/` so commands match the local dev flow.
+        working-directory: backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install Poetry ${{ env.POETRY_VERSION }}
+        # `pipx` is preinstalled on ubuntu-latest runners and gives Poetry an
+        # isolated environment, which is the officially recommended install.
+        run: pipx install "poetry==${POETRY_VERSION}"
+
+      - name: Configure Poetry to use in-project virtualenv
+        # Matches `backend/Dockerfile` (POETRY_VIRTUALENVS_IN_PROJECT=1) and
+        # makes the venv path predictable for the cache step below.
+        run: poetry config virtualenvs.in-project true
+
+      - name: Cache Poetry virtualenv
+        uses: actions/cache@v4
+        with:
+          path: backend/.venv
+          # Bump `v1` if the cache ever gets poisoned by a partial install.
+          key: ${{ runner.os }}-py${{ env.PYTHON_VERSION }}-poetry-v1-${{ hashFiles('backend/poetry.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-py${{ env.PYTHON_VERSION }}-poetry-v1-
+
+      - name: Install dependencies
+        # `--with dev` pulls ruff/pytest/mypy/pre-commit; `--no-interaction`
+        # silences prompts and `--no-ansi` keeps log output diff-friendly.
+        run: poetry install --with dev --no-interaction --no-ansi
+
+      - name: Lint with ruff
+        run: poetry run ruff check .
+
+      - name: Check formatting with ruff
+        # `format --check` exits non-zero on any unformatted file without
+        # rewriting it, which is exactly the gate behaviour we want in CI.
+        run: poetry run ruff format --check .
+
+      - name: Run unit tests with pytest
+        # pytest config lives in `backend/pyproject.toml`
+        # ([tool.pytest.ini_options]). All current tests use mocks for
+        # LiveKit/Postgres so no real services or secrets are required.
+        run: poetry run pytest
