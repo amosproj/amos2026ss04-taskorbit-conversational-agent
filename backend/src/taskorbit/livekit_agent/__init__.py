@@ -10,9 +10,11 @@ TaskOrbitVoiceAgent instances.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 
-from livekit.plugins import elevenlabs
+from livekit import rtc
+from livekit.plugins import deepgram, elevenlabs
 
 from taskorbit.config import Settings, get_settings
 from taskorbit.orchestration import ConversationOrchestrator
@@ -29,17 +31,64 @@ class TaskOrbitVoiceAgent:
         self.orchestrator = orchestrator
         self._settings = settings or get_settings()
 
-    async def on_room_connected(self, room: object) -> None:  # room: livekit.rtc.Room
+    async def on_room_connected(self, room: rtc.Room) -> None:
         """Called when the worker successfully joins a LiveKit room.
 
         Subscribes to participant audio tracks and starts the pipeline.
         """
-        raise NotImplementedError
+
+        async def handle_track(track: rtc.Track, participant: rtc.RemoteParticipant) -> None:
+            if track.kind != rtc.TrackKind.KIND_AUDIO:
+                return
+            audio_stream = rtc.AudioStream(track)
+
+            async def _raw_bytes() -> AsyncIterator[bytes]:
+                async for frame_event in audio_stream:
+                    yield bytes(frame_event.frame.data)
+
+            async for transcript in self._run_stt(_raw_bytes()):
+                response = await self.orchestrator.process_message(transcript)
+                async for _audio_chunk in self._run_tts(response):
+                    pass  # publishing handled by run_worker via VoicePipelineAgent
+
+        for participant in room.remote_participants.values():
+            for pub in participant.track_publications.values():
+                if pub.track and pub.track.kind == rtc.TrackKind.KIND_AUDIO:
+                    asyncio.ensure_future(handle_track(pub.track, participant))
+
+        @room.on("track_subscribed")
+        def _on_track(
+            track: rtc.Track,
+            _pub: rtc.RemoteTrackPublication,
+            participant: rtc.RemoteParticipant,
+        ) -> None:
+            asyncio.ensure_future(handle_track(track, participant))
 
     async def _run_stt(self, audio_stream: AsyncIterator[bytes]) -> AsyncIterator[str]:
         """Convert a stream of raw audio bytes to text segments via Deepgram."""
-        raise NotImplementedError
-        yield ""
+        stt = deepgram.STT(
+            api_key=self._settings.deepgram_api_key,
+            model=self._settings.deepgram_model,
+            language=self._settings.deepgram_language,
+        )
+        stream = stt.stream()
+        try:
+            async for chunk in audio_stream:
+                frame = rtc.AudioFrame(
+                    data=chunk,
+                    sample_rate=16000,
+                    num_channels=1,
+                    samples_per_channel=len(chunk) // 2,
+                )
+                stream.push_frame(frame)
+            await stream.aclose()
+            async for event in stream:
+                if event.type == deepgram.SpeechEventType.FINAL_TRANSCRIPT:
+                    text = event.alternatives[0].text.strip()
+                    if text:
+                        yield text
+        finally:
+            await stream.aclose()
 
     async def _run_tts(self, text: str) -> AsyncIterator[bytes]:
         """Convert assistant text to audio bytes via ElevenLabs.
