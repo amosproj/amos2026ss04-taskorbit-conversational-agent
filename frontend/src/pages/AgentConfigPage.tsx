@@ -57,7 +57,7 @@ export function AgentConfigPage() {
     }
     // No backend yet — surface the result in the console so the JSON shape
     // can be verified end-to-end against the orchestrator contract.
-    // eslint-disable-next-line no-console
+
     console.info("[AgentConfig] save", serializeAgent(agent));
     toast.success("Configuration saved.");
   };

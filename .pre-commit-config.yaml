@@ -1,0 +1,103 @@
+# Pre-commit hooks for the TaskOrbit monorepo.
+#
+# Runs lightweight lint + format checks on every `git commit`, scoped to
+# the files actually being committed (not the whole repo). Matches the CI
+# pipeline so a green commit is almost always a green CI run.
+#
+# One-time setup (Poetry-based — recommended, since pre-commit is already
+# declared in backend/pyproject.toml's dev dependencies):
+#   cd backend && poetry install --with dev && cd ..
+#   poetry -C backend run pre-commit install   # wires .git/hooks/pre-commit
+#   cd frontend && npm install                 # for the local frontend hooks
+#
+# Standalone alternative (if you don't have the backend env):
+#   pip install --user pre-commit              # or: brew install pre-commit
+#   pre-commit install
+#
+# Run on demand against all files:
+#   poetry -C backend run pre-commit run --all-files
+#
+# Bypass in an emergency (use sparingly — CI will still gate the PR):
+#   git commit --no-verify
+#
+# Update hook revisions:
+#   poetry -C backend run pre-commit autoupdate
+
+# Repo-wide exclusions that apply to every hook below.
+# - .tsv files: column-aligned data where leading/trailing whitespace and
+#   trailing-newline behaviour are part of the format. Don't reformat.
+# - generated TypeScript build cache files.
+exclude: |
+  (?x)^(
+    .*\.tsv|
+    .*\.tsbuildinfo
+  )$
+
+repos:
+  # ------------------------------------------------------------------
+  # Generic hygiene — fast, language-agnostic checks.
+  # ------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        # Markdown intentionally uses two trailing spaces for line breaks.
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+        # Allow GitHub Actions multi-document YAML to parse.
+        args: [--allow-multiple-documents]
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: check-toml
+
+  # ------------------------------------------------------------------
+  # Backend: ruff (lint with auto-fix + format).
+  # Pre-commit pulls a hermetic ruff binary; no `poetry install` needed.
+  # Pinned rev matches `backend/pyproject.toml`'s `ruff = "^0.7.0"`.
+  # ------------------------------------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.4
+    hooks:
+      - id: ruff
+        name: ruff (backend lint, auto-fix)
+        args: [--fix]
+        files: ^backend/.*\.py$
+      - id: ruff-format
+        name: ruff (backend format)
+        files: ^backend/.*\.py$
+
+  # ------------------------------------------------------------------
+  # Frontend: ESLint + Prettier via the project's own node_modules.
+  # Calling the locally-installed binaries means the hook uses the exact
+  # versions pinned in `frontend/package-lock.json` and picks up the
+  # committed `eslint.config.js` / `.prettierrc.json` automatically.
+  # Prerequisite: `cd frontend && npm install` once on a fresh clone.
+  # ------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: eslint-frontend
+        name: eslint (frontend, auto-fix)
+        # ESLint v9 (flat config) resolves `eslint.config.js` from the
+        # current working directory, not by walking up from the file paths.
+        # We `cd frontend` so the config is found, then strip the
+        # `frontend/` prefix from every staged path that pre-commit passes
+        # in (`${@#frontend/}` is bash parameter substitution applied to
+        # each positional argument).
+        entry: bash -c 'cd frontend && exec ./node_modules/.bin/eslint --fix "${@#frontend/}"' --
+        language: system
+        files: ^frontend/.*\.(ts|tsx)$
+        exclude: ^frontend/(node_modules|dist|public)/
+        pass_filenames: true
+
+      - id: prettier-frontend
+        name: prettier (frontend, write)
+        # Prettier walks up from each file's directory to locate
+        # `.prettierrc.json` / `.prettierignore`, so it works when invoked
+        # from the repo root with full repo-relative paths.
+        entry: frontend/node_modules/.bin/prettier --write --ignore-unknown
+        language: system
+        files: ^frontend/.*\.(ts|tsx|css)$
+        exclude: ^frontend/(node_modules|dist|public)/
+        pass_filenames: true
