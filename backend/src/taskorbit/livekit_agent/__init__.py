@@ -33,8 +33,10 @@ class TaskOrbitVoiceAgent:
 
     async def on_room_connected(self, room: rtc.Room) -> None:
         """Called when the worker successfully joins a LiveKit room.
-
         Subscribes to participant audio tracks and starts the pipeline.
+        When connected to a room, the agent should be ready to receive audio 
+        and send back TTS responses without additional wiring — the frontend's 
+        LiveKitRoom component will auto-subscribe to all remote tracks and play them out. 
         """
 
         async def handle_track(track: rtc.Track, participant: rtc.RemoteParticipant) -> None:
