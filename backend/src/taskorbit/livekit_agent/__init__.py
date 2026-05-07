@@ -114,7 +114,9 @@ class TaskOrbitVoiceAgent:
         finally:
             await tts.aclose()
 
-
+#the function the livekit-agents framework calls per dispatched job. 
+# It connects to the room with AUDIO_ONLY subscribe (no video), then hands the room off to                        
+# on_room_connected().  
 async def _entrypoint(ctx: JobContext) -> None:
     """Called by the livekit-agents framework for each dispatched job."""
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)

@@ -138,17 +138,13 @@ export function CallControls({
               )}
               aria-label={
                 status === "listening"
-                  ? "Microphone active (mock)"
-                  : "Microphone (mock — voice lands in Sprint 3)"
+                  ? "Microphone active"
+                  : "Microphone"
               }
               disabled={!isActive}
             >
               <Mic className="size-5" />
             </Button>
-            <p className="text-sm text-muted-foreground">
-              Voice pipeline lands in Sprint 3 (#14, #15, #26). For now,
-              the mic is a visual placeholder.
-            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button

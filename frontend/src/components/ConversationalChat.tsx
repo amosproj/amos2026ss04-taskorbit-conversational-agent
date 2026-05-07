@@ -303,9 +303,8 @@ export function ConversationalChat() {
             {appName}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Start a voice session with the configured agent. Voice lands
-            in Sprint 3 — for now, the call surface is mocked end-to-end
-            so the flow can be reviewed.
+            Start a voice session with the configured agent. Speak into
+            your microphone and the agent will respond.
           </p>
         </header>
 
