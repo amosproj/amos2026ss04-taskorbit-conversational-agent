@@ -70,6 +70,9 @@ export function ConversationalChat() {
 
   const timerRef = useRef<number | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+  // Holds the unlocked AudioContext created on the first user gesture so
+  // subsequent async audio.play() calls are not blocked by autoplay policy.
+  const audioCtxRef = useRef<AudioContext | null>(null);
   // Mirror status in a ref so async callbacks can read the latest phase
   // without going stale across rapid transitions.
   const statusRef = useRef<CallStatus>(status);
@@ -145,13 +148,22 @@ export function ConversationalChat() {
           appendAssistantTurn(reply);
           setStatus("speaking");
 
-          // Synthesize and play TTS audio. Non-blocking — a failure here
-          // only silences audio; the text reply is already visible.
+          // Synthesize and play TTS audio via the pre-unlocked AudioContext.
+          // Non-blocking — a failure here only silences audio; the text
+          // reply is already visible.
           void synthesizeSpeech(reply, controller.signal)
-            .then((audioUrl) => {
-              const audio = new Audio(audioUrl);
-              audio.onended = () => URL.revokeObjectURL(audioUrl);
-              return audio.play();
+            .then(async (audioUrl) => {
+              const ctx = audioCtxRef.current;
+              if (!ctx) return;
+              const arrayBuffer = await fetch(audioUrl).then((r) =>
+                r.arrayBuffer(),
+              );
+              URL.revokeObjectURL(audioUrl);
+              const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+              const source = ctx.createBufferSource();
+              source.buffer = audioBuffer;
+              source.connect(ctx.destination);
+              source.start();
             })
             .catch(() => {});
 
@@ -175,6 +187,15 @@ export function ConversationalChat() {
   const handleStart = useCallback(() => {
     clearTimer();
     abortRef.current?.abort();
+
+    // Create (or resume) the AudioContext here while we are inside a user
+    // gesture so the browser permits audio playback later in async callbacks.
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new AudioContext();
+    } else if (audioCtxRef.current.state === "suspended") {
+      void audioCtxRef.current.resume();
+    }
+
     const newConvId = generateConversationId();
     setConversationId(newConvId);
     setTranscript([]);
