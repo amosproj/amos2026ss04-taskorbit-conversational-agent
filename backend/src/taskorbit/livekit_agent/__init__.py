@@ -14,7 +14,7 @@ import asyncio
 from collections.abc import AsyncIterator
 
 from livekit import rtc
-from livekit.agents import stt as lk_stt
+from livekit.agents import AutoSubscribe, JobContext, WorkerOptions, cli, stt as lk_stt
 from livekit.plugins import deepgram, elevenlabs
 
 from taskorbit.config import Settings, get_settings
@@ -115,10 +115,25 @@ class TaskOrbitVoiceAgent:
             await tts.aclose()
 
 
+async def _entrypoint(ctx: JobContext) -> None:
+    """Called by the livekit-agents framework for each dispatched job."""
+    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+    agent = TaskOrbitVoiceAgent(orchestrator=ConversationOrchestrator())
+    await agent.on_room_connected(ctx.room)
+
+
 def run_worker() -> None:
     """Entry point for `poetry run taskorbit-worker`.
 
     Connects to the LiveKit server using credentials from settings and
     starts accepting agent dispatch jobs.
     """
-    raise NotImplementedError
+    settings = get_settings()
+    cli.run_app(
+        WorkerOptions(
+            entrypoint_fnc=_entrypoint,
+            ws_url=settings.livekit_url,
+            api_key=settings.livekit_api_key,
+            api_secret=settings.livekit_api_secret,
+        )
+    )
