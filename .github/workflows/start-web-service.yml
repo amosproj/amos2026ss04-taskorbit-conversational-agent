@@ -1,0 +1,147 @@
+# Start Web Service workflow.
+#
+# A smoke-test pipeline that proves both halves of the stack actually
+# *start* — not just lint/format clean. This catches breakages that lint
+# can't see (missing imports, broken bootstraps, build failures).
+#
+# Pipeline (jobs run in parallel for fast feedback):
+#   * backend  — boot the FastAPI service and curl /health
+#   * frontend — `npm run build` (tsc + vite production build)
+#
+# Local equivalents:
+#   # backend
+#   cd backend
+#   APP_ENV=production poetry run taskorbit-api --host 127.0.0.1 --port 8000
+#   curl http://127.0.0.1:8000/health
+#
+#   # frontend
+#   cd frontend
+#   npm run build
+
+name: Start Web Service
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: start-web-service-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.11"
+  POETRY_VERSION: "1.8.4"
+  NODE_VERSION: "20"
+
+jobs:
+  backend:
+    name: "Backend — boot & /health"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # APP_ENV=production disables uvicorn auto-reload so we keep a stable PID.
+    env:
+      APP_ENV: production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Bootstrap backend environment
+        uses: ./.github/actions/backend-bootstrap
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          poetry-version: ${{ env.POETRY_VERSION }}
+
+      - name: Start FastAPI service in the background
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          mkdir -p ../.smoke
+          # nohup + & so the step doesn't block; redirect both streams to a log.
+          nohup poetry run taskorbit-api --host 127.0.0.1 --port 8000 \
+            > ../.smoke/api.log 2>&1 &
+          echo $! > ../.smoke/api.pid
+          echo "Started taskorbit-api with PID $(cat ../.smoke/api.pid)"
+
+      - name: Wait for /health to respond
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health > /tmp/health.json; then
+              echo "API is up after ${i}s:"
+              cat /tmp/health.json
+              echo
+              break
+            fi
+            echo "  attempt ${i}/30 — API not ready yet, retrying..."
+            sleep 1
+          done
+          # If the loop finished without a successful curl, fail loudly.
+          test -s /tmp/health.json || {
+            echo "API never became healthy; last 200 lines of log:"
+            tail -n 200 .smoke/api.log || true
+            exit 1
+          }
+
+      - name: Verify /health response payload
+        run: |
+          set -euo pipefail
+          # FastAPI serialises JSON with spaces after colons (json.dumps default),
+          # so avoid brittle string greps — parse and assert the contract.
+          python3 <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("/tmp/health.json").read_text())
+          assert data.get("status") == "ok", data
+          assert data.get("service") == "taskorbit-backend", data
+          PY
+          echo "/health payload looks good."
+
+      - name: Stop FastAPI service
+        if: always()
+        run: |
+          if [ -f .smoke/api.pid ]; then
+            PID=$(cat .smoke/api.pid)
+            kill "$PID" 2>/dev/null || true
+            echo "Sent SIGTERM to PID $PID"
+          fi
+
+      - name: Upload API log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-smoke-api-log
+          path: .smoke/api.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  frontend:
+    name: "Frontend — production build"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Bootstrap frontend environment
+        uses: ./.github/actions/frontend-bootstrap
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build production bundle
+        working-directory: frontend
+        # `npm run build` runs `tsc -b && vite build`, so this also
+        # validates TypeScript types end-to-end.
+        run: npm run build
+
+      - name: Confirm build artifacts exist
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          test -d dist
+          test -f dist/index.html
+          echo "Frontend production build OK ($(du -sh dist | cut -f1) in dist/)."
