@@ -16,6 +16,7 @@ Flow per message:
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from taskorbit.config import Settings, get_settings
@@ -40,65 +41,74 @@ class ConversationOrchestrator:
     ) -> ConversationResponse:
         """Main entry point called by the API layer and agent workers.
 
-        Returns a ConversationResponse containing the assistant reply and,
-        when applicable, a pending tool invocation requiring confirmation.
-
-        Current implementation: dummy echo — confirms the pipeline is wired
-        end-to-end. Replace with _select_active_tool → _build_system_prompt
-        → _call_llm → _dispatch_tool when the LLM integration lands.
+        Executes the runtime pipeline:
+        1. Select active tool/task context.
+        2. Build system prompt.
+        3. Generate LLM response (with timeout).
         """
-        # Collect only the user messages from the current turn — everything
-        # after the last assistant message. This resets the "buffer" each
-        # time Send is hit, so previous turns are not re-echoed.
-        current_turn: list[Message] = []
-        for m in reversed(request.messages):
-            if m.role == MessageRole.ASSISTANT:
-                break
-            if m.role == MessageRole.USER:
-                current_turn.insert(0, m)
+        try:
+            # 1. Decide which tool context is active
+            active_tool = self._select_active_tool(request.messages, request.agent_config)
 
-        if current_turn:
-            combined = " ".join(m.content for m in current_turn)
-            text = f'[Backend echo] I received: "{combined}"'
-        else:
-            # text = f"Hello! I'm {request.agent_config.name}. How can I help you?"
-            text = f"I didn't get your message. Can you try again?"  # Shouldn't happen since the frontend only sends user messages
+            # 2. Build the LLM instructions
+            system_prompt = self._build_system_prompt(request.agent_config, active_tool)
 
-        return ConversationResponse(
-            conversation_id=request.conversation_id,
-            reply=self._make_assistant_message(text),
-        )
+            # 3. Call LLM with a 10-second timeout
+            response_text = await asyncio.wait_for(
+                self._call_llm(system_prompt, request.messages),
+                timeout=10.0
+            )
+
+            return ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message(response_text),
+            )
+
+        except asyncio.TimeoutError:
+            return ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message(
+                    "I'm sorry, I'm having trouble connecting to my brain right now. Please try again."
+                ),
+            )
+        except Exception as e:
+            return ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message(
+                    f"An unexpected error occurred in the runtime: {e!s}"
+                ),
+            )
 
     def _build_system_prompt(
         self,
         agent_config: AgentConfig,
         active_tool: ToolDefinition | None,
     ) -> str:
-        """
-        TO-DO:
-        Construct a system prompt (LLM context)for the current task.
-
-        Only includes context relevant to `active_tool` (or the agent
-        persona if no tool is active). 
-        """
-        raise NotImplementedError
+        """Construct a system prompt (LLM context) for the current task."""
+        prompt = (
+            f"Persona: {agent_config.persona}\n"
+            f"Core Instructions: {agent_config.greeting}\n"
+        )
+        
+        if active_tool:
+            prompt += f"\nCurrent Task: {active_tool.description}\n"
+            prompt += f"Available Parameters: {active_tool.parameters}\n"
+            
+        return prompt
 
     def _select_active_tool(
         self,
         messages: list[Message],
         agent_config: AgentConfig,
     ) -> ToolDefinition | None:
-    
         """
-        TO-DO:
-        Decide which tool should be in scope for this turn, if any.
-
-        Determine which tool (if any) should be active based on message history.
-
-        Returns None when the conversation is in a free-form phase (e.g.
-        greeting, small-talk before a task begins).
+        Decide which tool should be in scope for this turn.
+        
+        MOCK: For now, we just return the first tool if available to demonstrate the pipeline.
         """
-        raise NotImplementedError
+        if agent_config.tools:
+            return agent_config.tools[0]
+        return None
 
     async def _call_llm(
         self,
@@ -106,13 +116,17 @@ class ConversationOrchestrator:
         messages: list[Message],
     ) -> str:
         """
-        TO-DO:
-        Call/Route to the LLM provider configured in settings (Open AI etc.).
-
-        Returns the raw assistant text. Tool-call parsing happens in the
-        caller so this method stays provider-agnostic.
+        MOCK: Simulated LLM response until #18 is integrated.
         """
-        raise NotImplementedError
+        last_user_msg = next(
+            (m.content for m in reversed(messages) if m.role == MessageRole.USER), 
+            "Hello"
+        )
+        
+        # Simulate a short processing delay
+        await asyncio.sleep(0.5)
+        
+        return f"[MOCKED LLM] Based on your request '{last_user_msg}', I am helping you with the current task."
 
     async def _dispatch_tool(
         self,
@@ -120,11 +134,7 @@ class ConversationOrchestrator:
         context: dict[str, Any],
     ) -> dict[str, Any]:
         """
-        TO-DO:
-        Execute a tool after the user has confirmed (if required).
-
-        Delegates to the concrete BaseTool implementation in taskorbit.tools.
-        Returns the tool's result payload.
+        TO-DO: Execute tool calls after confirmation.
         """
         raise NotImplementedError
 
