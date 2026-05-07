@@ -3,6 +3,7 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import SQLAlchemyError
 
 from taskorbit.database.models import Base
 from taskorbit.database.crud import (
@@ -42,6 +43,7 @@ class TestUserCRUD:
             email="test@example.com",
             hashed_password="fakehash123"
         )
+        assert user is not None
         assert user.id is not None
         assert user.username == "testuser"
         assert user.email == "test@example.com"
@@ -55,6 +57,7 @@ class TestUserCRUD:
             hashed_password="hash"
         )
         fetched = get_user(db_session, created.id)
+        assert fetched is not None
         assert fetched.id == created.id
         assert fetched.username == "getuser"
 
@@ -79,6 +82,7 @@ class TestUserCRUD:
     def test_update_user(self, db_session):
         user = create_user(db_session, username="oldname", email="old@example.com", hashed_password="hash")
         updated = update_user(db_session, user.id, username="newname", email="new@example.com")
+        assert updated is not None
         assert updated.username == "newname"
         assert updated.email == "new@example.com"
 
@@ -103,6 +107,7 @@ class TestChatHistoryCRUD:
             role="user",
             message="Hello, world!"
         )
+        assert entry is not None
         assert entry.id is not None
         assert entry.user_id == user.id
         assert entry.conversation_id == "conv-123"
