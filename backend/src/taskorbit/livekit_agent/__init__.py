@@ -14,6 +14,7 @@ import asyncio
 from collections.abc import AsyncIterator
 
 from livekit import rtc
+from livekit.agents import stt as lk_stt
 from livekit.plugins import deepgram, elevenlabs
 
 from taskorbit.config import Settings, get_settings
@@ -88,7 +89,7 @@ class TaskOrbitVoiceAgent:
                 stream.push_frame(frame)
             await stream.aclose()
             async for event in stream:
-                if event.type == deepgram.SpeechEventType.FINAL_TRANSCRIPT:
+                if event.type == lk_stt.SpeechEventType.FINAL_TRANSCRIPT:
                     text = event.alternatives[0].text.strip()
                     if text:
                         yield text
