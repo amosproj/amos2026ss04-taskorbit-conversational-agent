@@ -49,9 +49,12 @@ export default tseslint.config(
       // Vite Fast Refresh requires every module that defines a component to
       // export only components. Allow constant exports (e.g. router objects)
       // so files like `router.tsx` don't have to be split.
+      // Option key is `allowConstantExport` (singular) in
+      // eslint-plugin-react-refresh >= 0.4.x; the schema is strictly validated
+      // by ESLint 9 so spelling matters.
       "react-refresh/only-export-components": [
         "warn",
-        { allowConstantExports: true },
+        { allowConstantExport: true },
       ],
       // Allow `_`-prefixed unused arguments (matches typescript-eslint convention).
       "@typescript-eslint/no-unused-vars": [

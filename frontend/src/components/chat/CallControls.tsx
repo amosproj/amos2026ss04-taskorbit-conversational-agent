@@ -102,8 +102,7 @@ export function CallControls({
       <Card>
         <CardContent className="flex flex-col items-stretch gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
-            Call ended — the transcript and any extracted data are now
-            available in History.
+            Call ended — the transcript and any extracted data are now available in History.
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm" asChild>
@@ -146,8 +145,8 @@ export function CallControls({
               <Mic className="size-5" />
             </Button>
             <p className="text-sm text-muted-foreground">
-              Voice pipeline lands in Sprint 3 (#14, #15, #26). For now,
-              the mic is a visual placeholder.
+              Voice pipeline lands in Sprint 3 (#14, #15, #26). For now, the mic is a visual
+              placeholder.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -161,12 +160,7 @@ export function CallControls({
               <Wand2 data-icon="inline-start" />
               Demo confirmation
             </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={onEnd}
-              type="button"
-            >
+            <Button variant="destructive" size="sm" onClick={onEnd} type="button">
               <PhoneOff data-icon="inline-start" />
               End call
             </Button>
@@ -195,10 +189,7 @@ export function CallControls({
               className="min-w-0 flex-1"
               disabled={status !== "listening"}
             />
-            <Button
-              type="submit"
-              disabled={status !== "listening" || !draft.trim()}
-            >
+            <Button type="submit" disabled={status !== "listening" || !draft.trim()}>
               <Send data-icon="inline-start" />
               Send
             </Button>

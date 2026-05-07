@@ -64,11 +64,21 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: "pip"
+        # Note: under `act`, the `Post Set up Python` cache-save step
+        # cannot find `node` on the container PATH after Python is
+        # installed (nektos/act#107). The MAIN job logic still runs to
+        # completion (lint, format, tests). Real GitHub-hosted runners
+        # are unaffected and use the cache normally.
 
       - name: Install Poetry ${{ env.POETRY_VERSION }}
         # `pipx` is preinstalled on ubuntu-latest runners and gives Poetry an
         # isolated environment, which is the officially recommended install.
-        run: pipx install "poetry==${POETRY_VERSION}"
+        # GitHub-hosted runners pre-add ~/.local/bin to PATH, but local
+        # runners (e.g. `act` with the catthehacker/ubuntu image) do not, so
+        # we explicitly persist it via $GITHUB_PATH for portability.
+        run: |
+          pipx install "poetry==${POETRY_VERSION}"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Configure Poetry to use in-project virtualenv
         # Matches `backend/Dockerfile` (POETRY_VIRTUALENVS_IN_PROJECT=1) and
@@ -76,6 +86,13 @@ jobs:
         run: poetry config virtualenvs.in-project true
 
       - name: Cache Poetry virtualenv
+        # Skipped under `act` because actions/cache@v4 is a JS-based action
+        # and `act` resolves its `node` binary through the container PATH,
+        # which `setup-python` masks once Python's tool-cache is prepended.
+        # See https://github.com/nektos/act/issues/107. On real
+        # GitHub-hosted runners this caches `backend/.venv` and saves
+        # ~60 seconds on subsequent runs.
+        if: ${{ !env.ACT }}
         uses: actions/cache@v4
         with:
           path: backend/.venv

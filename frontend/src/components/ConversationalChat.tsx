@@ -6,21 +6,11 @@ import { CallStatusIndicator } from "@/components/chat/CallStatusIndicator";
 import { ConfirmationPrompt } from "@/components/chat/ConfirmationPrompt";
 import { PreCallDiagnostics } from "@/components/chat/PreCallDiagnostics";
 import { TranscriptBubble } from "@/components/history/TranscriptBubble";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { sendMessage } from "@/lib/conversationApi";
 import { JOHN_DOE_AGENT } from "@/lib/mockAgents";
-import type {
-  CallStatus,
-  ConfirmationPromptState,
-  LiveTranscriptTurn,
-} from "@/types/callState";
+import type { CallStatus, ConfirmationPromptState, LiveTranscriptTurn } from "@/types/callState";
 
 const CONNECTING_DELAY_MS = 800;
 const SPEAKING_DELAY_MS = 2600;
@@ -57,8 +47,7 @@ export function ConversationalChat() {
 
   const [status, setStatus] = useState<CallStatus>("idle");
   const [transcript, setTranscript] = useState<LiveTranscriptTurn[]>([]);
-  const [confirmation, setConfirmation] =
-    useState<ConfirmationPromptState | null>(null);
+  const [confirmation, setConfirmation] = useState<ConfirmationPromptState | null>(null);
   const [conversationId, setConversationId] = useState<string>("");
 
   const timerRef = useRef<number | null>(null);
@@ -102,10 +91,7 @@ export function ConversationalChat() {
   }, []);
 
   const appendAssistantTurn = useCallback((text: string) => {
-    setTranscript((t) => [
-      ...t,
-      { id: generateId("a"), role: "assistant", text },
-    ]);
+    setTranscript((t) => [...t, { id: generateId("a"), role: "assistant", text }]);
   }, []);
 
   const appendUserTurn = useCallback((text: string) => {
@@ -128,12 +114,7 @@ export function ConversationalChat() {
       // transcriptRef before we read it for the API call.
       void Promise.resolve().then(async () => {
         try {
-          const reply = await sendMessage(
-            agent,
-            transcriptRef.current,
-            convId,
-            controller.signal,
-          );
+          const reply = await sendMessage(agent, transcriptRef.current, convId, controller.signal);
           if (statusRef.current !== "thinking") return;
           appendAssistantTurn(reply);
           setStatus("speaking");
@@ -144,9 +125,7 @@ export function ConversationalChat() {
         } catch (err) {
           if ((err as Error).name === "AbortError") return;
           if (statusRef.current !== "thinking") return;
-          appendAssistantTurn(
-            `[Connection error: ${(err as Error).message}]`,
-          );
+          appendAssistantTurn(`[Connection error: ${(err as Error).message}]`);
           setStatus("listening");
         }
       });
@@ -196,11 +175,7 @@ export function ConversationalChat() {
   );
 
   const handleTriggerConfirmation = useCallback(() => {
-    if (
-      status !== "listening" &&
-      status !== "thinking" &&
-      status !== "speaking"
-    ) {
+    if (status !== "listening" && status !== "thinking" && status !== "speaking") {
       return;
     }
     clearTimer();
@@ -210,9 +185,7 @@ export function ConversationalChat() {
 
   const handleApprove = useCallback(() => {
     setConfirmation(null);
-    appendAssistantTurn(
-      "Thanks for confirming — I've saved that. Anything else?",
-    );
+    appendAssistantTurn("Thanks for confirming — I've saved that. Anything else?");
     setStatus("speaking");
     clearTimer();
     timerRef.current = window.setTimeout(() => {
@@ -243,13 +216,10 @@ export function ConversationalChat() {
           <p className="text-sm font-medium tracking-widest text-muted-foreground uppercase">
             Conversational agent
           </p>
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            {appName}
-          </h1>
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{appName}</h1>
           <p className="text-sm text-muted-foreground">
-            Start a voice session with the configured agent. Voice lands
-            in Sprint 3 — for now, the call surface is mocked end-to-end
-            so the flow can be reviewed.
+            Start a voice session with the configured agent. Voice lands in Sprint 3 — for now, the
+            call surface is mocked end-to-end so the flow can be reviewed.
           </p>
         </header>
 
@@ -266,8 +236,7 @@ export function ConversationalChat() {
               <div className="space-y-1">
                 <CardTitle>{agent.name}</CardTitle>
                 <CardDescription>
-                  Live call · transcript updates as the conversation
-                  progresses.
+                  Live call · transcript updates as the conversation progresses.
                 </CardDescription>
               </div>
               <CallStatusIndicator status={status} agentName={agent.name} />
@@ -308,11 +277,7 @@ export function ConversationalChat() {
         ) : null}
 
         {confirmation !== null ? (
-          <ConfirmationPrompt
-            prompt={confirmation}
-            onApprove={handleApprove}
-            onDeny={handleDeny}
-          />
+          <ConfirmationPrompt prompt={confirmation} onApprove={handleApprove} onDeny={handleDeny} />
         ) : (
           <CallControls
             status={status}

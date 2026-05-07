@@ -2,13 +2,7 @@ import { useId } from "react";
 import { Bot } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
 type IdentityValue = { agent_id: string; name: string };
@@ -52,8 +46,7 @@ export function IdentitySection({ value, onChange, showErrors }: Props) {
               spellCheck={false}
             />
             <FieldDescription>
-              Stable identifier used by the backend. Lowercase letters and
-              hyphens recommended.
+              Stable identifier used by the backend. Lowercase letters and hyphens recommended.
             </FieldDescription>
             {agentIdInvalid ? <FieldError>Agent ID is required.</FieldError> : null}
           </Field>

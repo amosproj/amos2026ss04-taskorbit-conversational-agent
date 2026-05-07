@@ -64,10 +64,7 @@ export function CallStatusIndicator({ status, agentName, className }: Props) {
       )}
     >
       {visual.kind === "icon" ? (
-        <visual.Icon
-          aria-hidden
-          className={cn("size-4", visual.spin && "animate-spin")}
-        />
+        <visual.Icon aria-hidden className={cn("size-4", visual.spin && "animate-spin")} />
       ) : null}
       {visual.kind === "pulse" ? (
         <span aria-hidden className="relative flex size-2.5">

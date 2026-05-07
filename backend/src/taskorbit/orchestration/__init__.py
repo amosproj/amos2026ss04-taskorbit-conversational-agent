@@ -35,9 +35,7 @@ class ConversationOrchestrator:
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
 
-    async def process_message(
-        self, request: ConversationRequest
-    ) -> ConversationResponse:
+    async def process_message(self, request: ConversationRequest) -> ConversationResponse:
         """Main entry point called by the API layer and agent workers.
 
         Returns a ConversationResponse containing the assistant reply and,
@@ -51,21 +49,20 @@ class ConversationOrchestrator:
             (m for m in reversed(request.messages) if m.role == MessageRole.USER),
             None,
         )
-        #return response on the frontend
-
+        # return response on the frontend
 
         if last_user:
             """
-            TO-DO: replace with actual LLM response once implemented. 
-            For now we just echo the user's last message to confirm the pipeline is 
+            TO-DO: replace with actual LLM response once implemented.
+            For now we just echo the user's last message to confirm the pipeline is
             working end-to-end."""
-            
+
             text = f'[Backend echo] I received: "{last_user.content}"'
 
         else:
-            """TO-DO: handle edge case where no user message is found. 
-            This shouldn't happen in normal flow since the frontend should 
-            always send the user's message as part of the ConversationRequest, 
+            """TO-DO: handle edge case where no user message is found.
+            This shouldn't happen in normal flow since the frontend should
+            always send the user's message as part of the ConversationRequest,
             but we should still handle it just in case."""
 
             text = f"Hello! I'm {request.agent_config.name}. How can I help you?"
@@ -85,7 +82,7 @@ class ConversationOrchestrator:
         Construct a system prompt (LLM context)for the current task.
 
         Only includes context relevant to `active_tool` (or the agent
-        persona if no tool is active). 
+        persona if no tool is active).
         """
         raise NotImplementedError
 
@@ -94,7 +91,6 @@ class ConversationOrchestrator:
         messages: list[Message],
         agent_config: AgentConfig,
     ) -> ToolDefinition | None:
-    
         """
         TO-DO:
         Decide which tool should be in scope for this turn, if any.

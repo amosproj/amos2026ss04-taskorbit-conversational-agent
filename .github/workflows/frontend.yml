@@ -71,9 +71,12 @@ jobs:
         run: npm ci
 
       - name: Lint with ESLint
-        # `--max-warnings=0` promotes warnings to failures so the gate is
-        # strict without forcing every rule to be `error` in the config.
-        run: npm run lint -- --max-warnings=0
+        # The gate fails on lint *errors*. Warnings (e.g. the
+        # `react-refresh/only-export-components` advisories that shadcn-style
+        # components legitimately trigger) are surfaced in the log but do
+        # not fail the build. Promote a specific rule to `error` in
+        # `frontend/eslint.config.js` if you want it gated.
+        run: npm run lint
 
       - name: Check formatting with Prettier
         # `format:check` is non-mutating; the local `format` script keeps

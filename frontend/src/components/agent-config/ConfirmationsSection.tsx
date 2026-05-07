@@ -47,9 +47,8 @@ export function ConfirmationsSection({ value, tools, onChange }: Props) {
               Confirmations
             </CardTitle>
             <CardDescription>
-              Require the agent to confirm with the user before invoking
-              tools. The per-tool list narrows the requirement; leave it
-              empty to confirm every tool.
+              Require the agent to confirm with the user before invoking tools. The per-tool list
+              narrows the requirement; leave it empty to confirm every tool.
             </CardDescription>
           </div>
           <Field orientation="horizontal" className="sm:w-auto">
@@ -71,8 +70,8 @@ export function ConfirmationsSection({ value, tools, onChange }: Props) {
             <Field>
               <FieldLabel>Tools requiring confirmation</FieldLabel>
               <FieldDescription>
-                Empty list means every tool requires confirmation. Tick a tool
-                to scope the requirement narrower.
+                Empty list means every tool requires confirmation. Tick a tool to scope the
+                requirement narrower.
               </FieldDescription>
               {tools.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
@@ -85,9 +84,7 @@ export function ConfirmationsSection({ value, tools, onChange }: Props) {
                     const checked = value!.tools.includes(name);
                     return (
                       <li key={`${name}-${i}`}>
-                        <label
-                          className="flex cursor-pointer items-center gap-2 rounded-md border bg-background px-2.5 py-1.5 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/5"
-                        >
+                        <label className="flex cursor-pointer items-center gap-2 rounded-md border bg-background px-2.5 py-1.5 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/5">
                           <Switch
                             checked={checked}
                             onCheckedChange={(c) => toggleTool(name, c)}
