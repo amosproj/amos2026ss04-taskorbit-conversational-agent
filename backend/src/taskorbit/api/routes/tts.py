@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-
 import httpx
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from taskorbit.config import get_settings
@@ -15,7 +13,7 @@ from taskorbit.logging.setup import get_logger
 logger = get_logger(__name__)
 router = APIRouter(prefix="/v1/tts", tags=["tts"])
 
-_ELEVENLABS_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream"
+_ELEVENLABS_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
 
 class TTSSynthesizeRequest(BaseModel):
@@ -23,11 +21,8 @@ class TTSSynthesizeRequest(BaseModel):
 
 
 @router.post("/synthesize")
-async def synthesize_speech(request: TTSSynthesizeRequest) -> StreamingResponse:
-    """Stream MP3 audio for the given text from ElevenLabs.
-
-    Returns a chunked audio/mpeg response the browser can play directly.
-    """
+async def synthesize_speech(request: TTSSynthesizeRequest) -> Response:
+    """Return MP3 audio for the given text from ElevenLabs."""
     settings = get_settings()
 
     if not settings.elevenlabs_api_key:
@@ -37,32 +32,32 @@ async def synthesize_speech(request: TTSSynthesizeRequest) -> StreamingResponse:
 
     url = _ELEVENLABS_URL.format(voice_id=settings.elevenlabs_voice_id)
 
-    # The client is created outside the generator and closed in its finally
-    # block so the connection stays open for the full streaming response.
-    client = httpx.AsyncClient(timeout=30)
+    async with httpx.AsyncClient(timeout=30) as client:
+        el_response = await client.post(
+            url,
+            headers={
+                "xi-api-key": settings.elevenlabs_api_key,
+                "Content-Type": "application/json",
+            },
+            json={"text": request.text, "model_id": settings.elevenlabs_model},
+        )
 
-    async def _stream() -> AsyncIterator[bytes]:
-        try:
-            async with client.stream(
-                "POST",
-                url,
-                headers={
-                    "xi-api-key": settings.elevenlabs_api_key,
-                    "Content-Type": "application/json",
-                },
-                json={"text": request.text, "model_id": settings.elevenlabs_model},
-            ) as response:
-                if not response.is_success:
-                    logger.error(
-                        "tts_elevenlabs_error",
-                        status=response.status_code,
-                        voice_id=settings.elevenlabs_voice_id,
-                    )
-                    return
-                async for chunk in response.aiter_bytes():
-                    yield chunk
-        finally:
-            await client.aclose()
+    if not el_response.is_success:
+        error_detail = el_response.text[:500]
+        logger.error(
+            "tts_elevenlabs_error",
+            status=el_response.status_code,
+            detail=error_detail,
+            voice_id=settings.elevenlabs_voice_id,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"ElevenLabs error {el_response.status_code}: {error_detail}",
+        )
 
-    logger.info("tts_synthesize", text_length=len(request.text))
-    return StreamingResponse(_stream(), media_type="audio/mpeg")
+    logger.info(
+        "tts_synthesize_ok",
+        text_length=len(request.text),
+        audio_bytes=len(el_response.content),
+    )
+    return Response(content=el_response.content, media_type="audio/mpeg")

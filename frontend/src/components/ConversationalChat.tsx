@@ -154,18 +154,21 @@ export function ConversationalChat() {
           void synthesizeSpeech(reply, controller.signal)
             .then(async (audioUrl) => {
               const ctx = audioCtxRef.current;
+              console.log("[TTS] audioUrl:", audioUrl, "ctx state:", ctx?.state);
               if (!ctx) return;
               const arrayBuffer = await fetch(audioUrl).then((r) =>
                 r.arrayBuffer(),
               );
+              console.log("[TTS] arrayBuffer byteLength:", arrayBuffer.byteLength);
               URL.revokeObjectURL(audioUrl);
               const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+              console.log("[TTS] decoded duration:", audioBuffer.duration);
               const source = ctx.createBufferSource();
               source.buffer = audioBuffer;
               source.connect(ctx.destination);
               source.start();
             })
-            .catch(() => {});
+            .catch((err) => console.error("[TTS] playback error:", err));
 
           timerRef.current = window.setTimeout(() => {
             if (statusRef.current !== "speaking") return;
