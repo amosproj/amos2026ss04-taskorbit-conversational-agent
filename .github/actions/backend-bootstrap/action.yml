@@ -1,0 +1,49 @@
+# Shared bootstrap for backend CI jobs.
+#
+# Each job runs on a fresh runner, so every job must check out the repo,
+# install Python + Poetry, restore the cached venv, and run
+# `poetry install`. The cache keeps jobs 2–4 fast after job 1 warms it.
+name: Backend bootstrap
+description: Set up Python, Poetry, optional venv cache, and install backend dependencies
+
+inputs:
+  python-version:
+    description: Python version for setup-python
+    required: true
+  poetry-version:
+    description: Poetry version to install via pipx
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python ${{ inputs.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: pip
+
+    - name: Install Poetry ${{ inputs.poetry-version }}
+      shell: bash
+      run: |
+        pipx install "poetry==${{ inputs.poetry-version }}"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - name: Configure Poetry (in-project virtualenv)
+      shell: bash
+      working-directory: backend
+      run: poetry config virtualenvs.in-project true
+
+    - name: Restore Poetry virtualenv cache
+      if: ${{ !env.ACT }}
+      uses: actions/cache@v4
+      with:
+        path: backend/.venv
+        key: ${{ runner.os }}-py${{ inputs.python-version }}-poetry-v1-${{ hashFiles('backend/poetry.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-py${{ inputs.python-version }}-poetry-v1-
+
+    - name: Install dependencies (Poetry)
+      shell: bash
+      working-directory: backend
+      run: poetry install --with dev --no-interaction --no-ansi

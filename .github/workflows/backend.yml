@@ -1,10 +1,9 @@
 # Backend CI for the TaskOrbit Conversational Agent.
 #
-# Runs on every push (any branch) and every pull request that touches the
-# backend or this workflow file. The job installs the Python toolchain and
-# Poetry, restores cached dependencies, runs the linter and formatter
-# checks, and finally executes the test suite. Any failing step fails the
-# whole job, which makes the status check red on the corresponding PR.
+# Split into separate jobs so the Actions UI shows each stage (install,
+# lint, format, tests) as its own block. Jobs chain with `needs`; each job
+# bootstraps via `.github/actions/backend-bootstrap` and restores the same
+# Poetry cache so installs stay fast after the first warm-up.
 #
 # Local equivalents (run from `backend/`):
 #   poetry install --with dev
@@ -22,100 +21,109 @@ on:
     paths:
       - "backend/**"
       - ".github/workflows/backend.yml"
+      - ".github/actions/backend-bootstrap/**"
   pull_request:
     paths:
       - "backend/**"
       - ".github/workflows/backend.yml"
-  # Allow manual re-runs from the Actions tab without a code push.
+      - ".github/actions/backend-bootstrap/**"
   workflow_dispatch:
 
-# Cancel any in-flight run on the same ref when a new commit lands. Saves
-# CI minutes and keeps the queue short on fast-pushed branches.
 concurrency:
   group: backend-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Least-privilege token. The job only needs to read the source tree.
 permissions:
   contents: read
 
-# Pinned versions for the toolchain. Updating one of these will invalidate
-# the cache key automatically because the lockfile hash is part of it.
 env:
   PYTHON_VERSION: "3.11"
   POETRY_VERSION: "1.8.4"
 
 jobs:
-  backend-ci:
-    name: Lint, format & tests (backend)
+  # ---------------------------------------------------------------------------
+  # Stage 1 — prove the lockfile resolves and the venv is buildable.
+  # ---------------------------------------------------------------------------
+  backend-install:
+    name: "Backend — 1. Install"
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    defaults:
-      run:
-        # All steps run from `backend/` so commands match the local dev flow.
-        working-directory: backend
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+      - name: Bootstrap backend environment
+        uses: ./.github/actions/backend-bootstrap
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: "pip"
-        # Note: under `act`, the `Post Set up Python` cache-save step
-        # cannot find `node` on the container PATH after Python is
-        # installed (nektos/act#107). The MAIN job logic still runs to
-        # completion (lint, format, tests). Real GitHub-hosted runners
-        # are unaffected and use the cache normally.
+          poetry-version: ${{ env.POETRY_VERSION }}
 
-      - name: Install Poetry ${{ env.POETRY_VERSION }}
-        # `pipx` is preinstalled on ubuntu-latest runners and gives Poetry an
-        # isolated environment, which is the officially recommended install.
-        # GitHub-hosted runners pre-add ~/.local/bin to PATH, but local
-        # runners (e.g. `act` with the catthehacker/ubuntu image) do not, so
-        # we explicitly persist it via $GITHUB_PATH for portability.
-        run: |
-          pipx install "poetry==${POETRY_VERSION}"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Verify Poetry environment
+        working-directory: backend
+        run: poetry run python -c "import taskorbit; print('taskorbit import OK')"
 
-      - name: Configure Poetry to use in-project virtualenv
-        # Matches `backend/Dockerfile` (POETRY_VIRTUALENVS_IN_PROJECT=1) and
-        # makes the venv path predictable for the cache step below.
-        run: poetry config virtualenvs.in-project true
+  # ---------------------------------------------------------------------------
+  # Stage 2 — lint (must pass before format/tests run).
+  # ---------------------------------------------------------------------------
+  backend-lint:
+    name: "Backend — 2. Lint"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: backend-install
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Cache Poetry virtualenv
-        # Skipped under `act` because actions/cache@v4 is a JS-based action
-        # and `act` resolves its `node` binary through the container PATH,
-        # which `setup-python` masks once Python's tool-cache is prepended.
-        # See https://github.com/nektos/act/issues/107. On real
-        # GitHub-hosted runners this caches `backend/.venv` and saves
-        # ~60 seconds on subsequent runs.
-        if: ${{ !env.ACT }}
-        uses: actions/cache@v4
+      - name: Bootstrap backend environment
+        uses: ./.github/actions/backend-bootstrap
         with:
-          path: backend/.venv
-          # Bump `v1` if the cache ever gets poisoned by a partial install.
-          key: ${{ runner.os }}-py${{ env.PYTHON_VERSION }}-poetry-v1-${{ hashFiles('backend/poetry.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-py${{ env.PYTHON_VERSION }}-poetry-v1-
-
-      - name: Install dependencies
-        # `--with dev` pulls ruff/pytest/mypy/pre-commit; `--no-interaction`
-        # silences prompts and `--no-ansi` keeps log output diff-friendly.
-        run: poetry install --with dev --no-interaction --no-ansi
+          python-version: ${{ env.PYTHON_VERSION }}
+          poetry-version: ${{ env.POETRY_VERSION }}
 
       - name: Lint with ruff
+        working-directory: backend
         run: poetry run ruff check .
 
+  # ---------------------------------------------------------------------------
+  # Stage 3 — formatting check (non-mutating).
+  # ---------------------------------------------------------------------------
+  backend-format:
+    name: "Backend — 3. Format"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: backend-lint
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Bootstrap backend environment
+        uses: ./.github/actions/backend-bootstrap
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          poetry-version: ${{ env.POETRY_VERSION }}
+
       - name: Check formatting with ruff
-        # `format --check` exits non-zero on any unformatted file without
-        # rewriting it, which is exactly the gate behaviour we want in CI.
+        working-directory: backend
         run: poetry run ruff format --check .
 
+  # ---------------------------------------------------------------------------
+  # Stage 4 — unit tests.
+  # ---------------------------------------------------------------------------
+  backend-test:
+    name: "Backend — 4. Tests"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: backend-format
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Bootstrap backend environment
+        uses: ./.github/actions/backend-bootstrap
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          poetry-version: ${{ env.POETRY_VERSION }}
+
       - name: Run unit tests with pytest
-        # pytest config lives in `backend/pyproject.toml`
-        # ([tool.pytest.ini_options]). All current tests use mocks for
-        # LiveKit/Postgres so no real services or secrets are required.
+        working-directory: backend
         run: poetry run pytest

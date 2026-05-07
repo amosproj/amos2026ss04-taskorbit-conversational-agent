@@ -1,14 +1,12 @@
 # Frontend CI for the TaskOrbit Conversational Agent.
 #
-# Runs on every push (any branch) and every pull request that touches the
-# frontend or this workflow file. The job installs Node, restores the npm
-# cache, performs a deterministic install from the committed lockfile, and
-# runs the lint and Prettier formatting checks. Any failing step fails the
-# whole job, which makes the status check red on the corresponding PR.
+# Split into separate jobs so the Actions UI shows install, lint, and
+# format as distinct stages. Jobs chain with `needs`; each job uses
+# `.github/actions/frontend-bootstrap` so `npm ci` stays fast via the
+# setup-node npm cache after the first warm-up.
 #
 # Frontend tests are intentionally NOT executed because the project has no
-# test suite yet. When tests are introduced, add a `npm test -- --run`
-# step after `format:check` and update Documentation/ci-cd.md.
+# test suite yet.
 #
 # Local equivalents (run from `frontend/`):
 #   npm ci
@@ -23,62 +21,83 @@ on:
     paths:
       - "frontend/**"
       - ".github/workflows/frontend.yml"
+      - ".github/actions/frontend-bootstrap/**"
   pull_request:
     paths:
       - "frontend/**"
       - ".github/workflows/frontend.yml"
-  # Allow manual re-runs from the Actions tab without a code push.
+      - ".github/actions/frontend-bootstrap/**"
   workflow_dispatch:
 
-# Cancel any in-flight run on the same ref when a new commit lands.
 concurrency:
   group: frontend-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Least-privilege token. The job only needs to read the source tree.
 permissions:
   contents: read
 
-# Pinned Node version. Bumping it invalidates the npm cache automatically.
 env:
   NODE_VERSION: "20"
 
 jobs:
-  frontend-ci:
-    name: Lint & format (frontend)
+  # ---------------------------------------------------------------------------
+  # Stage 1 — deterministic install from lockfile.
+  # ---------------------------------------------------------------------------
+  frontend-install:
+    name: "Frontend — 1. Install"
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: frontend
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v4
+      - name: Bootstrap frontend environment
+        uses: ./.github/actions/frontend-bootstrap
         with:
           node-version: ${{ env.NODE_VERSION }}
-          # Built-in cache keyed on the lockfile hash. No extra cache step
-          # is needed - this restores ~/.npm so subsequent `npm ci` is fast.
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
 
-      - name: Install dependencies
-        # `npm ci` requires a committed lockfile and refuses to mutate it,
-        # which is exactly the deterministic behaviour we want in CI.
-        run: npm ci
+      - name: Verify Node toolchain
+        working-directory: frontend
+        run: node --version && npm --version
+
+  # ---------------------------------------------------------------------------
+  # Stage 2 — ESLint (errors fail; warnings are advisory).
+  # ---------------------------------------------------------------------------
+  frontend-lint:
+    name: "Frontend — 2. Lint"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: frontend-install
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Bootstrap frontend environment
+        uses: ./.github/actions/frontend-bootstrap
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Lint with ESLint
-        # The gate fails on lint *errors*. Warnings (e.g. the
-        # `react-refresh/only-export-components` advisories that shadcn-style
-        # components legitimately trigger) are surfaced in the log but do
-        # not fail the build. Promote a specific rule to `error` in
-        # `frontend/eslint.config.js` if you want it gated.
+        working-directory: frontend
         run: npm run lint
 
+  # ---------------------------------------------------------------------------
+  # Stage 3 — Prettier check (non-mutating).
+  # ---------------------------------------------------------------------------
+  frontend-format:
+    name: "Frontend — 3. Format"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: frontend-lint
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Bootstrap frontend environment
+        uses: ./.github/actions/frontend-bootstrap
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - name: Check formatting with Prettier
-        # `format:check` is non-mutating; the local `format` script keeps
-        # the `--write` behaviour for fixing files in your editor.
+        working-directory: frontend
         run: npm run format:check
