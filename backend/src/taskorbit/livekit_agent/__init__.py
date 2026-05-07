@@ -48,6 +48,9 @@ class TaskOrbitVoiceAgent:
                 async for frame_event in audio_stream:
                     yield bytes(frame_event.frame.data)
 
+
+            #convert stream of audio bytes to text
+            #then send text to orchestrator and get response
             async for transcript in self._run_stt(_raw_bytes()):
                 response = await self.orchestrator.process_message(transcript)
                 async for _audio_chunk in self._run_tts(response):

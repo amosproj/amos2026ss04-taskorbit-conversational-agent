@@ -67,6 +67,7 @@ export function ConversationalChat() {
   const [conversationId, setConversationId] = useState<string>("");
   const [livekitCredentials, setLivekitCredentials] =
     useState<LiveKitCredentials | null>(null);
+  const [micError, setMicError] = useState<string | null>(null);
 
   const timerRef = useRef<number | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
@@ -204,6 +205,7 @@ export function ConversationalChat() {
     setTranscript([]);
     setConfirmation(null);
     setLivekitCredentials(null);
+    setMicError(null);
     setStatus("connecting");
 
     // Fetch a LiveKit token so the browser can receive TTS audio from the
@@ -379,17 +381,31 @@ export function ConversationalChat() {
         )}
       </div>
 
-      {/* Renders no visible UI — auto-plays all remote audio tracks from the
-          agent worker so TTS audio is heard without additional wiring. Use this on later stages */}
+      {/* Connects to the LiveKit room, publishes microphone audio to the
+          agent worker, and auto-plays remote TTS audio back to the user. */}
       {livekitCredentials !== null && (
         <LiveKitRoom
           serverUrl={livekitCredentials.url}
           token={livekitCredentials.token}
           connect
-          audio={false}
+          audio={true}
+          onError={(err) => {
+            if (err.name === "NotAllowedError" || err.message.includes("Permission")) {
+              setMicError("Microphone access was denied. Please allow microphone access to use voice.");
+            }
+          }}
         >
           <RoomAudioRenderer />
         </LiveKitRoom>
+      )}
+
+      {micError !== null && (
+        <div
+          role="alert"
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-lg border border-destructive bg-destructive/10 px-4 py-3 text-sm text-destructive shadow-md"
+        >
+          {micError}
+        </div>
       )}
     </main>
   );
