@@ -48,10 +48,15 @@ class AgentRegistry:
         config: AgentConfig,
         orchestrator: ConversationOrchestrator,
     ) -> BaseAgent:
-        """Instantiate the right agent for the given config.
-        Route agent_id to the right agent.
+        """Return the concrete agent for the given config.
 
-        Selection logic (e.g. based on config.id prefix or a type field)
-        is implemented in downstream tickets.
+        Routes by keyword in config.id: ids containing 'support' or 'technical'
+        go to TechnicalSupportAgent; everything else defaults to SalesAgent.
         """
-        raise NotImplementedError
+        from taskorbit.agents.sales import SalesAgent
+        from taskorbit.agents.technical_support import TechnicalSupportAgent
+
+        agent_id = config.id.lower()
+        if any(kw in agent_id for kw in ("support", "technical", "tech")):
+            return TechnicalSupportAgent(config, orchestrator)
+        return SalesAgent(config, orchestrator)

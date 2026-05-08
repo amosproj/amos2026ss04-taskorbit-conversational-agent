@@ -6,12 +6,12 @@ sees the context for the *currently active* task, never the full agent
 config. This prevents prompt drift and keeps the agent grounded.
 
 Flow per message:
-  1. Determine which tool (if any) should be in scope right now.
-  2. Build a minimal system prompt from that task context only.
-  3. Call the configured LLM provider.
-  4. If the LLM wants to invoke a tool, check confirmation requirements
-     and either surface a confirmation request or dispatch immediately.
-  5. Return a ConversationResponse.
+  1. Detect intent (mocked — always book_service_appointment until issue #18).
+  2. Select the agent via AgentRegistry.
+  3. Determine which tool (if any) should be in scope right now.
+  4. Build a minimal system prompt from that task context only.
+  5. Call the LLM provider with a 10-second timeout (mocked until issue #18).
+  6. Return a ConversationResponse with intent, agent, and status fields.
 """
 
 from __future__ import annotations
@@ -19,7 +19,10 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+import structlog
+
 from taskorbit.config import Settings, get_settings
+from taskorbit.intent import MockIntentDetector
 from taskorbit.types import (
     AgentConfig,
     ConversationRequest,
@@ -29,54 +32,82 @@ from taskorbit.types import (
     ToolDefinition,
 )
 
+logger = structlog.get_logger(__name__)
+
 
 class ConversationOrchestrator:
-    """Routes messages through task selection → LLM → tool dispatch."""
+    """Routes messages through intent detection → agent → LLM → response."""
 
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
+        self._intent_detector = MockIntentDetector()
 
     async def process_message(
         self, request: ConversationRequest
     ) -> ConversationResponse:
-        """Main entry point called by the API layer and agent workers.
-
-        Executes the runtime pipeline:
-        1. Select active tool/task context.
-        2. Build system prompt.
-        3. Generate LLM response (with timeout).
-        """
+        """Main entry point called by the API layer and agent workers."""
         try:
-            # 1. Decide which tool context is active
+            last_user = next(
+                (m for m in reversed(request.messages) if m.role == MessageRole.USER),
+                None,
+            )
+            if not last_user:
+                raise ValueError("No user message found in request.")
+
+            # 1. Detect intent (mocked)
+            intent = self._intent_detector.detect(last_user.content)
+            logger.info("intent_detected", intent=intent.name, conversation_id=request.conversation_id)
+
+            # 2. Select agent — local import avoids circular dependency with agents/__init__.py
+            from taskorbit.agents import AgentRegistry
+            agent = AgentRegistry.get_agent(request.agent_config, self)
+            logger.info("agent_selected", agent=type(agent).__name__, conversation_id=request.conversation_id)
+
+            # 3. Select active tool
             active_tool = self._select_active_tool(request.messages, request.agent_config)
 
-            # 2. Build the LLM instructions
+            # 4. Build system prompt
             system_prompt = self._build_system_prompt(request.agent_config, active_tool)
 
-            # 3. Call LLM with a 10-second timeout
-            response_text = await asyncio.wait_for(
+            # 5. Call LLM with a 10-second timeout
+            llm_text = await asyncio.wait_for(
                 self._call_llm(system_prompt, request.messages),
-                timeout=10.0
+                timeout=10.0,
             )
 
             return ConversationResponse(
                 conversation_id=request.conversation_id,
-                reply=self._make_assistant_message(response_text),
+                reply=self._make_assistant_message(llm_text),
+                selected_intent=intent.name,
+                selected_agent=request.agent_config.name,
+                status="success",
             )
 
         except asyncio.TimeoutError:
+            logger.warning("llm_timeout", conversation_id=request.conversation_id)
             return ConversationResponse(
                 conversation_id=request.conversation_id,
                 reply=self._make_assistant_message(
                     "I'm sorry, I'm having trouble connecting to my brain right now. Please try again."
                 ),
+                status="error",
+                error="LLM call timed out after 10 seconds.",
             )
-        except Exception as e:
+        except ValueError as exc:
+            logger.warning("invalid_runtime_input", error=str(exc), conversation_id=request.conversation_id)
             return ConversationResponse(
                 conversation_id=request.conversation_id,
-                reply=self._make_assistant_message(
-                    f"An unexpected error occurred in the runtime: {e!s}"
-                ),
+                reply=self._make_assistant_message("I encountered an error. Please try again."),
+                status="error",
+                error=str(exc),
+            )
+        except Exception as exc:
+            logger.error("runtime_error", error=str(exc), conversation_id=request.conversation_id)
+            return ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message("An unexpected error occurred."),
+                status="error",
+                error=str(exc),
             )
 
     def _build_system_prompt(
@@ -85,56 +116,48 @@ class ConversationOrchestrator:
         active_tool: ToolDefinition | None,
     ) -> str:
         """Construct a system prompt (LLM context) for the current task."""
-        prompt = (
-            f"Persona: {agent_config.persona}\n"
-            f"Core Instructions: {agent_config.greeting}\n"
-        )
-        
+        lines = [
+            f"You are {agent_config.name}.",
+            f"Persona: {agent_config.persona}",
+        ]
         if active_tool:
-            prompt += f"\nCurrent Task: {active_tool.description}\n"
-            prompt += f"Available Parameters: {active_tool.parameters}\n"
-            
-        return prompt
+            lines.append(f"Current task: {active_tool.name} — {active_tool.description}")
+            if active_tool.parameters:
+                lines.append(f"Available parameters: {active_tool.parameters}")
+        return "\n".join(lines)
 
     def _select_active_tool(
         self,
         messages: list[Message],
         agent_config: AgentConfig,
     ) -> ToolDefinition | None:
-        """
-        Decide which tool should be in scope for this turn.
-        
-        MOCK: For now, we just return the first tool if available to demonstrate the pipeline.
-        """
-        if agent_config.tools:
-            return agent_config.tools[0]
-        return None
+        # Returns first available tool as active scope.
+        # Real selection based on conversation history lands in a later sprint.
+        return agent_config.tools[0] if agent_config.tools else None
 
     async def _call_llm(
         self,
         system_prompt: str,
         messages: list[Message],
     ) -> str:
-        """
-        MOCK: Simulated LLM response until #18 is integrated.
-        """
-        last_user_msg = next(
-            (m.content for m in reversed(messages) if m.role == MessageRole.USER), 
-            "Hello"
+        # Mocked — real LLM routing lands in issue #18.
+        last_user = next(
+            (m for m in reversed(messages) if m.role == MessageRole.USER),
+            None,
         )
-        
-        # Simulate a short processing delay
+        preview = last_user.content[:60] if last_user else ""
         await asyncio.sleep(0.5)
-        
-        return f"[MOCKED LLM] Based on your request '{last_user_msg}', I am helping you with the current task."
+        return f'[Mocked LLM] Received: "{preview}"'
 
     async def _dispatch_tool(
         self,
         tool: ToolDefinition,
         context: dict[str, Any],
     ) -> dict[str, Any]:
-        """
-        TO-DO: Execute tool calls after confirmation.
+        """Execute a tool after the user has confirmed (if required).
+
+        Delegates to the concrete BaseTool implementation in taskorbit.tools.
+        Returns the tool's result payload.
         """
         raise NotImplementedError
 

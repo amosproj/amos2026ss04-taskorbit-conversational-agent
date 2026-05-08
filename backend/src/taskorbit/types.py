@@ -111,13 +111,16 @@ class ConversationRequest(BaseModel):
     agent_config: AgentConfig
     messages: list[Message]
 
-
 class ConversationResponse(BaseModel):
     conversation_id: str
     reply: Message
     tool_invoked: ToolDefinition | None = None
-    requires_confirmation: bool = False 
-    confirmation_prompt: str = "" #e.g. "I'll save your contact info. OK?" 
+    requires_confirmation: bool = False
+    confirmation_prompt: str = ""
+    selected_intent: str = ""
+    selected_agent: str = ""
+    status: str = "success"
+    error: str = ""
 
 
 # ---------------------------------------------------------------------------

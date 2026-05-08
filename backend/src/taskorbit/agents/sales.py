@@ -17,4 +17,4 @@ class SalesAgent(BaseAgent):
         return await self.orchestrator.process_message(request)
 
     def get_task_definitions(self) -> list[ToolDefinition]:
-        raise NotImplementedError
+        return self.config.tools
