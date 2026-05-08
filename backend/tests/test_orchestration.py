@@ -32,12 +32,12 @@ async def test_process_message_returns_mocked_llm_reply() -> None:
     response = await orch.process_message(_make_request("Hello there"))
     assert response.conversation_id == "conv-test"
     assert response.reply.role == MessageRole.ASSISTANT
-    assert "[MOCKED LLM]" in response.reply.content
+    assert "[Mocked LLM]" in response.reply.content
     assert "Hello there" in response.reply.content
 
 
 @pytest.mark.asyncio
-async def test_process_message_greets_on_empty_messages() -> None:
+async def test_process_message_returns_error_on_empty_messages() -> None:
     req = ConversationRequest(
         conversation_id="conv-empty",
         agent_config=AgentConfig(
@@ -51,7 +51,8 @@ async def test_process_message_greets_on_empty_messages() -> None:
     orch = ConversationOrchestrator()
     response = await orch.process_message(req)
     assert response.reply.role == MessageRole.ASSISTANT
-    assert "[MOCKED LLM]" in response.reply.content
+    assert response.status == "error"
+    assert len(response.reply.content) > 0
 
 
 @pytest.mark.asyncio
