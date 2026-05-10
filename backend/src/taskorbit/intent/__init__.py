@@ -8,14 +8,15 @@ routing lands in a later sprint.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
 class IntentResult:
     name: str
     description: str
-    required_inputs: list[dict] = field(default_factory=list)
-    workflow_steps: list[dict] = field(default_factory=list)
+    required_inputs: list[dict[str, Any]] = field(default_factory=list)
+    workflow_steps: list[dict[str, Any]] = field(default_factory=list)
 
 
 # Mirrors schemas/examples/agent-task.example.json — task section.

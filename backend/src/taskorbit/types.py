@@ -111,6 +111,7 @@ class ConversationRequest(BaseModel):
     agent_config: AgentConfig
     messages: list[Message]
 
+
 class ConversationResponse(BaseModel):
     conversation_id: str
     reply: Message

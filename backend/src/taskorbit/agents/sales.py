@@ -9,9 +9,7 @@ from taskorbit.types import ConversationRequest, ConversationResponse, ToolDefin
 class SalesAgent(BaseAgent):
     """Handles lead qualification flows: discovery, data extraction, scheduling."""
 
-    async def handle_message(
-        self, request: ConversationRequest
-    ) -> ConversationResponse:
+    async def handle_message(self, request: ConversationRequest) -> ConversationResponse:
         """TO-DO: Route through orchestrator with task definitions"""
 
         return await self.orchestrator.process_message(request)

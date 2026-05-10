@@ -42,9 +42,7 @@ class ConversationOrchestrator:
         self._settings = settings or get_settings()
         self._intent_detector = MockIntentDetector()
 
-    async def process_message(
-        self, request: ConversationRequest
-    ) -> ConversationResponse:
+    async def process_message(self, request: ConversationRequest) -> ConversationResponse:
         """Main entry point called by the API layer and agent workers."""
         try:
             last_user = next(
@@ -56,12 +54,19 @@ class ConversationOrchestrator:
 
             # 1. Detect intent (mocked)
             intent = self._intent_detector.detect(last_user.content)
-            logger.info("intent_detected", intent=intent.name, conversation_id=request.conversation_id)
+            logger.info(
+                "intent_detected", intent=intent.name, conversation_id=request.conversation_id
+            )
 
             # 2. Select agent — local import avoids circular dependency with agents/__init__.py
             from taskorbit.agents import AgentRegistry
+
             agent = AgentRegistry.get_agent(request.agent_config, self)
-            logger.info("agent_selected", agent=type(agent).__name__, conversation_id=request.conversation_id)
+            logger.info(
+                "agent_selected",
+                agent=type(agent).__name__,
+                conversation_id=request.conversation_id,
+            )
 
             # 3. Select active tool
             active_tool = self._select_active_tool(request.messages, request.agent_config)
@@ -83,7 +88,7 @@ class ConversationOrchestrator:
                 status="success",
             )
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("llm_timeout", conversation_id=request.conversation_id)
             return ConversationResponse(
                 conversation_id=request.conversation_id,
@@ -94,7 +99,9 @@ class ConversationOrchestrator:
                 error="LLM call timed out after 10 seconds.",
             )
         except ValueError as exc:
-            logger.warning("invalid_runtime_input", error=str(exc), conversation_id=request.conversation_id)
+            logger.warning(
+                "invalid_runtime_input", error=str(exc), conversation_id=request.conversation_id
+            )
             return ConversationResponse(
                 conversation_id=request.conversation_id,
                 reply=self._make_assistant_message("I encountered an error. Please try again."),

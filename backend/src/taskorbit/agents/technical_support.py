@@ -9,9 +9,7 @@ from taskorbit.types import ConversationRequest, ConversationResponse, ToolDefin
 class TechnicalSupportAgent(BaseAgent):
     """Handles troubleshooting flows: problem diagnosis, data collection, escalation."""
 
-    async def handle_message(
-        self, request: ConversationRequest
-    ) -> ConversationResponse:
+    async def handle_message(self, request: ConversationRequest) -> ConversationResponse:
         """TO-DO: Route through orchestrator with task definitions"""
 
         return await self.orchestrator.process_message(request)

@@ -28,9 +28,7 @@ class BaseAgent(ABC):
         self.orchestrator = orchestrator
 
     @abstractmethod
-    async def handle_message(
-        self, request: ConversationRequest
-    ) -> ConversationResponse:
+    async def handle_message(self, request: ConversationRequest) -> ConversationResponse:
         """Process a user message and return an assistant response."""
         ...
 

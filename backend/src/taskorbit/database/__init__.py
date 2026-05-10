@@ -27,9 +27,7 @@ from taskorbit.config import get_settings
 _settings = get_settings()
 
 # Convert postgresql:// → postgresql+psycopg:// for the async driver.
-_db_url = _settings.database_url.replace(
-    "postgresql://", "postgresql+psycopg://", 1
-)
+_db_url = _settings.database_url.replace("postgresql://", "postgresql+psycopg://", 1)
 
 engine = create_async_engine(
     _db_url,

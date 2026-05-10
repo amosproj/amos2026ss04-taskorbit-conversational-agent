@@ -1,7 +1,9 @@
 """Tests for ConversationOrchestrator."""
 
 import asyncio
+from typing import Any
 from unittest.mock import patch
+
 import pytest
 
 from taskorbit.orchestration import ConversationOrchestrator
@@ -58,9 +60,9 @@ async def test_process_message_returns_error_on_empty_messages() -> None:
 @pytest.mark.asyncio
 async def test_process_message_timeout_handling() -> None:
     orch = ConversationOrchestrator()
-    
+
     # Mock _call_llm to sleep longer than the timeout
-    async def slow_llm(*args, **kwargs):
+    async def slow_llm(*args: Any, **kwargs: Any) -> str:
         await asyncio.sleep(2.0)
         return "too slow"
 

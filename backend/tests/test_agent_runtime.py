@@ -8,8 +8,6 @@ Run with: poetry run pytest
 
 from __future__ import annotations
 
-import pytest
-
 from taskorbit.agents import AgentRegistry
 from taskorbit.agents.sales import SalesAgent
 from taskorbit.agents.technical_support import TechnicalSupportAgent
@@ -21,7 +19,6 @@ from taskorbit.types import (
     Message,
     MessageRole,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -62,7 +59,9 @@ def test_mock_intent_always_returns_book_service_appointment() -> None:
 
 def test_mock_intent_ignores_prompt_content() -> None:
     detector = MockIntentDetector()
-    assert detector.detect("anything").name == detector.detect("something completely different").name
+    assert (
+        detector.detect("anything").name == detector.detect("something completely different").name
+    )
 
 
 def test_mock_intent_result_has_required_inputs() -> None:
@@ -137,7 +136,9 @@ async def test_process_message_sets_selected_agent_name() -> None:
 
 
 async def test_process_message_reply_contains_mocked_llm_marker() -> None:
-    response = await ConversationOrchestrator().process_message(_make_request(message="Hello there"))
+    response = await ConversationOrchestrator().process_message(
+        _make_request(message="Hello there")
+    )
     assert "[Mocked LLM]" in response.reply.content
 
 
