@@ -18,6 +18,9 @@ _ELEVENLABS_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
 class TTSSynthesizeRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=5000)
+    # When omitted, server defaults from environment (ELEVENLABS_*).
+    voice_id: str | None = Field(default=None, max_length=128)
+    model_id: str | None = Field(default=None, max_length=128)
 
 
 @router.post("/synthesize")
@@ -30,7 +33,10 @@ async def synthesize_speech(request: TTSSynthesizeRequest) -> Response:
             status_code=503, detail="ElevenLabs API key not configured."
         )
 
-    url = _ELEVENLABS_URL.format(voice_id=settings.elevenlabs_voice_id)
+    url = _ELEVENLABS_URL.format(
+        voice_id=request.voice_id or settings.elevenlabs_voice_id,
+    )
+    model = request.model_id or settings.elevenlabs_model
 
     async with httpx.AsyncClient(timeout=30) as client:
         el_response = await client.post(
@@ -39,16 +45,17 @@ async def synthesize_speech(request: TTSSynthesizeRequest) -> Response:
                 "xi-api-key": settings.elevenlabs_api_key,
                 "Content-Type": "application/json",
             },
-            json={"text": request.text, "model_id": settings.elevenlabs_model},
+            json={"text": request.text, "model_id": model},
         )
 
     if not el_response.is_success:
         error_detail = el_response.text[:500]
+        voice_used = request.voice_id or settings.elevenlabs_voice_id
         logger.error(
             "tts_elevenlabs_error",
             status=el_response.status_code,
             detail=error_detail,
-            voice_id=settings.elevenlabs_voice_id,
+            voice_id=voice_used,
         )
         raise HTTPException(
             status_code=502,

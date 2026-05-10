@@ -1,14 +1,21 @@
 /**
- * Call surface state machine. Sprint 2 mocks the transitions with
- * setTimeout; Sprint 3 (#14, #15, #26) will drive the same states from
- * LiveKit room events without changing the component shapes.
+ * Call surface state machine. Drives both UI affordances and audio
+ * publish/mute semantics.
  *
  * States map to architecture §4.1 phases:
  * - `idle`               — no session yet; show agent identity + diagnostics.
  * - `connecting`         — Start clicked; LiveKit room join in flight.
- * - `listening`          — agent worker is open to user input (STT active).
- * - `thinking`           — orchestrator/LLM generating the next response.
- * - `speaking`           — TTS streaming the agent's reply back.
+ * - `idle_in_call`       — call active, mic muted, ready for the user to
+ *                          tap the mic and start a turn (ChatGPT-style PTT).
+ * - `recording`          — mic published; user is speaking. Captions stream
+ *                          in real time. Stop mutes the mic, Send commits.
+ * - `listening`          — legacy alias for `recording` retained for the
+ *                          existing CallStatusIndicator visuals; the new
+ *                          flow uses `recording`.
+ * - `thinking`           — Send pressed; agent is producing a reply.
+ * - `speaking`           — TTS streaming the agent's reply back. The user
+ *                          can interrupt by tapping the mic again.
+ * - `reconnecting`       — transient LiveKit drop; client is retrying.
  * - `awaiting_confirmation` — agent paused on a sensitive tool call until
  *                            the user explicitly approves or denies it.
  * - `ended`              — call closed; transcript is read-only and routes
@@ -17,9 +24,12 @@
 export type CallStatus =
   | "idle"
   | "connecting"
+  | "idle_in_call"
+  | "recording"
   | "listening"
   | "thinking"
   | "speaking"
+  | "reconnecting"
   | "awaiting_confirmation"
   | "ended";
 

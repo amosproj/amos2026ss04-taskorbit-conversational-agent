@@ -1,32 +1,32 @@
-"""Tests for TaskOrbitVoiceAgent._run_tts (ElevenLabs TTS pipeline).
+"""Tests for ElevenLabs TTS wiring in ``build_agent_session``.
 
-Scenarios covered:
-
-1. Audio bytes are streamed from ElevenLabs and yielded to the caller.
-2. TTS is initialised with the correct voice/model/API-key from settings.
-3. aclose() is always called on the TTS instance, even when synthesis fails.
+The legacy ``TaskOrbitVoiceAgent._run_tts`` stream helpers were removed with
+the in-repo worker; this module asserts that ``session.build_agent_session``
+constructs ``livekit.plugins.elevenlabs.TTS`` with credentials from
+``Settings`` (environment).
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterator
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from taskorbit.config import get_settings
-from taskorbit.livekit_agent import TaskOrbitVoiceAgent
-from taskorbit.orchestration import ConversationOrchestrator
+from taskorbit.livekit_agent.session import build_agent_session
 
 _FAKE_API_KEY = "test-elevenlabs-key"
 _FAKE_VOICE_ID = "test-voice-id"
 _FAKE_MODEL = "eleven_multilingual_v2"
-_FAKE_AUDIO_BYTES = b"\x00\x01\x02\x03"
 
 
 @pytest.fixture
-def configured_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Inject ElevenLabs credentials into the cached Settings instance."""
+def tts_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """ElevenLabs env vars + dummy Deepgram so ``get_settings()`` is complete."""
+    monkeypatch.setenv("DEEPGRAM_API_KEY", "dg-key")
+    monkeypatch.setenv("DEEPGRAM_MODEL", "nova-3")
+    monkeypatch.setenv("DEEPGRAM_LANGUAGE", "multi")
     monkeypatch.setenv("ELEVENLABS_API_KEY", _FAKE_API_KEY)
     monkeypatch.setenv("ELEVENLABS_VOICE_ID", _FAKE_VOICE_ID)
     monkeypatch.setenv("ELEVENLABS_MODEL", _FAKE_MODEL)
@@ -37,76 +37,50 @@ def configured_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         get_settings.cache_clear()
 
 
-def _make_agent() -> TaskOrbitVoiceAgent:
-    return TaskOrbitVoiceAgent(orchestrator=ConversationOrchestrator())
-
-
-def _make_synthesize_stream(audio_bytes: bytes) -> MagicMock:
-    """Return a mock ChunkedStream that yields one audio frame with the given bytes."""
-    fake_frame = MagicMock()
-    fake_frame.data = audio_bytes
-
-    fake_audio = MagicMock()
-    fake_audio.frame = fake_frame
-
-    async def _audio_iter():
-        yield fake_audio
-
-    stream = MagicMock()
-    stream.__aenter__ = AsyncMock(return_value=stream)
-    stream.__aexit__ = AsyncMock(return_value=False)
-    stream.__aiter__ = lambda self: _audio_iter().__aiter__()
-    return stream
-
-
-@pytest.mark.asyncio
-async def test_run_tts_yields_audio_bytes_from_elevenlabs(
-    configured_settings: None,
+def test_build_agent_session_elevenlabs_tts_uses_settings(
+    tts_settings: None,
 ) -> None:
-    mock_tts = MagicMock()
-    mock_tts.synthesize.return_value = _make_synthesize_stream(_FAKE_AUDIO_BYTES)
-    mock_tts.aclose = AsyncMock()
+    """TTS plugin is constructed with api_key, voice_id, and model from config."""
+    with (
+        patch("taskorbit.livekit_agent.session.silero.VAD") as mock_vad,
+        patch("taskorbit.livekit_agent.session.deepgram.STT") as mock_stt,
+        patch("taskorbit.livekit_agent.session.elevenlabs.TTS") as mock_tts,
+        patch("taskorbit.livekit_agent.session.AgentSession") as mock_session,
+    ):
+        build_agent_session()
 
-    with patch("taskorbit.livekit_agent.elevenlabs.TTS", return_value=mock_tts):
-        chunks = [chunk async for chunk in _make_agent()._run_tts("Hello world")]
-
-    assert chunks == [_FAKE_AUDIO_BYTES]
-
-
-@pytest.mark.asyncio
-async def test_run_tts_initialises_elevenlabs_with_settings(
-    configured_settings: None,
-) -> None:
-    mock_tts = MagicMock()
-    mock_tts.synthesize.return_value = _make_synthesize_stream(_FAKE_AUDIO_BYTES)
-    mock_tts.aclose = AsyncMock()
-
-    with patch("taskorbit.livekit_agent.elevenlabs.TTS", return_value=mock_tts) as mock_tts_cls:
-        async for _ in _make_agent()._run_tts("Hello world"):
-            pass
-
-    mock_tts_cls.assert_called_once_with(
+    mock_tts.assert_called_once_with(
+        api_key=_FAKE_API_KEY,
         voice_id=_FAKE_VOICE_ID,
         model=_FAKE_MODEL,
-        api_key=_FAKE_API_KEY,
     )
+    kwargs = mock_session.call_args.kwargs
+    assert kwargs["tts"] is mock_tts.return_value
+    assert mock_vad.load.called
+    assert mock_stt.called
 
 
-@pytest.mark.asyncio
-async def test_run_tts_closes_tts_instance_on_synthesis_error(
-    configured_settings: None,
+def test_build_agent_session_elevenlabs_tts_respects_custom_voice(
+    tts_settings: None,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    failing_stream = MagicMock()
-    failing_stream.__aenter__ = AsyncMock(side_effect=RuntimeError("ElevenLabs unreachable"))
-    failing_stream.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setenv("ELEVENLABS_VOICE_ID", "custom-voice-123")
+    get_settings.cache_clear()
+    try:
+        with (
+            patch("taskorbit.livekit_agent.session.silero.VAD") as mock_vad,
+            patch("taskorbit.livekit_agent.session.deepgram.STT") as mock_stt,
+            patch("taskorbit.livekit_agent.session.elevenlabs.TTS") as mock_tts,
+            patch("taskorbit.livekit_agent.session.AgentSession"),
+        ):
+            build_agent_session()
+    finally:
+        get_settings.cache_clear()
 
-    mock_tts = MagicMock()
-    mock_tts.synthesize.return_value = failing_stream
-    mock_tts.aclose = AsyncMock()
-
-    with patch("taskorbit.livekit_agent.elevenlabs.TTS", return_value=mock_tts):
-        with pytest.raises(RuntimeError, match="ElevenLabs unreachable"):
-            async for _ in _make_agent()._run_tts("Hello"):
-                pass
-
-    mock_tts.aclose.assert_awaited_once()
+    mock_tts.assert_called_once_with(
+        api_key=_FAKE_API_KEY,
+        voice_id="custom-voice-123",
+        model=_FAKE_MODEL,
+    )
+    assert mock_vad.load.called
+    assert mock_stt.called
