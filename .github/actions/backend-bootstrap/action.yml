@@ -35,7 +35,6 @@ runs:
       run: poetry config virtualenvs.in-project true
 
     - name: Restore Poetry virtualenv cache
-      if: ${{ !env.ACT }}
       uses: actions/cache@v4
       with:
         path: backend/.venv

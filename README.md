@@ -12,7 +12,7 @@
 | `frontend/`      | React 19 + Vite + TypeScript client                               |
 | `schemas/`       | Shared JSON schemas used by both backend and frontend             |
 | `Documentation/` | Architecture documents, runtime diagrams, team-facing guides      |
-| `.github/`       | Issue templates, workflows, and shared CI actions (`actions/*`)   |
+| `.github/`       | Issue templates, workflows, and shared CI actions                 |
 
 ---
 
@@ -30,7 +30,6 @@ Install these once on your machine:
 
 Optional but recommended:
 
-- [`act`](https://github.com/nektos/act) — run GitHub Actions workflows locally.
 - A LiveKit account (free tier) — see [`Documentation/livekit-cloud-setup.md`](Documentation/livekit-cloud-setup.md).
 
 ---
@@ -233,6 +232,12 @@ single failing stage (e.g. *Lint* in *Backend Linting*) shows up clearly
 in the GitHub Checks UI without re-running earlier stages. The full
 team-facing guide — local commands, troubleshooting, and how to extend
 the pipeline — lives in [`Documentation/ci-cd.md`](Documentation/ci-cd.md).
+
+### Merging is gated on CI
+
+The `main` branch is protected via GitHub's branch-protection settings: a
+pull request can only be merged after all three CI workflows above pass
+green and at least one reviewer has approved.
 
 ### Pre-commit hooks
 
