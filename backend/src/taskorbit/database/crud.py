@@ -3,7 +3,10 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime
+import structlog
 from .models import User, ChatHistory, Conversation
+
+logger = structlog.get_logger()
 
 
 # ============ USER CRUD ============
@@ -12,7 +15,8 @@ def get_user(db: Session, user_id: int) -> User | None:
     """Get a user by ID."""
     try:
         return db.query(User).filter(User.id == user_id).first()
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
+        logger.error("get_user_failed", error=str(e))
         return None
 
 
@@ -20,7 +24,8 @@ def get_user_by_email(db: Session, email: str) -> User | None:
     """Get a user by email."""
     try:
         return db.query(User).filter(User.email == email).first()
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
+        logger.error("get_user_by_email_failed", error=str(e))
         return None
 
 
@@ -28,7 +33,8 @@ def get_user_by_username(db: Session, username: str) -> User | None:
     """Get a user by username."""
     try:
         return db.query(User).filter(User.username == username).first()
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
+        logger.error("get_user_by_username_failed", error=str(e))
         return None
 
 
@@ -36,7 +42,8 @@ def get_users(db: Session, skip: int = 0, limit: int = 100) -> list[User]:
     """Get all users with pagination."""
     try:
         return db.query(User).offset(skip).limit(limit).all()
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
+        logger.error("get_users_failed", error=str(e))
         return []
 
 
@@ -59,7 +66,8 @@ def create_user(
         db.commit()
         db.refresh(db_user)
         return db_user
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
+        logger.error("create_user_failed", error=str(e))
         db.rollback()
         return None
 
@@ -88,7 +96,8 @@ def update_user(
         db.commit()
         db.refresh(user)
         return user
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
+        logger.error("update_user_failed", error=str(e))
         db.rollback()
         return None
 
@@ -102,7 +111,8 @@ def delete_user(db: Session, user_id: int) -> bool:
         db.delete(user)
         db.commit()
         return True
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
+        logger.error("delete_user_failed", error=str(e))
         db.rollback()
         return False
 
@@ -113,7 +123,8 @@ def get_chat_history(db: Session, history_id: int) -> ChatHistory | None:
     """Get a chat history entry by ID."""
     try:
         return db.query(ChatHistory).filter(ChatHistory.id == history_id).first()
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
+        logger.error("get_chat_history_failed", error=str(e))
         return None
 
 
@@ -133,7 +144,8 @@ def get_chat_histories_by_user(
             .limit(limit)
             .all()
         )
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
+        logger.error("get_chat_histories_by_user_failed", error=str(e))
         return []
 
 
@@ -153,7 +165,8 @@ def get_chat_histories_by_conversation(
             .limit(limit)
             .all()
         )
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
+        logger.error("get_chat_histories_by_conversation_failed", error=str(e))
         return []
 
 
@@ -176,7 +189,8 @@ def create_chat_history(
         db.commit()
         db.refresh(db_entry)
         return db_entry
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
+        logger.error("create_chat_history_failed", error=str(e))
         db.rollback()
         return None
 
@@ -190,7 +204,8 @@ def delete_chat_history(db: Session, history_id: int) -> bool:
         db.delete(entry)
         db.commit()
         return True
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
+        logger.error("delete_chat_history_failed", error=str(e))
         db.rollback()
         return False
 
@@ -213,5 +228,6 @@ def get_conversation_messages_with_history(
             .all()
         )
         return [{"role": m.role, "content": m.message} for m in messages]
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
+        logger.error("get_conversation_messages_with_history_failed", error=str(e))
         return []
