@@ -84,7 +84,9 @@ class OpenAIClient:
             _log.error("llm_call_failed", provider="openai", error_type="auth", error=str(exc))
             raise LLMAuthError(f"OpenAI authentication failed: {exc}") from exc
         except openai.RateLimitError as exc:
-            _log.error("llm_call_failed", provider="openai", error_type="rate_limit", error=str(exc))
+            _log.error(
+                "llm_call_failed", provider="openai", error_type="rate_limit", error=str(exc)
+            )
             raise LLMRateLimitError(f"OpenAI rate-limited: {exc}") from exc
         except openai.APITimeoutError as exc:
             _log.error("llm_call_failed", provider="openai", error_type="timeout", error=str(exc))

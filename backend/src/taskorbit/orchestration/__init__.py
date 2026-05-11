@@ -36,9 +36,7 @@ class ConversationOrchestrator:
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
 
-    async def process_message(
-        self, request: ConversationRequest
-    ) -> ConversationResponse:
+    async def process_message(self, request: ConversationRequest) -> ConversationResponse:
         """Main entry point called by the API layer and agent workers.
 
         Returns a ConversationResponse containing the assistant reply and,
@@ -52,8 +50,7 @@ class ConversationOrchestrator:
             (m for m in reversed(request.messages) if m.role == MessageRole.USER),
             None,
         )
-        #return response on the frontend
-
+        # return response on the frontend
 
         if last_user:
             """
@@ -95,7 +92,6 @@ class ConversationOrchestrator:
         messages: list[Message],
         agent_config: AgentConfig,
     ) -> ToolDefinition | None:
-
         """
         TO-DO:
         Decide which tool should be in scope for this turn, if any.

@@ -99,7 +99,9 @@ async def test_403_maps_to_llm_auth_error(client: GeminiClient, llm_config: LLMC
 
 
 @pytest.mark.asyncio
-async def test_429_maps_to_llm_rate_limit_error(client: GeminiClient, llm_config: LLMConfig) -> None:
+async def test_429_maps_to_llm_rate_limit_error(
+    client: GeminiClient, llm_config: LLMConfig
+) -> None:
     with patch.object(
         client._client.aio.models, "generate_content", new=AsyncMock(side_effect=_client_error(429))
     ):
@@ -149,9 +151,7 @@ async def test_generic_api_error_maps_to_llm_api_error(
 
 
 @pytest.mark.asyncio
-async def test_empty_text_raises_llm_api_error(
-    client: GeminiClient, llm_config: LLMConfig
-) -> None:
+async def test_empty_text_raises_llm_api_error(client: GeminiClient, llm_config: LLMConfig) -> None:
     fake_response = MagicMock()
     fake_response.text = ""
     with patch.object(
@@ -162,9 +162,7 @@ async def test_empty_text_raises_llm_api_error(
 
 
 @pytest.mark.asyncio
-async def test_none_text_raises_llm_api_error(
-    client: GeminiClient, llm_config: LLMConfig
-) -> None:
+async def test_none_text_raises_llm_api_error(client: GeminiClient, llm_config: LLMConfig) -> None:
     """Gemini returns None for blocked responses (safety filter etc.)."""
     fake_response = MagicMock()
     fake_response.text = None

@@ -45,9 +45,7 @@ def get_llm_client(
 
     if llm_config.provider == LLMProvider.OPENAI:
         if not settings.openai_api_key:
-            raise LLMConfigError(
-                "OPENAI_API_KEY is not set; cannot instantiate OpenAIClient"
-            )
+            raise LLMConfigError("OPENAI_API_KEY is not set; cannot instantiate OpenAIClient")
         try:
             from .openai_client import OpenAIClient  # type: ignore[import]
         except ImportError as exc:
@@ -56,15 +54,11 @@ def get_llm_client(
 
     if llm_config.provider == LLMProvider.GOOGLE:
         if not settings.google_api_key:
-            raise LLMConfigError(
-                "GOOGLE_API_KEY is not set; cannot instantiate GeminiClient"
-            )
+            raise LLMConfigError("GOOGLE_API_KEY is not set; cannot instantiate GeminiClient")
         try:
             from .gemini_client import GeminiClient  # type: ignore[import]
         except ImportError as exc:
             raise LLMConfigError("GeminiClient is not yet implemented") from exc
         return GeminiClient(llm_config=llm_config, settings=settings)
 
-    raise LLMConfigError(
-        f"Unexpected LLM provider: {llm_config.provider!r}; no client registered"
-    )
+    raise LLMConfigError(f"Unexpected LLM provider: {llm_config.provider!r}; no client registered")

@@ -4,7 +4,6 @@ from taskorbit.integrations.llm.messages import (
 )
 from taskorbit.types import Message, MessageRole
 
-
 # ---------------------------------------------------------------------------
 # to_openai_messages
 # ---------------------------------------------------------------------------

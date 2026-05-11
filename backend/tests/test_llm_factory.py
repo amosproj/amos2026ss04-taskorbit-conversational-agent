@@ -7,7 +7,6 @@ from taskorbit.integrations.llm.gemini_client import GeminiClient
 from taskorbit.integrations.llm.openai_client import OpenAIClient
 from taskorbit.types import LLMConfig, LLMProvider
 
-
 # ---------------------------------------------------------------------------
 # Negative paths — missing API keys
 # ---------------------------------------------------------------------------

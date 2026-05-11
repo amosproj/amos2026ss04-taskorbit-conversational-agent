@@ -69,7 +69,10 @@ async def test_generate_returns_assistant_text(client: OpenAIClient, llm_config:
     # that prepends the system prompt and includes the user message.
     call_kwargs = mock_create.call_args.kwargs
     assert call_kwargs["model"] == "gpt-4o-mini"
-    assert call_kwargs["messages"][0] == {"role": "system", "content": "You are a helpful assistant."}
+    assert call_kwargs["messages"][0] == {
+        "role": "system",
+        "content": "You are a helpful assistant.",
+    }
     assert call_kwargs["messages"][1] == {"role": "user", "content": "What is 2+2?"}
 
 
@@ -79,7 +82,9 @@ async def test_generate_returns_assistant_text(client: OpenAIClient, llm_config:
 
 
 @pytest.mark.asyncio
-async def test_auth_error_maps_to_llm_auth_error(client: OpenAIClient, llm_config: LLMConfig) -> None:
+async def test_auth_error_maps_to_llm_auth_error(
+    client: OpenAIClient, llm_config: LLMConfig
+) -> None:
     auth_exc = openai.AuthenticationError(
         message="Invalid API key", response=MagicMock(status_code=401), body=None
     )
@@ -146,9 +151,7 @@ async def test_empty_content_raises_llm_api_error(
 
 
 @pytest.mark.asyncio
-async def test_no_choices_raises_llm_api_error(
-    client: OpenAIClient, llm_config: LLMConfig
-) -> None:
+async def test_no_choices_raises_llm_api_error(client: OpenAIClient, llm_config: LLMConfig) -> None:
     fake_response = MagicMock()
     fake_response.choices = []
     with patch.object(

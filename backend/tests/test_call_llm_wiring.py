@@ -68,9 +68,7 @@ async def test_call_llm_appends_same_language_instruction(
     mock_client.generate = AsyncMock(return_value="ok")
     llm_config = LLMConfig(provider=LLMProvider.OPENAI, model="gpt-4o-mini")
 
-    with patch(
-        "taskorbit.integrations.llm.factory.get_llm_client", return_value=mock_client
-    ):
+    with patch("taskorbit.integrations.llm.factory.get_llm_client", return_value=mock_client):
         await orchestrator._call_llm("You are helpful.", _make_messages(), llm_config)
 
     # client.generate was called with the augmented prompt.
@@ -88,9 +86,7 @@ async def test_call_llm_returns_client_response(
     mock_client.generate = AsyncMock(return_value="4")
     llm_config = LLMConfig(provider=LLMProvider.OPENAI, model="gpt-4o-mini")
 
-    with patch(
-        "taskorbit.integrations.llm.factory.get_llm_client", return_value=mock_client
-    ):
+    with patch("taskorbit.integrations.llm.factory.get_llm_client", return_value=mock_client):
         result = await orchestrator._call_llm("sys", _make_messages(), llm_config)
 
     assert result == "4"
@@ -105,8 +101,6 @@ async def test_call_llm_propagates_client_errors(
     mock_client.generate = AsyncMock(side_effect=LLMAPIError("boom"))
     llm_config = LLMConfig(provider=LLMProvider.OPENAI, model="gpt-4o-mini")
 
-    with patch(
-        "taskorbit.integrations.llm.factory.get_llm_client", return_value=mock_client
-    ):
+    with patch("taskorbit.integrations.llm.factory.get_llm_client", return_value=mock_client):
         with pytest.raises(LLMAPIError, match="boom"):
             await orchestrator._call_llm("sys", _make_messages(), llm_config)

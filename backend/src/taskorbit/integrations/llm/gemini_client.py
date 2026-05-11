@@ -81,10 +81,14 @@ class GeminiClient:
                 _log.error("llm_call_failed", provider="google", error_type="auth", error=str(exc))
                 raise LLMAuthError(f"Google API authentication failed: {exc}") from exc
             if code == 429:
-                _log.error("llm_call_failed", provider="google", error_type="rate_limit", error=str(exc))
+                _log.error(
+                    "llm_call_failed", provider="google", error_type="rate_limit", error=str(exc)
+                )
                 raise LLMRateLimitError(f"Google API rate-limited: {exc}") from exc
             if code == 408:
-                _log.error("llm_call_failed", provider="google", error_type="timeout", error=str(exc))
+                _log.error(
+                    "llm_call_failed", provider="google", error_type="timeout", error=str(exc)
+                )
                 raise LLMTimeoutError(f"Google API request timed out: {exc}") from exc
             _log.error("llm_call_failed", provider="google", error_type="client", error=str(exc))
             raise LLMAPIError(f"Google API client error: {exc}") from exc
