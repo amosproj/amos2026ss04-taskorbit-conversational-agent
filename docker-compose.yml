@@ -11,6 +11,7 @@
 # Services:
 #   postgres  → :5435 (host) → :5432 in container; avoids clashing with a local Postgres on 5432.
 #   backend   → :8000  FastAPI HTTP API (token issuance, REST fallback)
+#   worker    → no port  LiveKit voice agent (STT → orchestrator → TTS)
 #   frontend  → :5173  Vite dev server with HMR
 
 services:
@@ -60,6 +61,23 @@ services:
     #   timeout: 3s
     #   retries: 5
 
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: dev
+    container_name: taskorbit-worker
+    env_file:
+      - ./backend/.env
+    environment:
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ./backend/src:/app/src
+    command: poetry run taskorbit-worker dev
+    depends_on:
+      backend:
+        condition: service_started
 
   frontend:
     build:

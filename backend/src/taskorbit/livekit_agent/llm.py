@@ -134,6 +134,9 @@ class OrchestratorAgent(Agent):
         back to ``Agent.default.llm_node`` instead.
         """
         messages = _convert_chat_ctx_to_messages(chat_ctx)
+        last_user = next((m for m in reversed(messages) if m.role == MessageRole.USER), None)
+        if last_user:
+            print(f"[STT] {last_user.content}", flush=True)
         request = ConversationRequest(
             conversation_id=self._conversation_id,
             agent_config=self._agent_config,

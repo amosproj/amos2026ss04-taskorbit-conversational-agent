@@ -50,6 +50,7 @@ pre-commit = "^4.0.0"
 
 [tool.poetry.scripts]
 taskorbit-api = "taskorbit.cli:run_api"
+taskorbit-worker = "taskorbit.worker:run_worker"
 
 [build-system]
 requires = ["poetry-core"]
