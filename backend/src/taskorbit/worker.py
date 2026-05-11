@@ -31,19 +31,6 @@ logger = logging.getLogger(__name__)
 async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
-    # Extract the greeting from the first remote participant's metadata.
-    # The frontend embeds the serialised AgentConfig (including `greeting`)
-    # in the JWT it mints — it arrives here as participant.metadata JSON.
-    greeting = "Hello!"
-    for participant in ctx.room.remote_participants.values():
-        if participant.metadata:
-            try:
-                data = json.loads(participant.metadata)
-                greeting = data.get("greeting") or greeting
-            except Exception:  # noqa: BLE001
-                pass
-            break
-
     cfg = get_settings()
     session = build_agent_session(settings=cfg)
     agent = build_default_agent(settings=cfg)
@@ -76,8 +63,6 @@ async def entrypoint(ctx: JobContext) -> None:
         room_output_options=RoomOutputOptions(sync_transcription=False),
     )
 
-    if greeting:
-        await session.say(greeting)
 
 
 def run_worker() -> None:

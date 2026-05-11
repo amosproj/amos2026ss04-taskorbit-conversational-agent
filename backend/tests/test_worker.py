@@ -117,43 +117,6 @@ async def test_invalid_json_ignored(configured_settings: None) -> None:
     mock_agent.request_reply.assert_not_called()
 
 
-@pytest.mark.asyncio
-async def test_entrypoint_says_greeting_from_metadata(configured_settings: None) -> None:
-    """Greeting from participant metadata is spoken via session.say()."""
-    ctx, _ = _make_ctx()
-    participant = MagicMock()
-    participant.metadata = json.dumps({"greeting": "Hi from frontend!"})
-    ctx.room.remote_participants = {"user-1": participant}
-
-    mock_session = AsyncMock()
-    mock_agent = MagicMock()
-
-    with (
-        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
-        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
-    ):
-        await entrypoint(ctx)
-
-    mock_session.say.assert_awaited_once_with("Hi from frontend!")
-
-
-@pytest.mark.asyncio
-async def test_entrypoint_says_default_greeting_when_no_metadata(configured_settings: None) -> None:
-    """Falls back to 'Hello!' when no participant metadata is present."""
-    ctx, _ = _make_ctx()
-    ctx.room.remote_participants = {}
-
-    mock_session = AsyncMock()
-    mock_agent = MagicMock()
-
-    with (
-        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
-        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
-    ):
-        await entrypoint(ctx)
-
-    mock_session.say.assert_awaited_once_with("Hello!")
-
 
 @pytest.mark.asyncio
 async def test_unknown_message_type_ignored(configured_settings: None) -> None:
