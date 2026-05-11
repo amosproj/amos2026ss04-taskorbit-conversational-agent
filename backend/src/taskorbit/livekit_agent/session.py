@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import Any
 
 from livekit.agents import AgentSession
-from livekit.plugins import deepgram, elevenlabs, silero
+from livekit.plugins import deepgram, elevenlabs, openai, silero
 
 from taskorbit.config import Settings, get_settings
 from taskorbit.livekit_agent.llm import OrchestratorAgent
@@ -46,13 +46,25 @@ def build_agent_session(
             model=cfg.deepgram_model,
             language=cfg.deepgram_language,
         ),
+        # Required by generate_reply() — OrchestratorAgent.llm_node() overrides
+        # this fully, so the OpenAI model is never actually called or billed.
+        llm=openai.LLM(
+            model=cfg.openai_model,
+            api_key=cfg.openai_api_key or "sk-placeholder-not-used",
+        ),
         tts=elevenlabs.TTS(
             api_key=cfg.elevenlabs_api_key,
             voice_id=cfg.elevenlabs_voice_id,
             model=cfg.elevenlabs_model,
         ),
-        # User can cut off TTS by speaking again once echo cancellation is warm.
-        allow_interruptions=True,
+        # Push-to-talk: only reply when generate_reply() is called explicitly.
+        # "manual" endpointing disables VAD/silence auto-trigger.
+        # preemptive_tts=False stops the session from calling llm_node early
+        # to pre-warm TTS — that would fire the orchestrator before Send.
+        turn_handling={
+            "endpointing": {"mode": "manual"},
+            "preemptive_generation": {"preemptive_tts": False},
+        },
     )
 
 

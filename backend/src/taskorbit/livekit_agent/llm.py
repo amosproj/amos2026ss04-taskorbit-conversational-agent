@@ -103,6 +103,10 @@ class OrchestratorAgent(Agent):
     hand it to the orchestrator, and yield the assistant reply as a single
     ``ChatChunk``. Streaming is left for a real LLM integration; the
     pipeline can stream this single chunk into the TTS without issue.
+
+    Push-to-talk guard: ``llm_node`` only processes when ``request_reply()``
+    has been called first. Preemptive generation calls from AgentSession
+    are silently dropped, preventing double responses.
     """
 
     def __init__(
@@ -119,6 +123,16 @@ class OrchestratorAgent(Agent):
         self._orchestrator = orchestrator
         self._agent_config = agent_config or _default_agent_config()
         self._conversation_id = conversation_id
+        self._reply_requested: bool = False
+
+    def request_reply(self) -> None:
+        """Signal that the next ``llm_node`` call should actually produce a reply.
+
+        Call this immediately before ``session.generate_reply()`` from the
+        data channel handler. Without it, ``llm_node`` returns empty so that
+        AgentSession's preemptive generation does not produce a spurious response.
+        """
+        self._reply_requested = True
 
     async def llm_node(  # type: ignore[override]
         self,
@@ -133,6 +147,11 @@ class OrchestratorAgent(Agent):
         real LLM is wired in later, this method should change to delegate
         back to ``Agent.default.llm_node`` instead.
         """
+        if not self._reply_requested:
+            # Preemptive generation call — not triggered by Send. Drop it.
+            return
+        self._reply_requested = False
+
         messages = _convert_chat_ctx_to_messages(chat_ctx)
         last_user = next((m for m in reversed(messages) if m.role == MessageRole.USER), None)
         if last_user:

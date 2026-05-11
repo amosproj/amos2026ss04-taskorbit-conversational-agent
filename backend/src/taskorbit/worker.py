@@ -14,11 +14,13 @@ Required env vars (in backend/.env):
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
 from livekit import rtc
 from livekit.agents import AutoSubscribe, JobContext, WorkerOptions, cli
+from livekit.agents.voice.room_io import RoomOutputOptions
 
 from taskorbit.config import get_settings
 from taskorbit.livekit_agent import build_agent_session, build_default_agent
@@ -41,12 +43,25 @@ async def entrypoint(ctx: JobContext) -> None:
     def _on_data(packet: rtc.DataPacket) -> None:
         try:
             msg = json.loads(packet.data.decode("utf-8"))
-            if msg.get("type") == "commit_turn":
-                session.interrupt()
         except Exception:  # noqa: BLE001
-            logger.debug("worker: could not parse data packet")
+            return
+        if msg.get("type") == "commit_turn":
+            try:
+                agent.request_reply()
+                result = session.generate_reply()
+                if asyncio.iscoroutine(result):
+                    asyncio.create_task(result)
+                logger.info("worker: generate_reply triggered")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("worker: generate_reply failed: %s", exc)
 
-    await session.start(agent, room=ctx.room)
+    # sync_transcription=False: publish agent transcript immediately instead of
+    # timing it to audio playback, so text appears before/with audio in the UI.
+    await session.start(
+        agent,
+        room=ctx.room,
+        room_output_options=RoomOutputOptions(sync_transcription=False),
+    )
 
 
 def run_worker() -> None:
