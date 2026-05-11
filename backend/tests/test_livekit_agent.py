@@ -79,7 +79,8 @@ def test_build_agent_session_uses_deepgram_elevenlabs_silero(
     assert kwargs["vad"] is mock_vad.load.return_value
     assert kwargs["stt"] is mock_stt.return_value
     assert kwargs["tts"] is mock_tts.return_value
-    assert kwargs.get("allow_interruptions") is True
+    # Session uses manual endpointing (push-to-talk); no allow_interruptions flag.
+    assert kwargs["turn_handling"]["endpointing"]["mode"] == "manual"
 
 
 def _make_chat_ctx(messages: list[tuple[str, str]]) -> Any:
@@ -121,6 +122,7 @@ async def test_llm_node_yields_orchestrator_reply() -> None:
     agent, orchestrator = _make_agent("Hello back!")
     chat_ctx = _make_chat_ctx([("user", "Hello there")])
 
+    agent.request_reply()
     chunks = [c async for c in agent.llm_node(chat_ctx, [], MagicMock())]
 
     assert chunks == ["Hello back!"]
@@ -153,6 +155,7 @@ async def test_llm_node_filters_unsupported_chat_items() -> None:
         ]
     )
 
+    agent.request_reply()
     [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
 
     request = orchestrator.process_message.await_args.args[0]

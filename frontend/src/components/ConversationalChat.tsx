@@ -157,7 +157,18 @@ export function ConversationalChat() {
   }, [agent.tts, call]);
 
   const handleStartSession = useCallback(() => {
-    call.start({ tokenMetadata: buildLiveKitWorkerMetadata(agent) });
+    call.start({
+      tokenMetadata: buildLiveKitWorkerMetadata(agent),
+      greeting: agent.first_message.message,
+    });
+    if (agent.first_message.message) {
+      void playSynthesizedSpeech(agent.first_message.message, {
+        voiceId: agent.tts.voice_id,
+        modelId: agent.tts.model,
+      }).catch(() => {
+        /* optional TTS */
+      });
+    }
   }, [agent, call]);
 
   const isPreCall = call.status === "idle";

@@ -23,6 +23,8 @@ import type {
 export type VoiceCallStartOptions = {
   /** `AgentConfig`-shaped JSON for the worker (see `buildLiveKitWorkerMetadata`). */
   tokenMetadata?: Record<string, unknown>;
+  /** Agent greeting to show immediately in the transcript before TTS arrives. */
+  greeting?: string;
 };
 
 type LiveKitCredentials = { url: string; token: string };
@@ -141,7 +143,11 @@ export function useVoiceCall(): VoiceCallApi {
 
     const newConvId = generateConversationId();
     setConversationId(newConvId);
-    setTranscript([]);
+    setTranscript(
+      options?.greeting
+        ? [{ id: "greeting", role: "assistant", text: options.greeting }]
+        : [],
+    );
     setConfirmation(null);
     setLivekitCredentials(null);
     setMicError(null);

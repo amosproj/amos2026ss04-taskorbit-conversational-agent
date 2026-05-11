@@ -9,7 +9,7 @@
  *           dedicated button preserves the ChatGPT-style mental model.
  */
 
-import { Send, Square } from "lucide-react";
+import { Pause, Send } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
@@ -33,8 +33,8 @@ export function RecordingControls({ onStop, onSend, disabled }: Props) {
         onClick={onStop}
         disabled={disabled}
       >
-        <Square data-icon="inline-start" className="size-3.5" />
-        Stop
+        <Pause data-icon="inline-start" className="size-3.5" />
+        Pause
       </Button>
       <Button
         type="button"
