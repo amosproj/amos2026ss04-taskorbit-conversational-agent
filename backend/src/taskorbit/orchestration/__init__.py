@@ -47,27 +47,12 @@ class ConversationOrchestrator:
         end-to-end. Replace with _select_active_tool → _build_system_prompt
         → _call_llm → _dispatch_tool when the LLM integration lands.
         """
-        last_user = next(
-            (m for m in reversed(request.messages) if m.role == MessageRole.USER),
-            None,
-        )
-        #return response on the frontend
+        user_messages = [m for m in request.messages if m.role == MessageRole.USER]
 
-
-        if last_user:
-            """
-            TO-DO: replace with actual LLM response once implemented. 
-            For now we just echo the user's last message to confirm the pipeline is 
-            working end-to-end."""
-            
-            text = f'[Backend echo] I received: "{last_user.content}"'
-
+        if user_messages:
+            combined = " ".join(m.content for m in user_messages)
+            text = f'[Backend echo] I received: "{combined}"'
         else:
-            """TO-DO: handle edge case where no user message is found. 
-            This shouldn't happen in normal flow since the frontend should 
-            always send the user's message as part of the ConversationRequest, 
-            but we should still handle it just in case."""
-
             text = f"Hello! I'm {request.agent_config.name}. How can I help you?"
 
         return ConversationResponse(
