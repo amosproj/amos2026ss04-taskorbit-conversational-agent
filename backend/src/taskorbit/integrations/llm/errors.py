@@ -18,3 +18,11 @@ class LLMTimeoutError(LLMError):
 
 class LLMAPIError(LLMError):
     """Raised when the provider API returns an error response."""
+
+
+class LLMAuthError(LLMAPIError):
+    """Raised when the provider rejects the API key (typically 401/403)."""
+
+
+class LLMRateLimitError(LLMAPIError):
+    """Raised when the provider returns a rate-limit response (typically 429)."""
