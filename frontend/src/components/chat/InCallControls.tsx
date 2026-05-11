@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useMicRecorder } from "@/hooks/useMicRecorder";
+import { useSilenceDetection } from "@/hooks/useSilenceDetection";
 import type { CallStatus } from "@/types/callState";
 
 type Props = {
@@ -44,6 +45,7 @@ export function InCallControls({
 }: Props) {
   const mic = useMicRecorder();
   const [draft, setDraft] = useState("");
+
   const inputId = useId();
 
   // Mic errors live on the recorder hook; lift them to the parent so
@@ -71,6 +73,14 @@ export function InCallControls({
     await mic.sendUtterance();
     onPhase("thinking");
   };
+
+  useSilenceDetection({
+    levelsRef: mic.levelsRef,
+    active: status === "recording",
+    onSilence: () => {
+      void handleSendUtterance();
+    },
+  });
 
   const handleSendText = (): void => {
     const text = draft.trim();

@@ -182,7 +182,17 @@ export function useMicRecorder(): MicRecorderApi {
 
   const disable = useCallback(async () => {
     try {
+      // Capture the underlying track before unpublishing so we can stop
+      // the hardware and remove the browser's "mic in use" indicator.
+      const pub = localParticipant.getTrackPublication(Track.Source.Microphone);
+      const msTrack = (pub?.track as LocalAudioTrack | undefined)
+        ?.mediaStreamTrack;
+
       await localParticipant.setMicrophoneEnabled(false);
+
+      // Stop the raw MediaStreamTrack — this releases the hardware.
+      // LiveKit will acquire a fresh track the next time enable() is called.
+      msTrack?.stop();
     } catch (err) {
       // Disabling rarely fails (no permission required); still log via
       // state so the UI can react if it does.
