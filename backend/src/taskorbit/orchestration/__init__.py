@@ -23,6 +23,7 @@ from taskorbit.types import (
     AgentConfig,
     ConversationRequest,
     ConversationResponse,
+    LLMConfig,
     Message,
     MessageRole,
     ToolDefinition,
@@ -56,16 +57,16 @@ class ConversationOrchestrator:
 
         if last_user:
             """
-            TO-DO: replace with actual LLM response once implemented. 
-            For now we just echo the user's last message to confirm the pipeline is 
+            TO-DO: replace with actual LLM response once implemented.
+            For now we just echo the user's last message to confirm the pipeline is
             working end-to-end."""
-            
+
             text = f'[Backend echo] I received: "{last_user.content}"'
 
         else:
-            """TO-DO: handle edge case where no user message is found. 
-            This shouldn't happen in normal flow since the frontend should 
-            always send the user's message as part of the ConversationRequest, 
+            """TO-DO: handle edge case where no user message is found.
+            This shouldn't happen in normal flow since the frontend should
+            always send the user's message as part of the ConversationRequest,
             but we should still handle it just in case."""
 
             text = f"Hello! I'm {request.agent_config.name}. How can I help you?"
@@ -85,7 +86,7 @@ class ConversationOrchestrator:
         Construct a system prompt (LLM context)for the current task.
 
         Only includes context relevant to `active_tool` (or the agent
-        persona if no tool is active). 
+        persona if no tool is active).
         """
         raise NotImplementedError
 
@@ -94,7 +95,7 @@ class ConversationOrchestrator:
         messages: list[Message],
         agent_config: AgentConfig,
     ) -> ToolDefinition | None:
-    
+
         """
         TO-DO:
         Decide which tool should be in scope for this turn, if any.
@@ -110,11 +111,14 @@ class ConversationOrchestrator:
         self,
         system_prompt: str,
         messages: list[Message],
+        llm_config: LLMConfig,
     ) -> str:
         """
         TO-DO:
-        Call/Route to the LLM provider configured in settings (Open AI etc.).
+        Call/Route to the LLM provider specified by `llm_config`.
 
+        `llm_config` carries the per-task provider and model selection so the
+        factory in `integrations/llm/factory.py` can instantiate the right client.
         Returns the raw assistant text. Tool-call parsing happens in the
         caller so this method stays provider-agnostic.
         """
