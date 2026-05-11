@@ -47,10 +47,18 @@ class ConversationOrchestrator:
         end-to-end. Replace with _select_active_tool → _build_system_prompt
         → _call_llm → _dispatch_tool when the LLM integration lands.
         """
-        user_messages = [m for m in request.messages if m.role == MessageRole.USER]
+        # Collect only the user messages from the current turn — everything
+        # after the last assistant message. This resets the "buffer" each
+        # time Send is hit, so previous turns are not re-echoed.
+        current_turn: list[Message] = []
+        for m in reversed(request.messages):
+            if m.role == MessageRole.ASSISTANT:
+                break
+            if m.role == MessageRole.USER:
+                current_turn.insert(0, m)
 
-        if user_messages:
-            combined = " ".join(m.content for m in user_messages)
+        if current_turn:
+            combined = " ".join(m.content for m in current_turn)
             text = f'[Backend echo] I received: "{combined}"'
         else:
             text = f"Hello! I'm {request.agent_config.name}. How can I help you?"
