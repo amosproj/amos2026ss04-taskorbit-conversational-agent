@@ -31,7 +31,7 @@ def test_orchestrator_instantiates() -> None:
 @pytest.mark.asyncio
 async def test_process_message_returns_mocked_llm_reply() -> None:
     orch = ConversationOrchestrator()
-    mock_reply = "[Mocked LLM] I received: \"Hello there\""
+    mock_reply = '[Mocked LLM] I received: "Hello there"'
 
     with patch.object(ConversationOrchestrator, "_call_llm", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = mock_reply
@@ -65,6 +65,7 @@ async def test_process_message_returns_error_on_empty_messages() -> None:
 async def test_process_message_timeout_handling() -> None:
     # Use settings with a very short timeout for testing
     from taskorbit.config import Settings
+
     settings = Settings(llm_timeout_seconds=0.01)
     orch = ConversationOrchestrator(settings=settings)
 

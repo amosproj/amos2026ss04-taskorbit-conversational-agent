@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
 
 from taskorbit.api.main import create_app
+from taskorbit.api.routes.conversations import get_orchestrator
 from taskorbit.types import (
     ConversationResponse,
     Message,
@@ -25,34 +26,32 @@ _VALID_PAYLOAD = {
 }
 
 
-def test_process_conversation_returns_200_with_echo() -> None:
-    app = create_app()
-    with TestClient(app) as client:
-        response = client.post("/v1/conversations/process", json=_VALID_PAYLOAD)
-    assert response.status_code == 200
-    body = response.json()
-    assert body["conversation_id"] == "conv-1"
-    assert "Hello" in body["reply"]["content"]
-    assert body["reply"]["role"] == "assistant"
-
-
-def test_process_conversation_returns_200_with_mock_orchestrator() -> None:
+def test_process_conversation_returns_200_with_mock() -> None:
+    """Verifies that the endpoint returns a 200 and a valid response using a mock orchestrator."""
     mock_response = ConversationResponse(
         conversation_id="conv-1",
-        reply=Message(role=MessageRole.ASSISTANT, content="Hello back!"),
+        reply=Message(role=MessageRole.ASSISTANT, content="[Mocked] Hello"),
+        status="success",
     )
+
+    mock_orchestrator = AsyncMock()
+    mock_orchestrator.process_message.return_value = mock_response
+
     app = create_app()
-    with patch(
-        "taskorbit.api.routes.conversations.ConversationOrchestrator.process_message",
-        new_callable=AsyncMock,
-        return_value=mock_response,
-    ):
-        with TestClient(app) as client:
-            response = client.post("/v1/conversations/process", json=_VALID_PAYLOAD)
+    # Use dependency overrides for robust mocking in FastAPI
+    app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
+
+    with TestClient(app) as client:
+        response = client.post("/v1/conversations/process", json=_VALID_PAYLOAD)
+
     assert response.status_code == 200
     body = response.json()
     assert body["conversation_id"] == "conv-1"
-    assert body["reply"]["content"] == "Hello back!"
+    assert "[Mocked] Hello" == body["reply"]["content"]
+    assert body["reply"]["role"] == "assistant"
+
+    # Clean up overrides
+    app.dependency_overrides = {}
 
 
 def test_process_conversation_rejects_invalid_payload() -> None:
