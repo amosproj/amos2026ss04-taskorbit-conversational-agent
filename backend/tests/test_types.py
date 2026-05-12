@@ -37,15 +37,19 @@ def _make_agent_config() -> AgentConfig:
 
 
 def test_message_role_enum() -> None:
-    assert MessageRole.USER == "user"
-    assert MessageRole.ASSISTANT == "assistant"
-    assert MessageRole.SYSTEM == "system"
+    # Use .value for comparisons to satisfy mypy's strict type checking
+    # when comparing Enum members to raw strings.
+    assert MessageRole.USER.value == "user"
+    assert MessageRole.ASSISTANT.value == "assistant"
+    assert MessageRole.SYSTEM.value == "system"
 
 
 def test_tool_type_enum() -> None:
-    assert ToolType.DATA_EXTRACTION == "data_extraction"
-    assert ToolType.AGENT_TRANSFER == "agent_transfer"
-    assert ToolType.END_CALL == "end_call"
+    # Use .value for comparisons to satisfy mypy's strict type checking
+    # when comparing Enum members to raw strings.
+    assert ToolType.DATA_EXTRACTION.value == "data_extraction"
+    assert ToolType.AGENT_TRANSFER.value == "agent_transfer"
+    assert ToolType.END_CALL.value == "end_call"
 
 
 def test_message_defaults() -> None:

@@ -46,6 +46,8 @@ services:
       # by its compose name, not localhost.
       DATABASE_URL: postgresql://taskorbit:taskorbit@postgres:5432/taskorbit
       PYTHONUNBUFFERED: "1"
+      # Ensure Python can find the 'taskorbit' module inside the /app/src directory
+      PYTHONPATH: /app/src
     ports:
       - "8000:8000"
     volumes:

@@ -1,6 +1,7 @@
 import json
 from copy import deepcopy
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from jsonschema import ValidationError, validate
@@ -12,18 +13,18 @@ EXAMPLE_PATH = ROOT / "schemas" / "examples" / "agent-task.example.json"
 
 
 @pytest.fixture
-def schema():
+def schema() -> dict[str, Any]:
     with open(SCHEMA_PATH) as f:
-        return json.load(f)
+        return cast(dict[str, Any], json.load(f))
 
 
 @pytest.fixture
-def valid_example():
+def valid_example() -> dict[str, Any]:
     with open(EXAMPLE_PATH) as f:
-        return json.load(f)
+        return cast(dict[str, Any], json.load(f))
 
 
-def test_schema_validation_success(schema, valid_example):
+def test_schema_validation_success(schema: dict[str, Any], valid_example: dict[str, Any]) -> None:
     """Verifies that the canonical example passes the schema."""
     try:
         validate(instance=valid_example, schema=schema)
@@ -31,7 +32,9 @@ def test_schema_validation_success(schema, valid_example):
         pytest.fail(f"Validation failed unexpectedly: {e.message}")
 
 
-def test_schema_validation_fails_missing_field(schema, valid_example):
+def test_schema_validation_fails_missing_field(
+    schema: dict[str, Any], valid_example: dict[str, Any]
+) -> None:
     """Verifies that missing a mandatory field (e.g., first_message) raises an error."""
     invalid_data = valid_example.copy()
     # Remove a mandatory field from the agent definition
@@ -42,7 +45,9 @@ def test_schema_validation_fails_missing_field(schema, valid_example):
     assert "'first_message' is a required property" in str(excinfo.value)
 
 
-def test_schema_validation_fails_invalid_id(schema, valid_example):
+def test_schema_validation_fails_invalid_id(
+    schema: dict[str, Any], valid_example: dict[str, Any]
+) -> None:
     """Verifies that invalid ID patterns (e.g. spaces in agent_id) are rejected."""
     invalid_data = valid_example.copy()
     invalid_data["agent"]["agent_id"] = "Invalid ID With Spaces"
@@ -51,7 +56,9 @@ def test_schema_validation_fails_invalid_id(schema, valid_example):
         validate(instance=invalid_data, schema=schema)
 
 
-def test_schema_rejects_params_on_end_call(schema, valid_example):
+def test_schema_rejects_params_on_end_call(
+    schema: dict[str, Any], valid_example: dict[str, Any]
+) -> None:
     """end_call tools must not carry params (additionalProperties=false)."""
     invalid_data = deepcopy(valid_example)
     for tool in invalid_data["agent"]["tools"]:

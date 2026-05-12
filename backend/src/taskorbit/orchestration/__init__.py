@@ -6,19 +6,26 @@ sees the context for the *currently active* task, never the full agent
 config. This prevents prompt drift and keeps the agent grounded.
 
 Flow per message:
-  1. Determine which tool (if any) should be in scope right now.
-  2. Build a minimal system prompt from that task context only.
-  3. Call the configured LLM provider.
-  4. If the LLM wants to invoke a tool, check confirmation requirements
-     and either surface a confirmation request or dispatch immediately.
-  5. Return a ConversationResponse.
+  1. Detect intent (mocked — always book_service_appointment until issue #18).
+  2. Select the agent via AgentRegistry.
+  3. Determine which tool (if any) should be in scope right now.
+  4. Build a minimal system prompt from that task context only.
+  5. Call the LLM provider with a timeout (configurable via settings).
+  6. Return a ConversationResponse with intent, agent, and status fields.
 """
 
 from __future__ import annotations
 
-from typing import Any
+import asyncio
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from taskorbit.agents import BaseAgent
+
+import structlog
 
 from taskorbit.config import Settings, get_settings
+from taskorbit.intent import MockIntentDetector
 from taskorbit.types import (
     AgentConfig,
     ConversationRequest,
@@ -29,74 +36,123 @@ from taskorbit.types import (
     ToolDefinition,
 )
 
+logger = structlog.get_logger(__name__)
+
 
 class ConversationOrchestrator:
-    """Routes messages through task selection → LLM → tool dispatch."""
+    """Routes messages through intent detection → agent → LLM → response."""
 
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
+        self._intent_detector = MockIntentDetector()
 
     async def process_message(self, request: ConversationRequest) -> ConversationResponse:
-        """Main entry point called by the API layer and agent workers.
+        """Main entry point called by the API layer and agent workers."""
+        try:
+            last_user = next(
+                (m for m in reversed(request.messages) if m.role == MessageRole.USER),
+                None,
+            )
+            if not last_user or not last_user.content.strip():
+                raise ValueError("No user message content found in request.")
 
-        Returns a ConversationResponse containing the assistant reply and,
-        when applicable, a pending tool invocation requiring confirmation.
+            # 1. Detect intent (mocked)
+            intent = self._intent_detector.detect(last_user.content)
+            logger.info(
+                "intent_detected", intent=intent.name, conversation_id=request.conversation_id
+            )
 
-        Current implementation: dummy echo — confirms the pipeline is wired
-        end-to-end. Replace with _select_active_tool → _build_system_prompt
-        → _call_llm → _dispatch_tool when the LLM integration lands.
-        """
-        # Collect only the user messages from the current turn — everything
-        # after the last assistant message. This resets the "buffer" each
-        # time Send is hit, so previous turns are not re-echoed.
-        current_turn: list[Message] = []
-        for m in reversed(request.messages):
-            if m.role == MessageRole.ASSISTANT:
-                break
-            if m.role == MessageRole.USER:
-                current_turn.insert(0, m)
+            # 2. Select agent — local import avoids circular dependency with agents/__init__.py
+            # NOTE: The agent object is currently a no-op placeholder. The orchestrator
+            # still drives the pipeline directly from AgentConfig. Wiring the agent
+            # logic (e.g. handle_message) will land when real intent routing replaces
+            # MockIntentDetector.
+            from taskorbit.agents import AgentRegistry
 
-        if current_turn:
-            combined = " ".join(m.content for m in current_turn)
-            text = f'[Backend echo] I received: "{combined}"'
-        else:
-            # text = f"Hello! I'm {request.agent_config.name}. How can I help you?"
-            text = "I didn't get your message. Can you try again?"  # Shouldn't happen since the frontend only sends user messages
+            agent = AgentRegistry.get_agent(request.agent_config, self)
+            logger.info(
+                "agent_selected",
+                agent=type(agent).__name__,
+                conversation_id=request.conversation_id,
+            )
 
-        return ConversationResponse(
-            conversation_id=request.conversation_id,
-            reply=self._make_assistant_message(text),
-        )
+            # 3. Select active tool
+            active_tool = self._select_active_tool(request.messages, agent)
+
+            # 4. Build system prompt
+            system_prompt = self._build_system_prompt(request.agent_config, active_tool)
+
+            # 5. Call LLM with a timeout from settings
+            llm_text = await asyncio.wait_for(
+                self._call_llm(system_prompt, request.messages, request.agent_config.llm),
+                timeout=self._settings.llm_timeout_seconds,
+            )
+
+            return ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message(llm_text),
+                selected_intent=intent.name,
+                selected_agent=request.agent_config.name,
+                status="success",
+            )
+
+        except TimeoutError:
+            logger.warning("llm_timeout", conversation_id=request.conversation_id)
+            return ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message(
+                    "I'm sorry, I'm having trouble connecting to my brain right now. Please try again."
+                ),
+                status="error",
+                error=f"LLM call timed out after {self._settings.llm_timeout_seconds} seconds.",
+            )
+        except ValueError as exc:
+            logger.warning(
+                "invalid_runtime_input", error=str(exc), conversation_id=request.conversation_id
+            )
+            return ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message("I encountered an error. Please try again."),
+                status="error",
+                error=str(exc),
+            )
+        except Exception as exc:
+            logger.error("runtime_error", error=str(exc), conversation_id=request.conversation_id)
+            return ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message("An unexpected error occurred."),
+                status="error",
+                error=str(exc),
+            )
 
     def _build_system_prompt(
         self,
         agent_config: AgentConfig,
         active_tool: ToolDefinition | None,
     ) -> str:
-        """
-        TO-DO:
-        Construct a system prompt (LLM context)for the current task.
-
-        Only includes context relevant to `active_tool` (or the agent
-        persona if no tool is active).
-        """
-        raise NotImplementedError
+        """Construct a system prompt (LLM context) for the current task."""
+        lines = [
+            f"You are {agent_config.name}.",
+            f"Persona: {agent_config.persona}",
+        ]
+        if active_tool:
+            lines.append(f"Current task: {active_tool.name} — {active_tool.description}")
+            if active_tool.parameters:
+                lines.append(f"Available parameters: {active_tool.parameters}")
+        return "\n".join(lines)
 
     def _select_active_tool(
         self,
         messages: list[Message],
-        agent_config: AgentConfig,
+        agent: BaseAgent,
     ) -> ToolDefinition | None:
-        """
-        TO-DO:
-        Decide which tool should be in scope for this turn, if any.
+        """Decide which tool should be in scope for this turn, if any.
 
-        Determine which tool (if any) should be active based on message history.
-
-        Returns None when the conversation is in a free-form phase (e.g.
-        greeting, small-talk before a task begins).
+        Returns first tool from the agent's own task definitions.
+        Real selection based on conversation history lands in a later sprint.
         """
-        raise NotImplementedError
+        tools = agent.get_task_definitions()
+        return tools[0] if tools else None
 
     async def _call_llm(
         self,
@@ -124,9 +180,7 @@ class ConversationOrchestrator:
         tool: ToolDefinition,
         context: dict[str, Any],
     ) -> dict[str, Any]:
-        """
-        TO-DO:
-        Execute a tool after the user has confirmed (if required).
+        """Execute a tool after the user has confirmed (if required).
 
         Delegates to the concrete BaseTool implementation in taskorbit.tools.
         Returns the tool's result payload.

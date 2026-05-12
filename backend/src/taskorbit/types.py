@@ -118,6 +118,10 @@ class ConversationResponse(BaseModel):
     tool_invoked: ToolDefinition | None = None
     requires_confirmation: bool = False
     confirmation_prompt: str = ""  # e.g. "I'll save your contact info. OK?"
+    selected_intent: str = ""
+    selected_agent: str = ""
+    status: str = "success"
+    error: str = ""
 
 
 # ---------------------------------------------------------------------------

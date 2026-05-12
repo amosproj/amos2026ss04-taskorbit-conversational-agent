@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
     elevenlabs_model: str = "eleven_multilingual_v2"
 
+    # --- LLM ---
+    llm_timeout_seconds: float = 10.0
+
     # --- LLM providers ---
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
