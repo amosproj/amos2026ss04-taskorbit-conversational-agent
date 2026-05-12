@@ -6,6 +6,20 @@
 
 ---
 
+
+## Product Goals
+
+### Product Vision
+
+Product Vision: TaskOrbit provides a domain-independent framework for building reliable conversational AI agents through declarative workflows and structured agent orchestration. The platform enables organizations to create configurable voice and chat agents that integrate STT, LLMs, TTS, and external APIs into unified conversational workflows.
+By standardizing conversational automation across different business domains, TaskOrbit helps companies reduce manual effort, streamline internal and external processes, and deploy scalable AI-driven assistants without building custom infrastructure from scratch.
+
+### Project Mission
+
+The mission of this project is to create an MVP for a Voice AI Agent platform. Within the given project time-frame, the team is committed to delivering a fully functional conversational interface supporting configurable single-agent and multi-agent workflows. 
+Core functionality will include the integration of STT for user input, a LLM backend for conversational processing and reasoning, agent orchestration capabilities, and TTS for audio output. The primary objective of this project is to provide a reliable and extensible end-to-end conversational system through the integration of these core components.
+
+
 ## Overview
 
 Production-ready streaming voice mode built on **React + Vite + TypeScript** (frontend), **FastAPI** (backend), and **LiveKit Cloud** (real-time audio + Agents framework). The pipeline is:
