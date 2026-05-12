@@ -45,7 +45,16 @@ async def synthesize_speech(request: TTSSynthesizeRequest) -> Response:
                 "xi-api-key": settings.elevenlabs_api_key,
                 "Content-Type": "application/json",
             },
-            json={"text": request.text, "model_id": model},
+            json={
+                "text": request.text,
+                "model_id": model,
+                "voice_settings": {
+                    "stability": 0.75,
+                    "similarity_boost": 0.75,
+                    "style": 0.0,
+                    "use_speaker_boost": True,
+                },
+            },
         )
 
     if not el_response.is_success:
