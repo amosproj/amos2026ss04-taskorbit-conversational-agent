@@ -60,6 +60,8 @@ export type VoiceCallApi = {
   appendAssistantTurn: (text: string) => void;
   /** Update an in-flight transcript turn by id (interim segments). */
   upsertTurnById: (id: string, role: "user" | "assistant", text: string) => void;
+  /** Remove a turn by id (e.g. discard a failed user turn). */
+  removeTurnById: (id: string) => void;
 };
 
 const CONNECTING_TIMEOUT_MS = 800;
@@ -136,6 +138,10 @@ export function useVoiceCall(): VoiceCallApi {
     },
     [],
   );
+
+  const removeTurnById = useCallback((id: string) => {
+    setTranscript((turns) => turns.filter((t) => t.id !== id));
+  }, []);
 
   const start = useCallback((options?: VoiceCallStartOptions) => {
     clearTimer();
@@ -261,5 +267,6 @@ export function useVoiceCall(): VoiceCallApi {
     appendUserTurn,
     appendAssistantTurn,
     upsertTurnById,
+    removeTurnById,
   };
 }

@@ -53,6 +53,7 @@ export function ConversationalChat() {
   const call = useVoiceCall();
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const lastUserTurnIdRef = useRef<string | null>(null);
 
   // Keep transcript rendering anchored to the latest turn.
   useEffect(() => {
@@ -67,11 +68,25 @@ export function ConversationalChat() {
 
   const handleSegment = useCallback(
     (segment: TranscriptionSegment) => {
-      // Interim segments share an id with their final segment, so
-      // upserting keeps the bubble in place and just updates its text.
-      // The final flag isn't surfaced in the UI yet, but is captured
-      // here so future work (e.g. greying out interim turns) can use it.
-      call.upsertTurnById(segment.id, segment.role, segment.text);
+      if (segment.role === "user") {
+        lastUserTurnIdRef.current = segment.id;
+        call.upsertTurnById(segment.id, "user", segment.text);
+        return;
+      }
+
+      // livekit-agents plays this when llm_node returns empty (no reply).
+      // Remove the user turn that triggered it — it was never processed.
+      if (
+        segment.isFinal &&
+        segment.text.toLowerCase().includes("i didn't get your message")
+      ) {
+        if (lastUserTurnIdRef.current) {
+          call.removeTurnById(lastUserTurnIdRef.current);
+          lastUserTurnIdRef.current = null;
+        }
+      }
+
+      call.upsertTurnById(segment.id, "assistant", segment.text);
     },
     [call],
   );
