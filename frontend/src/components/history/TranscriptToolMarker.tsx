@@ -14,8 +14,7 @@ function visualForFiring(firing: ToolFiring): MarkerVisual {
   switch (firing.type) {
     case "data_extraction": {
       const fieldCount = Object.keys(firing.values).length;
-      const summary =
-        fieldCount === 1 ? "saved 1 field" : `saved ${fieldCount} fields`;
+      const summary = fieldCount === 1 ? "saved 1 field" : `saved ${fieldCount} fields`;
       return { Icon: Wrench, summary };
     }
     case "end_call":

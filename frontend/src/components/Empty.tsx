@@ -31,9 +31,7 @@ export function Empty({ icon: Icon, title, description, className }: EmptyProps)
         <Icon className="size-5" />
       </span>
       <h3 className="text-base font-medium text-foreground">{title}</h3>
-      {description ? (
-        <p className="max-w-sm text-sm text-muted-foreground">{description}</p>
-      ) : null}
+      {description ? <p className="max-w-sm text-sm text-muted-foreground">{description}</p> : null}
     </div>
   );
 }

@@ -10,13 +10,7 @@ import { InCallControls } from "@/components/chat/InCallControls";
 import { PreCallDiagnostics } from "@/components/chat/PreCallDiagnostics";
 import { VoiceSessionBridge } from "@/components/chat/VoiceSessionBridge";
 import { TranscriptBubble } from "@/components/history/TranscriptBubble";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useVoiceCall } from "@/hooks/useVoiceCall";
 import type { TranscriptionSegment } from "@/hooks/useAgentTranscription";
@@ -114,9 +108,7 @@ export function ConversationalChat() {
             controller.signal,
           );
           call.appendAssistantTurn(reply);
-          const speakable =
-            reply.trim().length > 0 &&
-            !reply.startsWith("[Connection error");
+          const speakable = reply.trim().length > 0 && !reply.startsWith("[Connection error");
           if (speakable) {
             call.setPhase("speaking");
             try {
@@ -127,7 +119,6 @@ export function ConversationalChat() {
               });
             } catch (audioErr) {
               if ((audioErr as Error).name !== "AbortError") {
-                // eslint-disable-next-line no-console
                 console.warn("[ConversationalChat] ElevenLabs playback failed", audioErr);
               }
             }
@@ -135,9 +126,7 @@ export function ConversationalChat() {
           call.setPhase("idle_in_call");
         } catch (err) {
           if ((err as Error).name === "AbortError") return;
-          call.appendAssistantTurn(
-            `[Connection error: ${(err as Error).message}]`,
-          );
+          call.appendAssistantTurn(`[Connection error: ${(err as Error).message}]`);
           call.setPhase("idle_in_call");
         }
       });
@@ -150,8 +139,7 @@ export function ConversationalChat() {
   }, [call]);
 
   const handleApprove = useCallback(() => {
-    const followup =
-      "Thanks for confirming — I've saved that. Anything else?";
+    const followup = "Thanks for confirming — I've saved that. Anything else?";
     call.approveConfirmation(followup);
     void playSynthesizedSpeech(followup, {
       voiceId: agent.tts.voice_id,
@@ -200,12 +188,10 @@ export function ConversationalChat() {
         <p className="text-sm font-medium tracking-widest text-muted-foreground uppercase">
           Conversational agent
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          {appName}
-        </h1>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{appName}</h1>
         <p className="text-sm text-muted-foreground">
-          Start a voice session with the configured agent. Tap the mic
-          to speak, then Send your turn for a reply.
+          Start a voice session with the configured agent. Tap the mic to speak, then Send your turn
+          for a reply.
         </p>
       </header>
 
@@ -222,8 +208,7 @@ export function ConversationalChat() {
             <div className="space-y-1">
               <CardTitle>{agent.name}</CardTitle>
               <CardDescription>
-                Live call · transcript updates as the conversation
-                progresses.
+                Live call · transcript updates as the conversation progresses.
               </CardDescription>
             </div>
             <CallStatusIndicator status={call.status} agentName={agent.name} />
@@ -304,10 +289,7 @@ export function ConversationalChat() {
           audio={false}
           video={false}
           onError={(err) => {
-            if (
-              err.name === "NotAllowedError" ||
-              err.message.includes("Permission")
-            ) {
+            if (err.name === "NotAllowedError" || err.message.includes("Permission")) {
               call.setMicError(
                 "Microphone access was denied. Please allow microphone access to use voice.",
               );

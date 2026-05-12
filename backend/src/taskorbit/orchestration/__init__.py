@@ -61,7 +61,7 @@ class ConversationOrchestrator:
             text = f'[Backend echo] I received: "{combined}"'
         else:
             # text = f"Hello! I'm {request.agent_config.name}. How can I help you?"
-            text = f"I didn't get your message. Can you try again?"  # Shouldn't happen since the frontend only sends user messages
+            text = "I didn't get your message. Can you try again?"  # Shouldn't happen since the frontend only sends user messages
 
         return ConversationResponse(
             conversation_id=request.conversation_id,

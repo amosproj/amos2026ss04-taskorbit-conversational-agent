@@ -29,9 +29,7 @@ async def synthesize_speech(request: TTSSynthesizeRequest) -> Response:
     settings = get_settings()
 
     if not settings.elevenlabs_api_key:
-        raise HTTPException(
-            status_code=503, detail="ElevenLabs API key not configured."
-        )
+        raise HTTPException(status_code=503, detail="ElevenLabs API key not configured.")
 
     url = _ELEVENLABS_URL.format(
         voice_id=request.voice_id or settings.elevenlabs_voice_id,

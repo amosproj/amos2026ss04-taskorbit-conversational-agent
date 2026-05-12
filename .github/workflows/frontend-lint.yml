@@ -1,0 +1,85 @@
+# Frontend Linting workflow.
+#
+# Runs on every push and every pull request, on every branch.
+#
+# Pipeline stages (each in its own job for clear pass/fail visibility):
+#   1. install  — set up Node, restore npm cache, `npm ci`
+#   2. lint     — `npm run lint`         (ESLint v9, flat config)
+#   3. format   — `npm run format:check` (Prettier --check)
+#
+# Local equivalents (run from `frontend/`):
+#   npm install
+#   npm run lint
+#   npm run format:check
+
+name: Frontend Linting
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: frontend-lint-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  install:
+    name: "1. Install"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Bootstrap frontend environment
+        uses: ./.github/actions/frontend-bootstrap
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Verify Node toolchain
+        working-directory: frontend
+        run: node --version && npm --version
+
+  lint:
+    name: "2. Lint (ESLint)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: install
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Bootstrap frontend environment
+        uses: ./.github/actions/frontend-bootstrap
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Lint with ESLint
+        working-directory: frontend
+        run: npm run lint
+
+  format:
+    name: "3. Format (Prettier --check)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: lint
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Bootstrap frontend environment
+        uses: ./.github/actions/frontend-bootstrap
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Check formatting with Prettier
+        working-directory: frontend
+        run: npm run format:check

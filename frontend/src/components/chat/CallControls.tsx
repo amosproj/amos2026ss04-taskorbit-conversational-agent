@@ -28,12 +28,7 @@ type Props = {
   onRestart: () => void;
 };
 
-export function CallControls({
-  status,
-  onStart,
-  onSendText,
-  onRestart,
-}: Props) {
+export function CallControls({ status, onStart, onSendText, onRestart }: Props) {
   const [draft, setDraft] = useState("");
   const inputId = useId();
 
@@ -90,8 +85,7 @@ export function CallControls({
       <Card>
         <CardContent className="flex flex-col items-stretch gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
-            Call ended — the transcript and any extracted data are now
-            available in History.
+            Call ended — the transcript and any extracted data are now available in History.
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm" asChild>

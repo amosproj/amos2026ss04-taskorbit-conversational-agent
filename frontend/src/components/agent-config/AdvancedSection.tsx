@@ -56,8 +56,8 @@ export function AdvancedSection({ language, vad, onLanguageChange, onVadChange }
               Advanced
             </CardTitle>
             <CardDescription>
-              Optional language and voice-activity-detection settings. Each
-              section is omitted from the saved JSON unless enabled.
+              Optional language and voice-activity-detection settings. Each section is omitted from
+              the saved JSON unless enabled.
             </CardDescription>
           </div>
         </CardHeader>
@@ -99,7 +99,7 @@ function LanguageBlock({
   const enabled = !!value;
   const [draft, setDraft] = useState("");
 
-  const toggle = (next: boolean) => onChange(next ? value ?? LANGUAGE_DEFAULT : undefined);
+  const toggle = (next: boolean) => onChange(next ? (value ?? LANGUAGE_DEFAULT) : undefined);
 
   const addSupported = () => {
     if (!value) return;
@@ -233,7 +233,7 @@ function VadBlock({
   const idThreshold = useId();
   const enabled = !!value;
 
-  const toggle = (next: boolean) => onChange(next ? value ?? VAD_DEFAULT : undefined);
+  const toggle = (next: boolean) => onChange(next ? (value ?? VAD_DEFAULT) : undefined);
 
   return (
     <section className="rounded-lg border border-dashed border-border bg-muted/20 p-4">
@@ -244,8 +244,7 @@ function VadBlock({
             Voice activity detection
           </h3>
           <p className="text-xs text-muted-foreground">
-            Tunes when the agent treats the caller as having stopped speaking
-            so it can respond.
+            Tunes when the agent treats the caller as having stopped speaking so it can respond.
           </p>
         </div>
         <Field orientation="horizontal" className="sm:w-auto">
@@ -267,9 +266,7 @@ function VadBlock({
             <FieldLabel>Provider</FieldLabel>
             <Select
               value={value.provider}
-              onValueChange={(v) =>
-                onChange({ ...value, provider: v as VadConfig["provider"] })
-              }
+              onValueChange={(v) => onChange({ ...value, provider: v as VadConfig["provider"] })}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -300,8 +297,7 @@ function VadBlock({
               }
             />
             <FieldDescription>
-              How long the user can be silent before the agent considers their
-              turn over.
+              How long the user can be silent before the agent considers their turn over.
             </FieldDescription>
           </Field>
         </FieldGroup>

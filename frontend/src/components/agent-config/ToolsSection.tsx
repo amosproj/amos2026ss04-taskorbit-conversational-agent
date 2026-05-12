@@ -80,8 +80,8 @@ export function ToolsSection({ value, onChange }: Props) {
               Tools
             </CardTitle>
             <CardDescription>
-              Functions the LLM can invoke during a call — capture data, end
-              the call, or hand off to another agent.
+              Functions the LLM can invoke during a call — capture data, end the call, or hand off
+              to another agent.
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">

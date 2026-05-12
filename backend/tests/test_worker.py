@@ -51,9 +51,19 @@ def _make_ctx() -> tuple[MagicMock, dict[str, object]]:
     return ctx, registered
 
 
-def _data_packet(payload: bytes) -> MagicMock:
+def _data_packet(payload: bytes, participant_identity: str = "remote-user") -> MagicMock:
     packet = MagicMock()
     packet.data = payload
+    packet.participant = MagicMock()
+    packet.participant.identity = participant_identity
+    return packet
+
+
+def _server_packet(payload: bytes) -> MagicMock:
+    """Simulate a server-SDK packet where participant is None."""
+    packet = MagicMock()
+    packet.data = payload
+    packet.participant = None
     return packet
 
 
@@ -121,7 +131,6 @@ async def test_invalid_json_ignored(configured_settings: None) -> None:
     mock_agent.request_reply.assert_not_called()
 
 
-
 @pytest.mark.asyncio
 async def test_unknown_message_type_ignored(configured_settings: None) -> None:
     """A data packet with an unrecognised type should not trigger a reply."""
@@ -137,5 +146,24 @@ async def test_unknown_message_type_ignored(configured_settings: None) -> None:
 
     handler = registered["data_received"]
     handler(_data_packet(json.dumps({"type": "ping"}).encode()))
+
+    mock_agent.request_reply.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_server_packet_ignored(configured_settings: None) -> None:
+    """A packet with participant=None (server-SDK origin) should be silently ignored."""
+    ctx, registered = _make_ctx()
+    mock_session = AsyncMock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+    ):
+        await entrypoint(ctx)
+
+    handler = registered["data_received"]
+    handler(_server_packet(json.dumps({"type": "commit_turn"}).encode()))
 
     mock_agent.request_reply.assert_not_called()

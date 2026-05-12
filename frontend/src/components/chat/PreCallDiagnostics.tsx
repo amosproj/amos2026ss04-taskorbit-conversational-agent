@@ -67,10 +67,7 @@ export function PreCallDiagnostics() {
             <div key={check.label} className="flex items-center gap-2 text-sm">
               <span
                 aria-hidden
-                className={cn(
-                  "inline-block size-2.5 rounded-full",
-                  toneClasses[check.tone],
-                )}
+                className={cn("inline-block size-2.5 rounded-full", toneClasses[check.tone])}
               />
               <span className="font-medium">{check.label}</span>
               <span className="text-muted-foreground">
@@ -96,20 +93,14 @@ export function PreCallDiagnostics() {
             {showDetail ? "Hide" : "Show"} technical info
             <ChevronDown
               aria-hidden
-              className={cn(
-                "size-3 transition-transform",
-                showDetail && "rotate-180",
-              )}
+              className={cn("size-3 transition-transform", showDetail && "rotate-180")}
             />
           </button>
         </div>
         {showDetail ? (
           <dl className="grid grid-cols-1 gap-2 border-t pt-3 text-xs sm:grid-cols-[8rem_minmax(0,1fr)]">
             {checks.map((check) => (
-              <div
-                key={`${check.label}-detail`}
-                className="contents text-muted-foreground"
-              >
+              <div key={`${check.label}-detail`} className="contents text-muted-foreground">
                 <dt className="font-medium">{check.label}</dt>
                 <dd className="font-mono break-all">{check.detail}</dd>
               </div>
@@ -118,12 +109,8 @@ export function PreCallDiagnostics() {
             <dd className="font-mono break-all text-muted-foreground">
               {apiUrl || "(using Vite /api proxy)"}
             </dd>
-            <dt className="font-medium text-muted-foreground">
-              VITE_LIVEKIT_URL
-            </dt>
-            <dd className="font-mono break-all text-muted-foreground">
-              {livekitUrl || "(unset)"}
-            </dd>
+            <dt className="font-medium text-muted-foreground">VITE_LIVEKIT_URL</dt>
+            <dd className="font-mono break-all text-muted-foreground">{livekitUrl || "(unset)"}</dd>
           </dl>
         ) : null}
       </CardContent>

@@ -87,7 +87,7 @@ export function Layout() {
               aria-label="Sprint 2, in progress"
             >
               <span className="size-1.5 rounded-full bg-primary" aria-hidden />
-              Sprint 2 · In Progress
+              Sprint 3 · In Progress
             </span>
             <ModeToggle />
           </div>

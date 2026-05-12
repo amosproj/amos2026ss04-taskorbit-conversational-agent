@@ -14,11 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { fetchLiveKitToken } from "@/lib/livekitToken";
-import type {
-  CallStatus,
-  ConfirmationPromptState,
-  LiveTranscriptTurn,
-} from "@/types/callState";
+import type { CallStatus, ConfirmationPromptState, LiveTranscriptTurn } from "@/types/callState";
 
 export type VoiceCallStartOptions = {
   /** `AgentConfig`-shaped JSON for the worker (see `buildLiveKitWorkerMetadata`). */
@@ -80,11 +76,9 @@ function generateId(prefix: string): string {
 export function useVoiceCall(): VoiceCallApi {
   const [status, setStatus] = useState<CallStatus>("idle");
   const [transcript, setTranscript] = useState<LiveTranscriptTurn[]>([]);
-  const [confirmation, setConfirmation] =
-    useState<ConfirmationPromptState | null>(null);
+  const [confirmation, setConfirmation] = useState<ConfirmationPromptState | null>(null);
   const [conversationId, setConversationId] = useState<string>("");
-  const [livekitCredentials, setLivekitCredentials] =
-    useState<LiveKitCredentials | null>(null);
+  const [livekitCredentials, setLivekitCredentials] = useState<LiveKitCredentials | null>(null);
   const [micError, setMicError] = useState<string | null>(null);
 
   const timerRef = useRef<number | null>(null);
@@ -114,81 +108,71 @@ export function useVoiceCall(): VoiceCallApi {
   }, []);
 
   const appendAssistantTurn = useCallback((text: string) => {
-    setTranscript((t) => [
-      ...t,
-      { id: generateId("a"), role: "assistant", text },
-    ]);
+    setTranscript((t) => [...t, { id: generateId("a"), role: "assistant", text }]);
   }, []);
 
   // Used by the transcription hook for streaming interim segments —
   // the same segment id arrives multiple times while STT is processing,
   // each one with a longer text. Replace the existing turn rather than
   // appending a new one each time.
-  const upsertTurnById = useCallback(
-    (id: string, role: "user" | "assistant", text: string) => {
-      setTranscript((turns) => {
-        const existing = turns.findIndex((t) => t.id === id);
-        if (existing === -1) {
-          return [...turns, { id, role, text }];
-        }
-        const next = turns.slice();
-        next[existing] = { id, role, text };
-        return next;
-      });
-    },
-    [],
-  );
+  const upsertTurnById = useCallback((id: string, role: "user" | "assistant", text: string) => {
+    setTranscript((turns) => {
+      const existing = turns.findIndex((t) => t.id === id);
+      if (existing === -1) {
+        return [...turns, { id, role, text }];
+      }
+      const next = turns.slice();
+      next[existing] = { id, role, text };
+      return next;
+    });
+  }, []);
 
   const removeTurnById = useCallback((id: string) => {
     setTranscript((turns) => turns.filter((t) => t.id !== id));
   }, []);
 
-  const start = useCallback((options?: VoiceCallStartOptions) => {
-    clearTimer();
-    abortRef.current?.abort();
+  const start = useCallback(
+    (options?: VoiceCallStartOptions) => {
+      clearTimer();
+      abortRef.current?.abort();
 
-    const newConvId = generateConversationId();
-    setConversationId(newConvId);
-    setTranscript(
-      options?.greeting
-        ? [{ id: "greeting", role: "assistant", text: options.greeting }]
-        : [],
-    );
-    setConfirmation(null);
-    setLivekitCredentials(null);
-    setMicError(null);
-    setStatus("connecting");
+      const newConvId = generateConversationId();
+      setConversationId(newConvId);
+      setTranscript(
+        options?.greeting ? [{ id: "greeting", role: "assistant", text: options.greeting }] : [],
+      );
+      setConfirmation(null);
+      setLivekitCredentials(null);
+      setMicError(null);
+      setStatus("connecting");
 
-    const controller = new AbortController();
-    abortRef.current = controller;
+      const controller = new AbortController();
+      abortRef.current = controller;
 
-    void fetchLiveKitToken(
-      "user",
-      newConvId,
-      controller.signal,
-      options?.tokenMetadata,
-    )
-      .then((creds) => {
-        if (statusRef.current === "idle" || statusRef.current === "ended") {
-          return;
-        }
-        setLivekitCredentials({ url: creds.url, token: creds.token });
-      })
-      .catch((err) => {
-        if ((err as Error).name === "AbortError") return;
-        setMicError(`Could not start session: ${(err as Error).message}`);
-        setStatus("ended");
-      });
+      void fetchLiveKitToken("user", newConvId, controller.signal, options?.tokenMetadata)
+        .then((creds) => {
+          if (statusRef.current === "idle" || statusRef.current === "ended") {
+            return;
+          }
+          setLivekitCredentials({ url: creds.url, token: creds.token });
+        })
+        .catch((err) => {
+          if ((err as Error).name === "AbortError") return;
+          setMicError(`Could not start session: ${(err as Error).message}`);
+          setStatus("ended");
+        });
 
-    // Fallback: if room dispatch hasn't reported a phase yet within the
-    // connecting grace period, surface `idle_in_call` so the UI doesn't
-    // get stuck on the spinner. Real phase events from LiveKit will
-    // overwrite this almost immediately.
-    timerRef.current = window.setTimeout(() => {
-      if (statusRef.current !== "connecting") return;
-      setStatus("idle_in_call");
-    }, CONNECTING_TIMEOUT_MS);
-  }, [clearTimer]);
+      // Fallback: if room dispatch hasn't reported a phase yet within the
+      // connecting grace period, surface `idle_in_call` so the UI doesn't
+      // get stuck on the spinner. Real phase events from LiveKit will
+      // overwrite this almost immediately.
+      timerRef.current = window.setTimeout(() => {
+        if (statusRef.current !== "connecting") return;
+        setStatus("idle_in_call");
+      }, CONNECTING_TIMEOUT_MS);
+    },
+    [clearTimer],
+  );
 
   const end = useCallback(() => {
     clearTimer();

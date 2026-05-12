@@ -90,8 +90,7 @@ export function InCallControls({
   };
 
   const recording = status === "recording";
-  const textInputDisabled =
-    status !== "idle_in_call" && status !== "speaking";
+  const textInputDisabled = status !== "idle_in_call" && status !== "speaking";
 
   return (
     <Card>
@@ -122,23 +121,14 @@ export function InCallControls({
               <Wand2 data-icon="inline-start" />
               Demo confirmation
             </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={onEnd}
-              type="button"
-            >
+            <Button variant="destructive" size="sm" onClick={onEnd} type="button">
               <PhoneOff data-icon="inline-start" />
               End call
             </Button>
           </div>
         </div>
 
-        <Waveform
-          levelsRef={mic.levelsRef}
-          active={recording}
-          className="h-8 w-full"
-        />
+        <Waveform levelsRef={mic.levelsRef} active={recording} className="h-8 w-full" />
 
         <details className="group">
           <summary className="cursor-pointer text-sm text-muted-foreground transition-colors hover:text-foreground">
@@ -163,10 +153,7 @@ export function InCallControls({
               className="min-w-0 flex-1"
               disabled={textInputDisabled}
             />
-            <Button
-              type="submit"
-              disabled={textInputDisabled || !draft.trim()}
-            >
+            <Button type="submit" disabled={textInputDisabled || !draft.trim()}>
               <Send data-icon="inline-start" />
               Send
             </Button>

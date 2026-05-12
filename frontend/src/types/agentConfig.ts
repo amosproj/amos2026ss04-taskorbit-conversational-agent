@@ -141,8 +141,17 @@ export function emptyToolByType(type: ToolType): ToolDefinition {
     case "data_extraction":
       return { type, name: "", description: "", params: [] };
     case "end_call":
-      return { type, name: "end_call", description: "End the conversation gracefully when the goal is met." };
+      return {
+        type,
+        name: "end_call",
+        description: "End the conversation gracefully when the goal is met.",
+      };
     case "agent_transfer":
-      return { type, name: "transfer_to_agent", description: "Hand off the conversation to a specialised agent.", targets: [] };
+      return {
+        type,
+        name: "transfer_to_agent",
+        description: "Hand off the conversation to a specialised agent.",
+        targets: [],
+      };
   }
 }

@@ -6,19 +6,9 @@ import { TranscriptBubble } from "@/components/history/TranscriptBubble";
 import { TranscriptToolMarker } from "@/components/history/TranscriptToolMarker";
 import { Empty } from "@/components/Empty";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  MOCK_CONVERSATIONS,
-  type Conversation,
-  type ToolFiring,
-} from "@/lib/mockConversations";
+import { MOCK_CONVERSATIONS, type Conversation, type ToolFiring } from "@/lib/mockConversations";
 
 const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -40,9 +30,7 @@ function formatStartedAt(iso: string): string {
 function formatRelativeStart(iso: string): string {
   const now = new Date();
   const then = new Date(iso);
-  const diffDays = Math.round(
-    (startOfDay(now).getTime() - startOfDay(then).getTime()) / dayMs,
-  );
+  const diffDays = Math.round((startOfDay(now).getTime() - startOfDay(then).getTime()) / dayMs);
   const time = then.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
@@ -88,9 +76,7 @@ export function HistoryPage() {
   const detailRef = useRef<HTMLDivElement>(null);
 
   const selected: Conversation | null =
-    selectedId !== null
-      ? (MOCK_CONVERSATIONS.find((c) => c.id === selectedId) ?? null)
-      : null;
+    selectedId !== null ? (MOCK_CONVERSATIONS.find((c) => c.id === selectedId) ?? null) : null;
 
   const extractionRows: Array<[string, string | number | boolean]> = selected
     ? selected.tool_firings.flatMap((f) =>
@@ -115,12 +101,10 @@ export function HistoryPage() {
         <p className="text-sm font-medium tracking-widest text-muted-foreground uppercase">
           History
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          Conversation history
-        </h1>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Conversation history</h1>
         <p className="text-sm text-muted-foreground">
-          Past calls grouped by recency. Select one to inspect the transcript
-          and any data the agent collected during the call.
+          Past calls grouped by recency. Select one to inspect the transcript and any data the agent
+          collected during the call.
         </p>
       </header>
 
@@ -157,27 +141,19 @@ export function HistoryPage() {
                       {formatDuration(selected.duration_seconds)}
                     </CardDescription>
                   </div>
-                  <Badge variant="outline">
-                    {formatLanguage(selected.language)}
-                  </Badge>
+                  <Badge variant="outline">{formatLanguage(selected.language)}</Badge>
                 </div>
               </CardHeader>
               <CardContent className="pt-6">
                 <ScrollArea className="h-[min(50vh,28rem)] pr-3">
-                  <ul
-                    className="flex flex-col gap-4"
-                    aria-label="Transcript"
-                  >
+                  <ul className="flex flex-col gap-4" aria-label="Transcript">
                     {selected.transcript.map((turn) => {
                       const firings = firingsByTurn.get(turn.id) ?? [];
                       return (
                         <Fragment key={turn.id}>
                           <TranscriptBubble turn={turn} />
                           {firings.map((firing, i) => (
-                            <TranscriptToolMarker
-                              key={`${turn.id}-firing-${i}`}
-                              firing={firing}
-                            />
+                            <TranscriptToolMarker key={`${turn.id}-firing-${i}`} firing={firing} />
                           ))}
                         </Fragment>
                       );
@@ -201,8 +177,7 @@ export function HistoryPage() {
               <CardHeader>
                 <CardTitle className="text-base">Extracted data</CardTitle>
                 <CardDescription>
-                  Values the agent saved during the call via data extraction
-                  tools.
+                  Values the agent saved during the call via data extraction tools.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -210,12 +185,8 @@ export function HistoryPage() {
                   <dl className="flex flex-col gap-3">
                     {extractionRows.map(([key, value]) => (
                       <div key={key} className="flex flex-col gap-0.5">
-                        <dt className="text-xs text-muted-foreground">
-                          {key}
-                        </dt>
-                        <dd className="font-mono text-sm break-all">
-                          {String(value)}
-                        </dd>
+                        <dt className="text-xs text-muted-foreground">{key}</dt>
+                        <dd className="font-mono text-sm break-all">{String(value)}</dd>
                       </div>
                     ))}
                   </dl>

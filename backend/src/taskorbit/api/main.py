@@ -64,9 +64,9 @@ def create_app() -> FastAPI:
 
     # Add routers here as we build more apis
     app.include_router(health.router)
-    app.include_router(conversations.router) #/v1/conversations/process
-    app.include_router(livekit.router) #/v1/livekit/token
-    app.include_router(tts.router) #/v1/tts/synthesize
+    app.include_router(conversations.router)  # /v1/conversations/process
+    app.include_router(livekit.router)  # /v1/livekit/token
+    app.include_router(tts.router)  # /v1/tts/synthesize
 
     return app
 

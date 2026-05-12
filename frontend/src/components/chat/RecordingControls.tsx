@@ -21,18 +21,8 @@ type Props = {
 
 export function RecordingControls({ onStop, onSend, disabled }: Props) {
   return (
-    <div
-      className="flex flex-wrap items-center gap-2"
-      role="group"
-      aria-label="Recording controls"
-    >
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={onStop}
-        disabled={disabled}
-      >
+    <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Recording controls">
+      <Button type="button" variant="outline" size="sm" onClick={onStop} disabled={disabled}>
         <Pause data-icon="inline-start" className="size-3.5" />
         Pause
       </Button>
