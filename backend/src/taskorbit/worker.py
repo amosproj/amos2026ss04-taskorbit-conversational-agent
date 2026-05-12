@@ -35,6 +35,19 @@ async def entrypoint(ctx: JobContext) -> None:
     session = build_agent_session(settings=cfg)
     agent = build_default_agent(settings=cfg)
 
+    async def _commit_and_reply() -> None:
+        # Small delay so Deepgram can flush its final transcription segment
+        # into the ChatContext before generate_reply() reads it. Without this,
+        # the last word(s) of the utterance may be missing from the reply.
+        await asyncio.sleep(0.3)
+        try:
+            result = session.generate_reply()
+            if asyncio.iscoroutine(result):
+                await result
+            logger.info("worker: generate_reply triggered")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("worker: generate_reply failed: %s", exc)
+
     # When the frontend Send button is clicked, useMicRecorder.sendUtterance()
     # publishes {"type": "commit_turn"} over the data channel. Handling it here
     # lets the agent start processing immediately instead of waiting for VAD
@@ -46,14 +59,8 @@ async def entrypoint(ctx: JobContext) -> None:
         except Exception:  # noqa: BLE001
             return
         if msg.get("type") == "commit_turn":
-            try:
-                agent.request_reply()
-                result = session.generate_reply()
-                if asyncio.iscoroutine(result):
-                    asyncio.create_task(result)
-                logger.info("worker: generate_reply triggered")
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("worker: generate_reply failed: %s", exc)
+            agent.request_reply()
+            asyncio.create_task(_commit_and_reply())
 
     # sync_transcription=False: publish agent transcript immediately instead of
     # timing it to audio playback, so text appears before/with audio in the UI.

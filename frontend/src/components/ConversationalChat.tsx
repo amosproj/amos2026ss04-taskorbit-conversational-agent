@@ -74,14 +74,15 @@ export function ConversationalChat() {
         return;
       }
 
-      // livekit-agents plays this when llm_node returns empty (no reply).
-      // Remove the user turn that triggered it — it was never processed.
-      if (
-        segment.isFinal &&
-        segment.text.toLowerCase().includes("i didn't get your message")
-      ) {
-        if (lastUserTurnIdRef.current) {
-          call.removeTurnById(lastUserTurnIdRef.current);
+      if (segment.isFinal) {
+        if (segment.text.toLowerCase().includes("i didn't get your message")) {
+          // livekit-agents failure — discard the pending user turn
+          if (lastUserTurnIdRef.current) {
+            call.removeTurnById(lastUserTurnIdRef.current);
+            lastUserTurnIdRef.current = null;
+          }
+        } else {
+          // Successful response — user turn is confirmed, stop tracking it
           lastUserTurnIdRef.current = null;
         }
       }
