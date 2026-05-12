@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime
 import structlog
-from .models import User, ChatHistory, Conversation
+from .models import User, Conversation, ConversationMessage
 
 logger = structlog.get_logger()
 
@@ -117,117 +117,120 @@ def delete_user(db: Session, user_id: int) -> bool:
         return False
 
 
-# ============ CHAT HISTORY CRUD ============
+# ============ CONVERSATION MESSAGE CRUD ============
 
-def get_chat_history(db: Session, history_id: int) -> ChatHistory | None:
-    """Get a chat history entry by ID."""
+def get_conversation_message(db: Session, message_id: int) -> ConversationMessage | None:
+    """Get a conversation message by ID."""
     try:
-        return db.query(ChatHistory).filter(ChatHistory.id == history_id).first()
+        return db.query(ConversationMessage).filter(ConversationMessage.id == message_id).first()
     except SQLAlchemyError as e:
-        logger.error("get_chat_history_failed", error=str(e))
+        logger.error("get_conversation_message_failed", error=str(e))
         return None
 
 
-def get_chat_histories_by_user(
-    db: Session,
-    user_id: int,
-    skip: int = 0,
-    limit: int = 100
-) -> list[ChatHistory]:
-    """Get all chat history entries for a user."""
-    try:
-        return (
-            db.query(ChatHistory)
-            .filter(ChatHistory.user_id == user_id)
-            .order_by(ChatHistory.timestamp.desc())
-            .offset(skip)
-            .limit(limit)
-            .all()
-        )
-    except SQLAlchemyError as e:
-        logger.error("get_chat_histories_by_user_failed", error=str(e))
-        return []
-
-
-def get_chat_histories_by_conversation(
+def get_messages_by_conversation(
     db: Session,
     conversation_id: str,
     skip: int = 0,
     limit: int = 100
-) -> list[ChatHistory]:
-    """Get all chat history entries for a conversation."""
+) -> list[ConversationMessage]:
+    """Get all messages for a conversation."""
     try:
         return (
-            db.query(ChatHistory)
-            .filter(ChatHistory.conversation_id == conversation_id)
-            .order_by(ChatHistory.timestamp.asc())
+            db.query(ConversationMessage)
+            .filter(ConversationMessage.conversation_id == conversation_id)
+            .order_by(ConversationMessage.created_at.asc())
             .offset(skip)
             .limit(limit)
             .all()
         )
     except SQLAlchemyError as e:
-        logger.error("get_chat_histories_by_conversation_failed", error=str(e))
+        logger.error("get_messages_by_conversation_failed", error=str(e))
         return []
 
 
-def create_chat_history(
+def get_messages_by_user(
     db: Session,
     user_id: int,
+    skip: int = 0,
+    limit: int = 100
+) -> list[ConversationMessage]:
+    """Get all messages for a user."""
+    try:
+        return (
+            db.query(ConversationMessage)
+            .filter(ConversationMessage.user_id == user_id)
+            .order_by(ConversationMessage.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+    except SQLAlchemyError as e:
+        logger.error("get_messages_by_user_failed", error=str(e))
+        return []
+
+
+def create_conversation_message(
+    db: Session,
     conversation_id: str,
     role: str,
-    message: str
-) -> ChatHistory | None:
-    """Create a new chat history entry."""
+    content: str,
+    user_id: int | None = None
+) -> ConversationMessage | None:
+    """Create a new conversation message."""
     try:
-        db_entry = ChatHistory(
-            user_id=user_id,
+        db_message = ConversationMessage(
             conversation_id=conversation_id,
+            user_id=user_id,
             role=role,
-            message=message
+            content=content
         )
-        db.add(db_entry)
+        db.add(db_message)
         db.commit()
-        db.refresh(db_entry)
-        return db_entry
+        db.refresh(db_message)
+        return db_message
     except SQLAlchemyError as e:
-        logger.error("create_chat_history_failed", error=str(e))
+        logger.error("create_conversation_message_failed", error=str(e))
         db.rollback()
         return None
 
 
-def delete_chat_history(db: Session, history_id: int) -> bool:
-    """Delete a chat history entry by ID."""
+def delete_conversation_message(db: Session, message_id: int) -> bool:
+    """Delete a conversation message by ID."""
     try:
-        entry = get_chat_history(db, history_id)
-        if not entry:
+        message = get_conversation_message(db, message_id)
+        if not message:
             return False
-        db.delete(entry)
+        db.delete(message)
         db.commit()
         return True
     except SQLAlchemyError as e:
-        logger.error("delete_chat_history_failed", error=str(e))
+        logger.error("delete_conversation_message_failed", error=str(e))
         db.rollback()
         return False
 
 
 # ============ CONVERSATION HELPERS ============
 
-def get_conversation_messages_with_history(
+def get_conversation_messages_formatted(
     db: Session,
     conversation_id: str
 ) -> list[dict]:
     """
-    Get all messages for a conversation.
-    Returns a list of dicts with role and content.
+    Get all messages for a conversation formatted as dicts.
+    Returns a list of dicts with role, content, user_id, and created_at.
     """
     try:
-        messages = (
-            db.query(ChatHistory)
-            .filter(ChatHistory.conversation_id == conversation_id)
-            .order_by(ChatHistory.timestamp.asc())
-            .all()
-        )
-        return [{"role": m.role, "content": m.message} for m in messages]
+        messages = get_messages_by_conversation(db, conversation_id)
+        return [
+            {
+                "role": m.role,
+                "content": m.content,
+                "user_id": m.user_id,
+                "created_at": m.created_at.isoformat() if m.created_at else None
+            }
+            for m in messages
+        ]
     except SQLAlchemyError as e:
-        logger.error("get_conversation_messages_with_history_failed", error=str(e))
+        logger.error("get_conversation_messages_formatted_failed", error=str(e))
         return []
