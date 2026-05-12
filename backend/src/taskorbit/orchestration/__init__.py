@@ -46,27 +46,22 @@ class ConversationOrchestrator:
         end-to-end. Replace with _select_active_tool → _build_system_prompt
         → _call_llm → _dispatch_tool when the LLM integration lands.
         """
-        last_user = next(
-            (m for m in reversed(request.messages) if m.role == MessageRole.USER),
-            None,
-        )
-        # return response on the frontend
+        # Collect only the user messages from the current turn — everything
+        # after the last assistant message. This resets the "buffer" each
+        # time Send is hit, so previous turns are not re-echoed.
+        current_turn: list[Message] = []
+        for m in reversed(request.messages):
+            if m.role == MessageRole.ASSISTANT:
+                break
+            if m.role == MessageRole.USER:
+                current_turn.insert(0, m)
 
-        if last_user:
-            """
-            TO-DO: replace with actual LLM response once implemented.
-            For now we just echo the user's last message to confirm the pipeline is
-            working end-to-end."""
-
-            text = f'[Backend echo] I received: "{last_user.content}"'
-
+        if current_turn:
+            combined = " ".join(m.content for m in current_turn)
+            text = f'[Backend echo] I received: "{combined}"'
         else:
-            """TO-DO: handle edge case where no user message is found.
-            This shouldn't happen in normal flow since the frontend should
-            always send the user's message as part of the ConversationRequest,
-            but we should still handle it just in case."""
-
-            text = f"Hello! I'm {request.agent_config.name}. How can I help you?"
+            # text = f"Hello! I'm {request.agent_config.name}. How can I help you?"
+            text = f"I didn't get your message. Can you try again?"  # Shouldn't happen since the frontend only sends user messages
 
         return ConversationResponse(
             conversation_id=request.conversation_id,

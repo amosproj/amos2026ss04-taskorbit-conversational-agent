@@ -15,10 +15,12 @@ The companion piece is the system architecture documented in
 the token issuance flow described here is the "client + realtime layer"
 of that diagram.
 
-> **Scope.** This is the *infrastructure* slice. Audio publish/subscribe
-> over LiveKit lives in tickets #14 (STT) and #15 (TTS); the agent worker
-> that joins rooms server-side lives in `backend/src/taskorbit/livekit_agent/`
-> and is owned by a downstream ticket.
+> **Scope.** This document covers the LiveKit infrastructure setup.
+> Voice can use either **(A)** a **LiveKit Cloud agent** (dispatch id
+> such as `CA_...`, set as `LIVEKIT_AGENT_DISPATCH_NAME` — no local worker),
+> or **(B)** the repo's **`taskorbit-worker`** (`poetry run taskorbit-worker dev`
+> or `docker compose --profile local-worker up`). See
+> [Agent dispatch](https://docs.livekit.io/agents/server/agent-dispatch/).
 
 ---
 
@@ -74,6 +76,10 @@ Then open `backend/.env` and fill in the LiveKit section:
 LIVEKIT_URL=wss://your-project.livekit.cloud
 LIVEKIT_API_KEY=APIxxxxxxxxxxxxx
 LIVEKIT_API_SECRET=your-long-secret-string
+
+# Optional — LiveKit Cloud agent dispatch (Dashboard / CLI agent id, often CA_...).
+# When set, tokens embed RoomAgentDispatch and you do not need taskorbit-worker.
+# LIVEKIT_AGENT_DISPATCH_NAME=CA_nBrjReA5YgFE
 ```
 
 **Format rules:** no quotes around the values, no spaces around `=`, no
