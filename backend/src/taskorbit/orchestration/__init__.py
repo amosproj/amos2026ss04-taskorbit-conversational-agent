@@ -17,7 +17,10 @@ Flow per message:
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from taskorbit.agents import BaseAgent
 
 import structlog
 
@@ -49,7 +52,7 @@ class ConversationOrchestrator:
                 (m for m in reversed(request.messages) if m.role == MessageRole.USER),
                 None,
             )
-            if not last_user:
+            if not last_user or not last_user.content.strip():
                 raise ValueError("No user message found in request.")
 
             # 1. Detect intent (mocked)
@@ -69,7 +72,7 @@ class ConversationOrchestrator:
             )
 
             # 3. Select active tool
-            active_tool = self._select_active_tool(request.messages, request.agent_config)
+            active_tool = self._select_active_tool(request.messages, agent)
 
             # 4. Build system prompt
             system_prompt = self._build_system_prompt(request.agent_config, active_tool)
@@ -77,7 +80,7 @@ class ConversationOrchestrator:
             # 5. Call LLM with a 10-second timeout
             llm_text = await asyncio.wait_for(
                 self._call_llm(system_prompt, request.messages),
-                timeout=10.0,
+                timeout=self._settings.llm_timeout_seconds,
             )
 
             return ConversationResponse(
@@ -136,11 +139,12 @@ class ConversationOrchestrator:
     def _select_active_tool(
         self,
         messages: list[Message],
-        agent_config: AgentConfig,
+        agent: BaseAgent,
     ) -> ToolDefinition | None:
-        # Returns first available tool as active scope.
+        # Returns first tool from the agent's own task definitions.
         # Real selection based on conversation history lands in a later sprint.
-        return agent_config.tools[0] if agent_config.tools else None
+        tools = agent.get_task_definitions()
+        return tools[0] if tools else None
 
     async def _call_llm(
         self,

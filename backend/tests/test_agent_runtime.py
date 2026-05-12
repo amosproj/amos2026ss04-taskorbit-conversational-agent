@@ -187,3 +187,13 @@ async def test_process_message_error_reply_is_user_friendly() -> None:
     )
     response = await ConversationOrchestrator().process_message(request)
     assert len(response.reply.content) > 0
+
+
+async def test_process_message_empty_content_returns_error() -> None:
+    request = ConversationRequest(
+        conversation_id="conv-err-4",
+        agent_config=_make_config(),
+        messages=[Message(role=MessageRole.USER, content="   ")],
+    )
+    response = await ConversationOrchestrator().process_message(request)
+    assert response.status == "error"

@@ -66,8 +66,11 @@ async def test_process_message_timeout_handling() -> None:
         await asyncio.sleep(2.0)
         return "too slow"
 
-    with patch.object(ConversationOrchestrator, "_call_llm", side_effect=slow_llm):
-        # Temporarily reduce timeout for the test
-        with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError):
+    def raise_timeout(coro: Any, **kwargs: Any) -> Any:
+        coro.close()
+        raise asyncio.TimeoutError
+
+    with patch.object(ConversationOrchestrator, "_call_llm", new=slow_llm):
+        with patch("asyncio.wait_for", side_effect=raise_timeout):
             response = await orch.process_message(_make_request())
             assert "trouble connecting to my brain" in response.reply.content
