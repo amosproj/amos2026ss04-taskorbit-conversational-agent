@@ -29,9 +29,13 @@ from .errors import (
 )
 from .messages import to_gemini_contents
 
-# HTTP timeout in milliseconds — kept slightly under the orchestrator's outer
-# asyncio.wait_for(_call_llm, timeout=10.0). HttpOptions uses millis.
-_REQUEST_TIMEOUT_MS = 8000
+# HTTP timeout in milliseconds. Google enforces a minimum of 10000ms
+# (10s) on this option — anything lower is rejected with HTTP 400
+# INVALID_ARGUMENT. This sits at the same boundary as the orchestrator's
+# outer asyncio.wait_for(_call_llm, timeout=10.0); the outer wait races
+# the inner timeout but in practice that's fine — either way the call
+# fails fast at the 10s mark.
+_REQUEST_TIMEOUT_MS = 10000
 
 _log = get_logger(__name__)
 
