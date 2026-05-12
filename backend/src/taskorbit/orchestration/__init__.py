@@ -23,6 +23,7 @@ from taskorbit.types import (
     AgentConfig,
     ConversationRequest,
     ConversationResponse,
+    LLMConfig,
     Message,
     MessageRole,
     ToolDefinition,
@@ -101,15 +102,22 @@ class ConversationOrchestrator:
         self,
         system_prompt: str,
         messages: list[Message],
+        llm_config: LLMConfig,
     ) -> str:
-        """
-        TO-DO:
-        Call/Route to the LLM provider configured in settings (Open AI etc.).
+        """Call the LLM provider specified by ``llm_config`` and return its text.
 
-        Returns the raw assistant text. Tool-call parsing happens in the
-        caller so this method stays provider-agnostic.
+        Routes to the right concrete client via the factory in
+        ``integrations/llm/factory.py``. The same-language instruction is
+        appended to the system prompt before delegation so every provider
+        receives the multilingual directive consistently. Tool-call parsing
+        happens in the caller so this method stays provider-agnostic.
         """
-        raise NotImplementedError
+        from taskorbit.integrations.llm.factory import get_llm_client
+        from taskorbit.integrations.llm.prompts import with_same_language_instruction
+
+        augmented_prompt = with_same_language_instruction(system_prompt)
+        client = get_llm_client(llm_config, settings=self._settings)
+        return await client.generate(augmented_prompt, messages, llm_config)
 
     async def _dispatch_tool(
         self,
