@@ -21,6 +21,7 @@ from typing import Any
 
 from livekit.agents import AgentSession
 from livekit.plugins import deepgram, elevenlabs, openai, silero
+from livekit.plugins.elevenlabs import VoiceSettings
 
 from taskorbit.config import Settings, get_settings
 from taskorbit.livekit_agent.llm import OrchestratorAgent
@@ -56,6 +57,13 @@ def build_agent_session(
             api_key=cfg.elevenlabs_api_key,
             voice_id=cfg.elevenlabs_voice_id,
             model=cfg.elevenlabs_model,
+            voice_settings=VoiceSettings(
+                stability=0.75,
+                similarity_boost=0.75,
+                style=0.0,
+                speed=1.0,
+                use_speaker_boost=True,
+            ),
         ),
         # Push-to-talk: only reply when generate_reply() is called explicitly.
         # "manual" endpointing disables VAD/silence auto-trigger.

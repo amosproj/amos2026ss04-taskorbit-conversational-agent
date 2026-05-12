@@ -52,6 +52,7 @@ async def synthesize_speech(request: TTSSynthesizeRequest) -> Response:
                     "stability": 0.75,
                     "similarity_boost": 0.75,
                     "style": 0.0,
+                    "speed": 1.0,
                     "use_speaker_boost": True,
                 },
             },
