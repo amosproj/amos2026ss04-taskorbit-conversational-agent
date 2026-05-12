@@ -1,3 +1,4 @@
+import { LiveKitRoom, RoomAudioRenderer } from "@livekit/components-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AgentIdentityCard } from "@/components/chat/AgentIdentityCard";
@@ -15,12 +16,16 @@ import {
 } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { sendMessage } from "@/lib/conversationApi";
+import { fetchLiveKitToken } from "@/lib/livekitToken";
+import { synthesizeSpeech } from "@/lib/ttsApi";
 import { JOHN_DOE_AGENT } from "@/lib/mockAgents";
 import type {
   CallStatus,
   ConfirmationPromptState,
   LiveTranscriptTurn,
 } from "@/types/callState";
+
+type LiveKitCredentials = { url: string; token: string };
 
 const CONNECTING_DELAY_MS = 800;
 const SPEAKING_DELAY_MS = 2600;
@@ -60,9 +65,14 @@ export function ConversationalChat() {
   const [confirmation, setConfirmation] =
     useState<ConfirmationPromptState | null>(null);
   const [conversationId, setConversationId] = useState<string>("");
+  const [livekitCredentials, setLivekitCredentials] =
+    useState<LiveKitCredentials | null>(null);
 
   const timerRef = useRef<number | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+  // Holds the unlocked AudioContext created on the first user gesture so
+  // subsequent async audio.play() calls are not blocked by autoplay policy.
+  const audioCtxRef = useRef<AudioContext | null>(null);
   // Mirror status in a ref so async callbacks can read the latest phase
   // without going stale across rapid transitions.
   const statusRef = useRef<CallStatus>(status);
@@ -137,6 +147,29 @@ export function ConversationalChat() {
           if (statusRef.current !== "thinking") return;
           appendAssistantTurn(reply);
           setStatus("speaking");
+
+          // Synthesize and play TTS audio via the pre-unlocked AudioContext.
+          // Non-blocking — a failure here only silences audio; the text
+          // reply is already visible.
+          void synthesizeSpeech(reply, controller.signal)
+            .then(async (audioUrl) => {
+              const ctx = audioCtxRef.current;
+              console.log("[TTS] audioUrl:", audioUrl, "ctx state:", ctx?.state);
+              if (!ctx) return;
+              const arrayBuffer = await fetch(audioUrl).then((r) =>
+                r.arrayBuffer(),
+              );
+              console.log("[TTS] arrayBuffer byteLength:", arrayBuffer.byteLength);
+              URL.revokeObjectURL(audioUrl);
+              const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+              console.log("[TTS] decoded duration:", audioBuffer.duration);
+              const source = ctx.createBufferSource();
+              source.buffer = audioBuffer;
+              source.connect(ctx.destination);
+              source.start();
+            })
+            .catch((err) => console.error("[TTS] playback error:", err));
+
           timerRef.current = window.setTimeout(() => {
             if (statusRef.current !== "speaking") return;
             setStatus("listening");
@@ -157,11 +190,30 @@ export function ConversationalChat() {
   const handleStart = useCallback(() => {
     clearTimer();
     abortRef.current?.abort();
+
+    // Create (or resume) the AudioContext here while we are inside a user
+    // gesture so the browser permits audio playback later in async callbacks.
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new AudioContext();
+    } else if (audioCtxRef.current.state === "suspended") {
+      void audioCtxRef.current.resume();
+    }
+
     const newConvId = generateConversationId();
     setConversationId(newConvId);
     setTranscript([]);
     setConfirmation(null);
+    setLivekitCredentials(null);
     setStatus("connecting");
+
+    // Fetch a LiveKit token so the browser can receive TTS audio from the
+    // agent worker. Runs in parallel with the connecting timer; a failure
+    // here only disables audio — the text fallback continues to work.
+    void fetchLiveKitToken("user", newConvId).then((creds) => {
+      if (statusRef.current === "idle" || statusRef.current === "ended") return;
+      setLivekitCredentials({ url: creds.url, token: creds.token });
+    });
+
     timerRef.current = window.setTimeout(() => {
       if (statusRef.current !== "connecting") return;
       appendAssistantTurn(agent.first_message.message);
@@ -173,6 +225,7 @@ export function ConversationalChat() {
     clearTimer();
     abortRef.current?.abort();
     setConfirmation(null);
+    setLivekitCredentials(null);
     setStatus("ended");
   }, [clearTimer]);
 
@@ -182,6 +235,7 @@ export function ConversationalChat() {
     setTranscript([]);
     setConversationId("");
     setConfirmation(null);
+    setLivekitCredentials(null);
     setStatus("idle");
   }, [clearTimer]);
 
@@ -324,6 +378,19 @@ export function ConversationalChat() {
           />
         )}
       </div>
+
+      {/* Renders no visible UI — auto-plays all remote audio tracks from the
+          agent worker so TTS audio is heard without additional wiring. Use this on later stages */}
+      {livekitCredentials !== null && (
+        <LiveKitRoom
+          serverUrl={livekitCredentials.url}
+          token={livekitCredentials.token}
+          connect
+          audio={false}
+        >
+          <RoomAudioRenderer />
+        </LiveKitRoom>
+      )}
     </main>
   );
 }
