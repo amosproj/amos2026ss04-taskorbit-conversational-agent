@@ -25,17 +25,23 @@ export type LiveKitTokenResponse = {
  * @param identity - Stable participant identity (e.g. user id or `"dev-user"`)
  * @param room     - LiveKit room name to join
  * @param signal   - Optional AbortSignal to cancel the in-flight request
+ * @param metadata - Optional JSON object embedded in the participant JWT for the worker
  * @throws Error with the backend's `detail` message when the response is non-2xx.
  */
 export async function fetchLiveKitToken(
   identity: string,
   room: string,
   signal?: AbortSignal,
+  metadata?: Record<string, unknown>,
 ): Promise<LiveKitTokenResponse> {
   const res = await fetch("/api/v1/livekit/token", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ identity, room }),
+    body: JSON.stringify({
+      identity,
+      room,
+      ...(metadata !== undefined ? { metadata } : {}),
+    }),
     signal,
   });
 

@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "taskorbit-backend"
 version = "0.1.0"
-description = "TaskOrbit Conversational Agent — backend (orchestration, LiveKit voice worker, persistence)"
+description = "TaskOrbit Conversational Agent — backend (orchestration, LiveKit token API, persistence)"
 authors = ["AMOS Team SS2026 <amosproj@cs.fau.de>"]
 license = "MIT"
 readme = "README.md"
@@ -50,7 +50,7 @@ pre-commit = "^4.0.0"
 
 [tool.poetry.scripts]
 taskorbit-api = "taskorbit.cli:run_api"
-taskorbit-worker = "taskorbit.livekit_agent:run_worker"
+taskorbit-worker = "taskorbit.worker:run_worker"
 
 [build-system]
 requires = ["poetry-core"]

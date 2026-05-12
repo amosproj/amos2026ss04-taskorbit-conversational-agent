@@ -44,6 +44,13 @@ class Settings(BaseSettings):
     livekit_url: str = ""
     livekit_api_key: str = ""
     livekit_api_secret: str = ""
+    # When set (e.g. LiveKit Cloud agent id ``CA_...``), minted tokens include
+    # ``RoomAgentDispatch`` so LiveKit starts that cloud agent in the room.
+    # Optional per-request override on the token API.
+    livekit_agent_dispatch_name: str = ""
+    # Same intent as ``LIVEKIT_AGENT_DISPATCH_NAME``; some dashboards label the
+    # field "agent name". If only this is set, it is used as the dispatch target.
+    livekit_agent_name: str = ""
 
     # --- Deepgram (STT) ---
     deepgram_api_key: str = ""
@@ -52,7 +59,7 @@ class Settings(BaseSettings):
 
     # --- ElevenLabs (TTS) ---
     elevenlabs_api_key: str = ""
-    elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM" #Rachel (this is configurable)
+    elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
     elevenlabs_model: str = "eleven_multilingual_v2"
 
     # --- LLM providers ---

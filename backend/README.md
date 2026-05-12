@@ -6,9 +6,9 @@ exactly:
 
 | Module | Status | Role |
 |---|---|---|
-| `api/` | implemented | FastAPI HTTP layer (health endpoint today) |
-| `livekit_agent/` | stub | LiveKit agent worker — joins rooms, runs the voice pipeline |
-| `orchestration/` | stub | Routes the conversation, plans workflows, dispatches tools |
+| `api/` | implemented | FastAPI HTTP layer (health, conversations, livekit token, tts) |
+| `livekit_agent/` | implemented | LiveKit agent worker — joins rooms, runs Silero VAD + Deepgram STT + orchestrator + ElevenLabs TTS |
+| `orchestration/` | stub (echo) | Routes the conversation, plans workflows, dispatches tools |
 | `agents/` | stub | Task-specific agents (technical, sales, …) |
 | `tools/` | stub | Tool implementations exposed to the LLM |
 | `integrations/` | stub | Adapters to Meisterwerk and other external APIs |
@@ -38,11 +38,53 @@ the venv lives at `backend/.venv/`.
 
 ## Running
 
+The backend has **two long-running processes**: the HTTP API and the
+LiveKit voice-agent worker. Both must be running for end-to-end voice
+to work; the API alone is enough for the typed text fallback.
+
 | Command | What it does | Hot reload |
 |---|---|---|
-| `poetry run taskorbit-api` | Starts FastAPI on `:8000` | yes (uvicorn `--reload` in dev) |
+| `poetry run taskorbit-api` | Starts FastAPI on `:8000` (token issuance + REST). | yes (uvicorn `--reload` in dev) |
+| `poetry run taskorbit-worker dev` | Connects to LiveKit Cloud and serves voice jobs. | yes (livekit-agents CLI watch) |
+| `poetry run taskorbit-worker start` | Same worker, production mode (no watcher). | no |
 
+The worker reads `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`,
+`DEEPGRAM_API_KEY`, `ELEVENLABS_API_KEY`, and `ELEVENLABS_VOICE_ID`
+from `.env`. Without those, `poetry run taskorbit-worker dev` exits
+immediately.
 
+**LiveKit Cloud agent instead of this worker:** set
+`LIVEKIT_AGENT_DISPATCH_NAME` to your cloud agent id (e.g. `CA_...`) in
+`backend/.env`. The token endpoint then embeds
+[agent dispatch](https://docs.livekit.io/agents/server/agent-dispatch/)
+in the JWT. You can skip running `taskorbit-worker`, and use plain
+`docker compose up` (the compose file puts the worker behind the
+`local-worker` profile).
+
+Run them in two terminals during development, or use
+`docker compose up` from the repository root to start postgres + api +
+worker + frontend together.
+
+### End-to-end voice (local)
+
+1. Copy and fill `backend/.env` and `frontend/.env.local` (see `.env.example` files).
+2. Start services: `docker compose up --build` **or** run `taskorbit-api`, `taskorbit-worker dev`, and `npm run dev` separately.
+3. Open the app, click **Start session**, allow the microphone, tap the mic, speak, then **Send**.
+
+### Voice pipeline
+
+The worker entrypoint (see `src/taskorbit/livekit_agent/worker.py`)
+attaches an `AgentSession` to every LiveKit room our token endpoint
+mints. The session wires:
+
+```
+mic audio → Silero VAD → Deepgram STT → OrchestratorAgent.llm_node → ElevenLabs TTS → speaker
+```
+
+`OrchestratorAgent` (in `livekit_agent/llm.py`) is the Agent subclass
+that bridges `AgentSession` to `ConversationOrchestrator`. The
+orchestrator is currently an echo stub — wiring a real LLM is a single
+edit there; nothing in the agent worker has to change.
 
 ---
 
@@ -64,8 +106,8 @@ backend/
 │       ├── api/
 │       │   ├── main.py      # FastAPI app factory
 │       │   └── health.py
-│       ├── livekit_agent/   # stub
-│       ├── orchestration/   # stub
+│       ├── livekit_agent/   # AgentSession voice worker
+│       ├── orchestration/   # echo stub + ConversationOrchestrator
 │       ├── agents/          # stub
 │       ├── tools/           # stub
 │       ├── integrations/    # stub
@@ -95,6 +137,24 @@ curl -X POST http://localhost:8000/v1/livekit/token \
   -H "Content-Type: application/json" \
   -d '{"identity":"dev-user","room":"taskorbit-dev-room"}'
 # → {"token":"...","url":"wss://...","room":"...","identity":"..."}
+
+# Token with optional agent-config metadata (read by the voice worker):
+curl -X POST http://localhost:8000/v1/livekit/token \
+  -H "Content-Type: application/json" \
+  -d '{
+        "identity": "dev-user",
+        "room": "taskorbit-dev-room",
+        "metadata": {
+          "id": "demo",
+          "name": "Demo Agent",
+          "persona": "Helpful test bot.",
+          "greeting": "Hi! I am the demo agent."
+        }
+      }'
+
+# Voice worker (in a second terminal). Requires LiveKit + Deepgram +
+# ElevenLabs keys in .env.
+poetry run taskorbit-worker dev
 ```
 
 See [`docs/livekit-cloud-setup.md`](../docs/livekit-cloud-setup.md) for

@@ -1,6 +1,7 @@
-# Brings up postgres, backend (FastAPI), and frontend (Vite) for local
-# development. Source code is bind-mounted so hot reload works on both
-# the backend and frontend sides.
+# Brings up postgres, backend (FastAPI), and frontend (Vite) for local development.
+# Voice uses LiveKit Cloud Agents — set LIVEKIT_AGENT_DISPATCH_NAME or
+# LIVEKIT_AGENT_NAME in backend/.env. Source code is bind-mounted so hot reload
+# works on both backend and frontend.
 #
 # Usage:
 #   cp backend/.env.example backend/.env             # then fill in keys
@@ -9,12 +10,9 @@
 #
 # Services:
 #   postgres  → :5435 (host) → :5432 in container; avoids clashing with a local Postgres on 5432.
-#   backend   → :8000  FastAPI HTTP API
+#   backend   → :8000  FastAPI HTTP API (token issuance, REST fallback)
+#   worker    → no port  LiveKit voice agent (STT → orchestrator → TTS)
 #   frontend  → :5173  Vite dev server with HMR
-#
-# The LiveKit voice-agent worker is intentionally NOT in this compose
-# file — its implementation belongs to a downstream ticket. Add an
-# `agent` service alongside `backend` once that ticket lands.
 
 services:
   postgres:
@@ -62,6 +60,24 @@ services:
     #   interval: 10s
     #   timeout: 3s
     #   retries: 5
+
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: dev
+    container_name: taskorbit-worker
+    env_file:
+      - ./backend/.env
+    environment:
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ./backend/src:/app/src
+    command: poetry run taskorbit-worker dev
+    depends_on:
+      backend:
+        condition: service_started
 
   frontend:
     build:

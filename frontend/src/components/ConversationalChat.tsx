@@ -1,11 +1,14 @@
 import { LiveKitRoom, RoomAudioRenderer } from "@livekit/components-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import type { ReactNode } from "react";
 
 import { AgentIdentityCard } from "@/components/chat/AgentIdentityCard";
 import { CallControls } from "@/components/chat/CallControls";
 import { CallStatusIndicator } from "@/components/chat/CallStatusIndicator";
 import { ConfirmationPrompt } from "@/components/chat/ConfirmationPrompt";
+import { InCallControls } from "@/components/chat/InCallControls";
 import { PreCallDiagnostics } from "@/components/chat/PreCallDiagnostics";
+import { VoiceSessionBridge } from "@/components/chat/VoiceSessionBridge";
 import { TranscriptBubble } from "@/components/history/TranscriptBubble";
 import {
   Card,
@@ -15,31 +18,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useVoiceCall } from "@/hooks/useVoiceCall";
+import type { TranscriptionSegment } from "@/hooks/useAgentTranscription";
+import { buildLiveKitWorkerMetadata } from "@/lib/livekitAgentMetadata";
 import { sendMessage } from "@/lib/conversationApi";
-import { fetchLiveKitToken } from "@/lib/livekitToken";
-import { synthesizeSpeech } from "@/lib/ttsApi";
 import { JOHN_DOE_AGENT } from "@/lib/mockAgents";
-import type {
-  CallStatus,
-  ConfirmationPromptState,
-  LiveTranscriptTurn,
-} from "@/types/callState";
-
-type LiveKitCredentials = { url: string; token: string };
-
-const CONNECTING_DELAY_MS = 800;
-const SPEAKING_DELAY_MS = 2600;
-
-function generateId(prefix: string): string {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return `${prefix}-${crypto.randomUUID()}`;
-  }
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function generateConversationId(): string {
-  return `conv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
+import { playSynthesizedSpeech } from "@/lib/ttsApi";
+import type { ConfirmationPromptState } from "@/types/callState";
 
 const mockConfirmationPrompt: ConfirmationPromptState = {
   id: "demo-confirmation",
@@ -49,347 +34,305 @@ const mockConfirmationPrompt: ConfirmationPromptState = {
 
 /**
  * Live call surface for the Meisterwerk-customer end of the agent
- * pipeline. Models the call as an explicit state machine — `idle`,
- * `connecting`, `listening`, `thinking`, `speaking`,
- * `awaiting_confirmation`, `ended` — so each phase has a single source
- * of truth for the UI shape. Sprint 2 mocks the transitions with timers;
- * Sprint 3 (#14, #15, #26) will drive the same states from LiveKit room
- * events without restructuring this component.
+ * pipeline. Drives a `CallStatus` state machine fed by:
+ *
+ * 1. `useVoiceCall` — token fetch, conversation id, transcript array,
+ *    pre/post-call lifecycle.
+ * 2. `VoiceSessionBridge` — translates LiveKit events (agent state,
+ *    transcription streams, connection drops) into phase changes.
+ * 3. `InCallControls` — mic publish/mute, Stop/Send, end call.
+ *
+ * Audio out: LiveKit agent TTS is played by `RoomAudioRenderer`. Typed
+ * replies use `POST /v1/tts/synthesize` (ElevenLabs) so the assistant
+ * answer is still heard when the user uses the text disclosure.
  */
 export function ConversationalChat() {
   const agent = JOHN_DOE_AGENT;
   const appName = import.meta.env.VITE_APP_NAME ?? "TaskOrbit";
 
-  const [status, setStatus] = useState<CallStatus>("idle");
-  const [transcript, setTranscript] = useState<LiveTranscriptTurn[]>([]);
-  const [confirmation, setConfirmation] =
-    useState<ConfirmationPromptState | null>(null);
-  const [conversationId, setConversationId] = useState<string>("");
-  const [livekitCredentials, setLivekitCredentials] =
-    useState<LiveKitCredentials | null>(null);
-
-  const timerRef = useRef<number | null>(null);
+  const call = useVoiceCall();
   const transcriptEndRef = useRef<HTMLDivElement>(null);
-  // Holds the unlocked AudioContext created on the first user gesture so
-  // subsequent async audio.play() calls are not blocked by autoplay policy.
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  // Mirror status in a ref so async callbacks can read the latest phase
-  // without going stale across rapid transitions.
-  const statusRef = useRef<CallStatus>(status);
-  useEffect(() => {
-    statusRef.current = status;
-  }, [status]);
-
-  // Mirror transcript in a ref so the async sendMessage call always
-  // sees the latest turns (including the user turn just appended).
-  const transcriptRef = useRef<LiveTranscriptTurn[]>(transcript);
-  useEffect(() => {
-    transcriptRef.current = transcript;
-  }, [transcript]);
-
-  // AbortController for the in-flight backend request — cancelled when
-  // the user ends the call or starts a new one.
   const abortRef = useRef<AbortController | null>(null);
+  const lastUserTurnIdRef = useRef<string | null>(null);
 
-  // Auto-scroll transcript to the latest turn.
+  // Keep transcript rendering anchored to the latest turn.
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [transcript]);
+  }, [call.transcript]);
 
-  // Cancel pending timers and in-flight requests on unmount.
   useEffect(() => {
     return () => {
-      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
       abortRef.current?.abort();
     };
   }, []);
 
-  const clearTimer = useCallback(() => {
-    if (timerRef.current !== null) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  }, []);
+  const handleSegment = useCallback(
+    (segment: TranscriptionSegment) => {
+      if (segment.role === "user") {
+        lastUserTurnIdRef.current = segment.id;
+        call.upsertTurnById(segment.id, "user", segment.text);
+        return;
+      }
 
-  const appendAssistantTurn = useCallback((text: string) => {
-    setTranscript((t) => [
-      ...t,
-      { id: generateId("a"), role: "assistant", text },
-    ]);
-  }, []);
+      if (segment.isFinal) {
+        if (segment.text.toLowerCase().includes("i didn't get your message")) {
+          // livekit-agents failure — discard the pending user turn
+          if (lastUserTurnIdRef.current) {
+            call.removeTurnById(lastUserTurnIdRef.current);
+            lastUserTurnIdRef.current = null;
+          }
+        } else {
+          // Successful response — user turn is confirmed, stop tracking it
+          lastUserTurnIdRef.current = null;
+        }
+      }
 
-  const appendUserTurn = useCallback((text: string) => {
-    setTranscript((t) => [...t, { id: generateId("u"), role: "user", text }]);
-  }, []);
+      call.upsertTurnById(segment.id, "assistant", segment.text);
+    },
+    [call.upsertTurnById, call.removeTurnById],
+  );
 
-  // After a user turn is appended to transcript, call the backend and
-  // run the thinking → speaking → listening transition. The thinking phase
-  // lasts until the backend responds (real latency replaces the old timer).
-  const runAgentResponseCycle = useCallback(
-    (convId: string) => {
-      clearTimer();
+  // Text fallback path — keeps the typed input working when the user
+  // can't or doesn't want to speak. Uses the legacy /v1/conversations
+  // endpoint which round-trips through the orchestrator stub. The voice
+  // path streams its own transcript via VoiceSessionBridge.
+  const handleSendText = useCallback(
+    (text: string) => {
+      call.appendUserTurn(text);
+      call.setPhase("thinking");
+
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
 
-      setStatus("thinking");
-
-      // Use a microtask so React has flushed the latest transcript into
-      // transcriptRef before we read it for the API call.
       void Promise.resolve().then(async () => {
         try {
           const reply = await sendMessage(
             agent,
-            transcriptRef.current,
-            convId,
+            [{ id: "tmp", role: "user", text }],
+            call.conversationId,
             controller.signal,
           );
-          if (statusRef.current !== "thinking") return;
-          appendAssistantTurn(reply);
-          setStatus("speaking");
-
-          // Synthesize and play TTS audio via the pre-unlocked AudioContext.
-          // Non-blocking — a failure here only silences audio; the text
-          // reply is already visible.
-          void synthesizeSpeech(reply, controller.signal)
-            .then(async (audioUrl) => {
-              const ctx = audioCtxRef.current;
-              console.log("[TTS] audioUrl:", audioUrl, "ctx state:", ctx?.state);
-              if (!ctx) return;
-              const arrayBuffer = await fetch(audioUrl).then((r) =>
-                r.arrayBuffer(),
-              );
-              console.log("[TTS] arrayBuffer byteLength:", arrayBuffer.byteLength);
-              URL.revokeObjectURL(audioUrl);
-              const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-              console.log("[TTS] decoded duration:", audioBuffer.duration);
-              const source = ctx.createBufferSource();
-              source.buffer = audioBuffer;
-              source.connect(ctx.destination);
-              source.start();
-            })
-            .catch((err) => console.error("[TTS] playback error:", err));
-
-          timerRef.current = window.setTimeout(() => {
-            if (statusRef.current !== "speaking") return;
-            setStatus("listening");
-          }, SPEAKING_DELAY_MS);
+          call.appendAssistantTurn(reply);
+          const speakable =
+            reply.trim().length > 0 &&
+            !reply.startsWith("[Connection error");
+          if (speakable) {
+            call.setPhase("speaking");
+            try {
+              await playSynthesizedSpeech(reply, {
+                signal: controller.signal,
+                voiceId: agent.tts.voice_id,
+                modelId: agent.tts.model,
+              });
+            } catch (audioErr) {
+              if ((audioErr as Error).name !== "AbortError") {
+                // eslint-disable-next-line no-console
+                console.warn("[ConversationalChat] ElevenLabs playback failed", audioErr);
+              }
+            }
+          }
+          call.setPhase("idle_in_call");
         } catch (err) {
           if ((err as Error).name === "AbortError") return;
-          if (statusRef.current !== "thinking") return;
-          appendAssistantTurn(
+          call.appendAssistantTurn(
             `[Connection error: ${(err as Error).message}]`,
           );
-          setStatus("listening");
+          call.setPhase("idle_in_call");
         }
       });
     },
-    [agent, appendAssistantTurn, clearTimer],
-  );
-
-  const handleStart = useCallback(() => {
-    clearTimer();
-    abortRef.current?.abort();
-
-    // Create (or resume) the AudioContext here while we are inside a user
-    // gesture so the browser permits audio playback later in async callbacks.
-    if (!audioCtxRef.current) {
-      audioCtxRef.current = new AudioContext();
-    } else if (audioCtxRef.current.state === "suspended") {
-      void audioCtxRef.current.resume();
-    }
-
-    const newConvId = generateConversationId();
-    setConversationId(newConvId);
-    setTranscript([]);
-    setConfirmation(null);
-    setLivekitCredentials(null);
-    setStatus("connecting");
-
-    // Fetch a LiveKit token so the browser can receive TTS audio from the
-    // agent worker. Runs in parallel with the connecting timer; a failure
-    // here only disables audio — the text fallback continues to work.
-    void fetchLiveKitToken("user", newConvId).then((creds) => {
-      if (statusRef.current === "idle" || statusRef.current === "ended") return;
-      setLivekitCredentials({ url: creds.url, token: creds.token });
-    });
-
-    timerRef.current = window.setTimeout(() => {
-      if (statusRef.current !== "connecting") return;
-      appendAssistantTurn(agent.first_message.message);
-      setStatus("listening");
-    }, CONNECTING_DELAY_MS);
-  }, [agent.first_message.message, appendAssistantTurn, clearTimer]);
-
-  const handleEnd = useCallback(() => {
-    clearTimer();
-    abortRef.current?.abort();
-    setConfirmation(null);
-    setLivekitCredentials(null);
-    setStatus("ended");
-  }, [clearTimer]);
-
-  const handleRestart = useCallback(() => {
-    clearTimer();
-    abortRef.current?.abort();
-    setTranscript([]);
-    setConversationId("");
-    setConfirmation(null);
-    setLivekitCredentials(null);
-    setStatus("idle");
-  }, [clearTimer]);
-
-  //handles the text message send by the user
-  const handleSendText = useCallback(
-    (text: string) => {
-      if (status !== "listening") return;
-      appendUserTurn(text);
-      runAgentResponseCycle(conversationId);
-    },
-    [appendUserTurn, conversationId, runAgentResponseCycle, status],
+    [agent, call],
   );
 
   const handleTriggerConfirmation = useCallback(() => {
-    if (
-      status !== "listening" &&
-      status !== "thinking" &&
-      status !== "speaking"
-    ) {
-      return;
-    }
-    clearTimer();
-    setConfirmation(mockConfirmationPrompt);
-    setStatus("awaiting_confirmation");
-  }, [clearTimer, status]);
+    call.triggerConfirmation(mockConfirmationPrompt);
+  }, [call]);
 
   const handleApprove = useCallback(() => {
-    setConfirmation(null);
-    appendAssistantTurn(
-      "Thanks for confirming — I've saved that. Anything else?",
-    );
-    setStatus("speaking");
-    clearTimer();
-    timerRef.current = window.setTimeout(() => {
-      if (statusRef.current !== "speaking") return;
-      setStatus("listening");
-    }, SPEAKING_DELAY_MS);
-  }, [appendAssistantTurn, clearTimer]);
+    const followup =
+      "Thanks for confirming — I've saved that. Anything else?";
+    call.approveConfirmation(followup);
+    void playSynthesizedSpeech(followup, {
+      voiceId: agent.tts.voice_id,
+      modelId: agent.tts.model,
+    }).catch(() => {
+      /* optional TTS */
+    });
+  }, [agent.tts, call]);
 
   const handleDeny = useCallback(() => {
-    setConfirmation(null);
-    appendAssistantTurn("Understood — I won't save that. Anything else?");
-    setStatus("speaking");
-    clearTimer();
-    timerRef.current = window.setTimeout(() => {
-      if (statusRef.current !== "speaking") return;
-      setStatus("listening");
-    }, SPEAKING_DELAY_MS);
-  }, [appendAssistantTurn, clearTimer]);
+    const followup = "Understood — I won't save that. Anything else?";
+    call.denyConfirmation(followup);
+    void playSynthesizedSpeech(followup, {
+      voiceId: agent.tts.voice_id,
+      modelId: agent.tts.model,
+    }).catch(() => {
+      /* optional TTS */
+    });
+  }, [agent.tts, call]);
 
-  const isPreCall = status === "idle";
-  const isPostCall = status === "ended";
+  const handleStartSession = useCallback(() => {
+    call.start({
+      tokenMetadata: buildLiveKitWorkerMetadata(agent),
+      greeting: agent.first_message.message,
+    });
+    if (agent.first_message.message) {
+      void playSynthesizedSpeech(agent.first_message.message, {
+        voiceId: agent.tts.voice_id,
+        modelId: agent.tts.model,
+      }).catch(() => {
+        /* optional TTS */
+      });
+    }
+  }, [agent, call]);
+
+  const isPreCall = call.status === "idle";
+  const isPostCall = call.status === "ended";
   const isInCall = !isPreCall && !isPostCall;
+
+  // The page body. We render it directly while idle/ended, and wrap it
+  // in `<LiveKitRoom>` once we have credentials so that hooks inside
+  // (mic recorder, transcription) get the room context.
+  const body: ReactNode = (
+    <div className="mx-auto flex min-h-svh max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
+      <header className="space-y-1">
+        <p className="text-sm font-medium tracking-widest text-muted-foreground uppercase">
+          Conversational agent
+        </p>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+          {appName}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Start a voice session with the configured agent. Tap the mic
+          to speak, then Send your turn for a reply.
+        </p>
+      </header>
+
+      {isPreCall ? (
+        <>
+          <AgentIdentityCard agent={agent} />
+          <PreCallDiagnostics />
+        </>
+      ) : null}
+
+      {isInCall ? (
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between gap-3 border-b">
+            <div className="space-y-1">
+              <CardTitle>{agent.name}</CardTitle>
+              <CardDescription>
+                Live call · transcript updates as the conversation
+                progresses.
+              </CardDescription>
+            </div>
+            <CallStatusIndicator status={call.status} agentName={agent.name} />
+          </CardHeader>
+          <CardContent className="pt-6">
+            <ScrollArea className="h-[min(50vh,28rem)] pr-3">
+              <ul className="flex flex-col gap-4" aria-label="Transcript">
+                {call.transcript.map((turn) => (
+                  <TranscriptBubble key={turn.id} turn={turn} />
+                ))}
+                <div ref={transcriptEndRef} className="h-px" aria-hidden />
+              </ul>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {isPostCall ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Call ended</CardTitle>
+            <CardDescription>
+              {call.transcript.length > 0
+                ? `${call.transcript.length} turn${call.transcript.length === 1 ? "" : "s"} recorded.`
+                : "No turns recorded."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[min(40vh,24rem)] pr-3">
+              <ul className="flex flex-col gap-4" aria-label="Transcript">
+                {call.transcript.map((turn) => (
+                  <TranscriptBubble key={turn.id} turn={turn} />
+                ))}
+              </ul>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {call.confirmation !== null ? (
+        <ConfirmationPrompt
+          prompt={call.confirmation}
+          onApprove={handleApprove}
+          onDeny={handleDeny}
+        />
+      ) : isInCall ? (
+        // InCallControls reads `useLocalParticipant` and must live
+        // inside LiveKitRoom — only render when credentials are
+        // available so the hook can find the room context.
+        call.livekitCredentials !== null ? (
+          <InCallControls
+            status={call.status}
+            onPhase={call.setPhase}
+            onEnd={call.end}
+            onSendText={handleSendText}
+            onTriggerConfirmation={handleTriggerConfirmation}
+            onMicError={call.setMicError}
+          />
+        ) : null
+      ) : (
+        <CallControls
+          status={call.status}
+          onStart={handleStartSession}
+          onSendText={handleSendText}
+          onRestart={call.restart}
+        />
+      )}
+    </div>
+  );
 
   return (
     <main className="min-h-svh bg-background text-foreground">
-      <div className="mx-auto flex min-h-svh max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
-        <header className="space-y-1">
-          <p className="text-sm font-medium tracking-widest text-muted-foreground uppercase">
-            Conversational agent
-          </p>
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            {appName}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Start a voice session with the configured agent. Voice lands
-            in Sprint 3 — for now, the call surface is mocked end-to-end
-            so the flow can be reviewed.
-          </p>
-        </header>
-
-        {isPreCall ? (
-          <>
-            <AgentIdentityCard agent={agent} />
-            <PreCallDiagnostics />
-          </>
-        ) : null}
-
-        {isInCall ? (
-          <Card>
-            <CardHeader className="flex flex-row items-start justify-between gap-3 border-b">
-              <div className="space-y-1">
-                <CardTitle>{agent.name}</CardTitle>
-                <CardDescription>
-                  Live call · transcript updates as the conversation
-                  progresses.
-                </CardDescription>
-              </div>
-              <CallStatusIndicator status={status} agentName={agent.name} />
-            </CardHeader>
-            <CardContent className="pt-6">
-              <ScrollArea className="h-[min(50vh,28rem)] pr-3">
-                <ul className="flex flex-col gap-4" aria-label="Transcript">
-                  {transcript.map((turn) => (
-                    <TranscriptBubble key={turn.id} turn={turn} />
-                  ))}
-                  <div ref={transcriptEndRef} className="h-px" aria-hidden />
-                </ul>
-              </ScrollArea>
-            </CardContent>
-          </Card>
-        ) : null}
-
-        {isPostCall ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Call ended</CardTitle>
-              <CardDescription>
-                {transcript.length > 0
-                  ? `${transcript.length} turn${transcript.length === 1 ? "" : "s"} recorded.`
-                  : "No turns recorded."}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ScrollArea className="h-[min(40vh,24rem)] pr-3">
-                <ul className="flex flex-col gap-4" aria-label="Transcript">
-                  {transcript.map((turn) => (
-                    <TranscriptBubble key={turn.id} turn={turn} />
-                  ))}
-                </ul>
-              </ScrollArea>
-            </CardContent>
-          </Card>
-        ) : null}
-
-        {confirmation !== null ? (
-          <ConfirmationPrompt
-            prompt={confirmation}
-            onApprove={handleApprove}
-            onDeny={handleDeny}
-          />
-        ) : (
-          <CallControls
-            status={status}
-            onStart={handleStart}
-            onEnd={handleEnd}
-            onSendText={handleSendText}
-            onTriggerConfirmation={handleTriggerConfirmation}
-            onRestart={handleRestart}
-          />
-        )}
-      </div>
-
-      {/* Renders no visible UI — auto-plays all remote audio tracks from the
-          agent worker so TTS audio is heard without additional wiring. Use this on later stages */}
-      {livekitCredentials !== null && (
+      {call.livekitCredentials !== null ? (
         <LiveKitRoom
-          serverUrl={livekitCredentials.url}
-          token={livekitCredentials.token}
+          serverUrl={call.livekitCredentials.url}
+          token={call.livekitCredentials.token}
           connect
           audio={false}
+          video={false}
+          onError={(err) => {
+            if (
+              err.name === "NotAllowedError" ||
+              err.message.includes("Permission")
+            ) {
+              call.setMicError(
+                "Microphone access was denied. Please allow microphone access to use voice.",
+              );
+            }
+          }}
         >
           <RoomAudioRenderer />
+          <VoiceSessionBridge
+            status={call.status}
+            onPhase={call.setPhase}
+            onSegment={handleSegment}
+          />
+          {body}
         </LiveKitRoom>
+      ) : (
+        body
+      )}
+
+      {call.micError !== null && (
+        <div
+          role="alert"
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-lg border border-destructive bg-destructive/10 px-4 py-3 text-sm text-destructive shadow-md"
+        >
+          {call.micError}
+        </div>
       )}
     </main>
   );
