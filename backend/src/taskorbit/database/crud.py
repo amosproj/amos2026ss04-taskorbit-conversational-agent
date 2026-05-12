@@ -1,15 +1,18 @@
 """CRUD operations for database models."""
 
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime
+
 import structlog
-from .models import User, ChatHistory, Conversation
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+
+from .models import ChatHistory, User
 
 logger = structlog.get_logger()
 
 
 # ============ USER CRUD ============
+
 
 def get_user(db: Session, user_id: int) -> User | None:
     """Get a user by ID."""
@@ -48,19 +51,12 @@ def get_users(db: Session, skip: int = 0, limit: int = 100) -> list[User]:
 
 
 def create_user(
-    db: Session,
-    username: str,
-    email: str,
-    hashed_password: str,
-    is_active: bool = True
+    db: Session, username: str, email: str, hashed_password: str, is_active: bool = True
 ) -> User | None:
     """Create a new user."""
     try:
         db_user = User(
-            username=username,
-            email=email,
-            hashed_password=hashed_password,
-            is_active=is_active
+            username=username, email=email, hashed_password=hashed_password, is_active=is_active
         )
         db.add(db_user)
         db.commit()
@@ -77,21 +73,21 @@ def update_user(
     user_id: int,
     username: str | None = None,
     email: str | None = None,
-    is_active: bool | None = None
+    is_active: bool | None = None,
 ) -> User | None:
     """Update an existing user."""
     try:
         user = get_user(db, user_id)
         if not user:
             return None
-        
+
         if username is not None:
             user.username = username
         if email is not None:
             user.email = email
         if is_active is not None:
             user.is_active = is_active
-        
+
         user.updated_at = datetime.now()
         db.commit()
         db.refresh(user)
@@ -119,6 +115,7 @@ def delete_user(db: Session, user_id: int) -> bool:
 
 # ============ CHAT HISTORY CRUD ============
 
+
 def get_chat_history(db: Session, history_id: int) -> ChatHistory | None:
     """Get a chat history entry by ID."""
     try:
@@ -129,10 +126,7 @@ def get_chat_history(db: Session, history_id: int) -> ChatHistory | None:
 
 
 def get_chat_histories_by_user(
-    db: Session,
-    user_id: int,
-    skip: int = 0,
-    limit: int = 100
+    db: Session, user_id: int, skip: int = 0, limit: int = 100
 ) -> list[ChatHistory]:
     """Get all chat history entries for a user."""
     try:
@@ -150,10 +144,7 @@ def get_chat_histories_by_user(
 
 
 def get_chat_histories_by_conversation(
-    db: Session,
-    conversation_id: str,
-    skip: int = 0,
-    limit: int = 100
+    db: Session, conversation_id: str, skip: int = 0, limit: int = 100
 ) -> list[ChatHistory]:
     """Get all chat history entries for a conversation."""
     try:
@@ -171,19 +162,12 @@ def get_chat_histories_by_conversation(
 
 
 def create_chat_history(
-    db: Session,
-    user_id: int,
-    conversation_id: str,
-    role: str,
-    message: str
+    db: Session, user_id: int, conversation_id: str, role: str, message: str
 ) -> ChatHistory | None:
     """Create a new chat history entry."""
     try:
         db_entry = ChatHistory(
-            user_id=user_id,
-            conversation_id=conversation_id,
-            role=role,
-            message=message
+            user_id=user_id, conversation_id=conversation_id, role=role, message=message
         )
         db.add(db_entry)
         db.commit()
@@ -212,10 +196,8 @@ def delete_chat_history(db: Session, history_id: int) -> bool:
 
 # ============ CONVERSATION HELPERS ============
 
-def get_conversation_messages_with_history(
-    db: Session,
-    conversation_id: str
-) -> list[dict]:
+
+def get_conversation_messages_with_history(db: Session, conversation_id: str) -> list[dict]:
     """
     Get all messages for a conversation.
     Returns a list of dicts with role and content.
