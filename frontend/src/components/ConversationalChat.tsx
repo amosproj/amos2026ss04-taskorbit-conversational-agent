@@ -89,7 +89,7 @@ export function ConversationalChat() {
 
       call.upsertTurnById(segment.id, "assistant", segment.text);
     },
-    [call],
+    [call.upsertTurnById, call.removeTurnById],
   );
 
   // Text fallback path — keeps the typed input working when the user

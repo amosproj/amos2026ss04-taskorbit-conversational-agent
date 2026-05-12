@@ -9,6 +9,7 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -87,15 +88,18 @@ async def test_commit_turn_triggers_reply(configured_settings: None) -> None:
     with (
         patch("taskorbit.worker.build_agent_session", return_value=mock_session),
         patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+        patch("taskorbit.worker._DEEPGRAM_FLUSH_DELAY_S", 0),
     ):
         await entrypoint(ctx)
 
-    handler = registered["data_received"]
-    packet = _data_packet(json.dumps({"type": "commit_turn"}).encode())
-    handler(packet)
+        handler = registered["data_received"]
+        packet = _data_packet(json.dumps({"type": "commit_turn"}).encode())
+        handler(packet)
+        await asyncio.sleep(0)  # start _commit_and_reply task
+        await asyncio.sleep(0)  # complete past its inner sleep(0)
 
-    mock_agent.request_reply.assert_called_once()
-    mock_session.generate_reply.assert_called_once()
+        mock_agent.request_reply.assert_called_once()
+        mock_session.generate_reply.assert_called_once()
 
 
 @pytest.mark.asyncio

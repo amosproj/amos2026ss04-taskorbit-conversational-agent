@@ -69,11 +69,11 @@ def test_build_agent_session_uses_deepgram_elevenlabs_silero(
         model=_FAKE_DG_MODEL,
         language=_FAKE_DG_LANG,
     )
-    mock_tts.assert_called_once_with(
-        api_key=_FAKE_EL_KEY,
-        voice_id=_FAKE_EL_VOICE,
-        model=_FAKE_EL_MODEL,
-    )
+    mock_tts.assert_called_once()
+    tts_kwargs = mock_tts.call_args.kwargs
+    assert tts_kwargs["api_key"] == _FAKE_EL_KEY
+    assert tts_kwargs["voice_id"] == _FAKE_EL_VOICE
+    assert tts_kwargs["model"] == _FAKE_EL_MODEL
     mock_session.assert_called_once()
     kwargs = mock_session.call_args.kwargs
     assert kwargs["vad"] is mock_vad.load.return_value

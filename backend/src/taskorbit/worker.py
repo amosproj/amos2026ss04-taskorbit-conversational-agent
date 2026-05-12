@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 
 from livekit import rtc
 from livekit.agents import AutoSubscribe, JobContext, WorkerOptions, cli
@@ -24,8 +23,12 @@ from livekit.agents.voice.room_io import RoomOutputOptions
 
 from taskorbit.config import get_settings
 from taskorbit.livekit_agent import build_agent_session, build_default_agent
+from taskorbit.logging.setup import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
+
+# Tunable: increase if the last word of an utterance is missing from replies.
+_DEEPGRAM_FLUSH_DELAY_S: float = 0.3
 
 
 async def entrypoint(ctx: JobContext) -> None:
@@ -39,14 +42,14 @@ async def entrypoint(ctx: JobContext) -> None:
         # Small delay so Deepgram can flush its final transcription segment
         # into the ChatContext before generate_reply() reads it. Without this,
         # the last word(s) of the utterance may be missing from the reply.
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(_DEEPGRAM_FLUSH_DELAY_S)
         try:
             result = session.generate_reply()
             if asyncio.iscoroutine(result):
                 await result
-            logger.info("worker: generate_reply triggered")
+            logger.info("worker_generate_reply_triggered")
         except Exception as exc:  # noqa: BLE001
-            logger.warning("worker: generate_reply failed: %s", exc)
+            logger.warning("worker_generate_reply_failed", error=str(exc))
 
     # When the frontend Send button is clicked, useMicRecorder.sendUtterance()
     # publishes {"type": "commit_turn"} over the data channel. Handling it here
@@ -54,6 +57,8 @@ async def entrypoint(ctx: JobContext) -> None:
     # silence detection to time out.
     @ctx.room.on("data_received")
     def _on_data(packet: rtc.DataPacket) -> None:
+        if packet.participant_identity == ctx.room.local_participant.identity:
+            return
         try:
             msg = json.loads(packet.data.decode("utf-8"))
         except Exception:  # noqa: BLE001

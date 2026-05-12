@@ -12,6 +12,7 @@ from collections.abc import Iterator
 from unittest.mock import patch
 
 import pytest
+from livekit.plugins.elevenlabs import VoiceSettings
 
 from taskorbit.config import get_settings
 from taskorbit.livekit_agent.session import build_agent_session
@@ -49,10 +50,13 @@ def test_build_agent_session_elevenlabs_tts_uses_settings(
     ):
         build_agent_session()
 
-    mock_tts.assert_called_once_with(
-        api_key=_FAKE_API_KEY,
-        voice_id=_FAKE_VOICE_ID,
-        model=_FAKE_MODEL,
+    mock_tts.assert_called_once()
+    tts_kwargs = mock_tts.call_args.kwargs
+    assert tts_kwargs["api_key"] == _FAKE_API_KEY
+    assert tts_kwargs["voice_id"] == _FAKE_VOICE_ID
+    assert tts_kwargs["model"] == _FAKE_MODEL
+    assert tts_kwargs["voice_settings"] == VoiceSettings(
+        stability=0.75, similarity_boost=0.75, style=0.0, speed=1.0, use_speaker_boost=True
     )
     kwargs = mock_session.call_args.kwargs
     assert kwargs["tts"] is mock_tts.return_value
@@ -77,10 +81,10 @@ def test_build_agent_session_elevenlabs_tts_respects_custom_voice(
     finally:
         get_settings.cache_clear()
 
-    mock_tts.assert_called_once_with(
-        api_key=_FAKE_API_KEY,
-        voice_id="custom-voice-123",
-        model=_FAKE_MODEL,
-    )
+    mock_tts.assert_called_once()
+    tts_kwargs = mock_tts.call_args.kwargs
+    assert tts_kwargs["api_key"] == _FAKE_API_KEY
+    assert tts_kwargs["voice_id"] == "custom-voice-123"
+    assert tts_kwargs["model"] == _FAKE_MODEL
     assert mock_vad.load.called
     assert mock_stt.called

@@ -20,7 +20,10 @@ from typing import Any
 
 from livekit.agents import Agent, FunctionTool, ModelSettings, llm
 
+from taskorbit.logging.setup import get_logger
 from taskorbit.orchestration import ConversationOrchestrator
+
+log = get_logger(__name__)
 from taskorbit.types import (
     AgentConfig,
     ConversationRequest,
@@ -155,7 +158,7 @@ class OrchestratorAgent(Agent):
         messages = _convert_chat_ctx_to_messages(chat_ctx)
         last_user = next((m for m in reversed(messages) if m.role == MessageRole.USER), None)
         if last_user:
-            print(f"[STT] {last_user.content}", flush=True)
+            log.debug("stt_transcript_received", length=len(last_user.content))
         request = ConversationRequest(
             conversation_id=self._conversation_id,
             agent_config=self._agent_config,
