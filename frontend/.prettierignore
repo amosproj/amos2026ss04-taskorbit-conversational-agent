@@ -1,0 +1,19 @@
+# Build output and caches
+dist
+dist-ssr
+node_modules
+*.tsbuildinfo
+
+# Lockfiles - owned by the package manager
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Generated / static
+public
+coverage
+
+# Local env files
+.env
+.env.local
+.env.*.local

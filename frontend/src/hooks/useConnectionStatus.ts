@@ -10,11 +10,7 @@
 import { useConnectionState } from "@livekit/components-react";
 import { ConnectionState } from "livekit-client";
 
-export type CallConnectionStatus =
-  | "connecting"
-  | "connected"
-  | "reconnecting"
-  | "disconnected";
+export type CallConnectionStatus = "connecting" | "connected" | "reconnecting" | "disconnected";
 
 export function useConnectionStatus(): CallConnectionStatus {
   const state = useConnectionState();

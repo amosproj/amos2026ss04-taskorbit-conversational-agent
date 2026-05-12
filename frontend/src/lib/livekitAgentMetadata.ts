@@ -10,9 +10,7 @@
 
 import type { AgentConfig } from "@/types/agentConfig";
 
-export function buildLiveKitWorkerMetadata(
-  agent: AgentConfig,
-): Record<string, unknown> {
+export function buildLiveKitWorkerMetadata(agent: AgentConfig): Record<string, unknown> {
   const llmProvider = agent.llm.provider === "gemini" ? "google" : "openai";
   return {
     id: agent.agent_id,

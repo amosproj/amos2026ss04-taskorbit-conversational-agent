@@ -82,8 +82,7 @@ export function VariablesSection({ value, onChange }: Props) {
               Variables
             </CardTitle>
             <CardDescription>
-              Templating values the orchestrator can interpolate into
-              instructions and tool calls.
+              Templating values the orchestrator can interpolate into instructions and tool calls.
             </CardDescription>
           </div>
           <Button variant="outline" size="sm" onClick={addRow} type="button">

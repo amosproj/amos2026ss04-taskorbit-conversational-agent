@@ -3,13 +3,7 @@ import { Brain, Mic, Volume2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Field,
-  FieldGroup,
-  FieldLabel,
-  FieldLegend,
-  FieldSet,
-} from "@/components/ui/field";
+import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -52,8 +46,8 @@ export function PipelineSection({ value, onChange }: Props) {
           Pipeline
         </CardTitle>
         <CardDescription>
-          Speech-to-text, the language model, and text-to-speech. Switch the
-          providers or models without touching code.
+          Speech-to-text, the language model, and text-to-speech. Switch the providers or models
+          without touching code.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-6 sm:grid-cols-3">
@@ -84,7 +78,9 @@ export function PipelineSection({ value, onChange }: Props) {
               <Input
                 id={idSttModel}
                 value={value.stt.model}
-                onChange={(e) => onChange({ ...value, stt: { ...value.stt, model: e.target.value } })}
+                onChange={(e) =>
+                  onChange({ ...value, stt: { ...value.stt, model: e.target.value } })
+                }
                 placeholder="nova-3"
                 className="font-mono text-sm"
               />
@@ -123,7 +119,9 @@ export function PipelineSection({ value, onChange }: Props) {
               <Input
                 id={idLlmModel}
                 value={value.llm.model}
-                onChange={(e) => onChange({ ...value, llm: { ...value.llm, model: e.target.value } })}
+                onChange={(e) =>
+                  onChange({ ...value, llm: { ...value.llm, model: e.target.value } })
+                }
                 placeholder="gpt-4.1-mini"
                 className="font-mono text-sm"
               />
@@ -158,7 +156,9 @@ export function PipelineSection({ value, onChange }: Props) {
               <Input
                 id={idTtsModel}
                 value={value.tts.model}
-                onChange={(e) => onChange({ ...value, tts: { ...value.tts, model: e.target.value } })}
+                onChange={(e) =>
+                  onChange({ ...value, tts: { ...value.tts, model: e.target.value } })
+                }
                 placeholder="eleven_turbo_v2"
                 className="font-mono text-sm"
               />

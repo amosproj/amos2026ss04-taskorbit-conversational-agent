@@ -57,7 +57,7 @@ export function AgentConfigPage() {
     }
     // No backend yet — surface the result in the console so the JSON shape
     // can be verified end-to-end against the orchestrator contract.
-    // eslint-disable-next-line no-console
+
     console.info("[AgentConfig] save", serializeAgent(agent));
     toast.success("Configuration saved.");
   };
@@ -68,12 +68,10 @@ export function AgentConfigPage() {
         <p className="text-sm font-medium tracking-widest text-muted-foreground uppercase">
           Configuration
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          Agent configuration
-        </h1>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Agent configuration</h1>
         <p className="text-sm text-muted-foreground">
-          Identity, instructions, the three pluggable pipeline components,
-          tools, confirmations, and variables for the conversational agent.
+          Identity, instructions, the three pluggable pipeline components, tools, confirmations, and
+          variables for the conversational agent.
         </p>
       </header>
 
@@ -95,10 +93,7 @@ export function AgentConfigPage() {
           onChange={(next) => setAgent({ ...agent, ...next })}
         />
 
-        <ToolsSection
-          value={agent.tools}
-          onChange={(tools) => setAgent({ ...agent, tools })}
-        />
+        <ToolsSection value={agent.tools} onChange={(tools) => setAgent({ ...agent, tools })} />
 
         <ConfirmationsSection
           value={agent.confirmations}

@@ -44,10 +44,7 @@ export type AgentTransferFiring = ToolFiringBase & {
   target: string;
 };
 
-export type ToolFiring =
-  | DataExtractionFiring
-  | EndCallFiring
-  | AgentTransferFiring;
+export type ToolFiring = DataExtractionFiring | EndCallFiring | AgentTransferFiring;
 
 /**
  * Architecture §4.1: "All actions require explicit user confirmation."
@@ -125,7 +122,11 @@ export const MOCK_CONVERSATIONS: Conversation[] = [
         role: "assistant",
         text: "Got it. And a phone number for the account?",
       },
-      { id: "t1-8", role: "user", text: "Plus four nine three zero one two three four five six seven." },
+      {
+        id: "t1-8",
+        role: "user",
+        text: "Plus four nine three zero one two three four five six seven.",
+      },
       {
         id: "t1-9",
         role: "assistant",
@@ -282,7 +283,11 @@ export const MOCK_CONVERSATIONS: Conversation[] = [
         role: "assistant",
         text: "Hi there! I'm John from TechStore customer support. Before we begin, are you a new customer or do you already have an account with us?",
       },
-      { id: "t4-2", role: "user", text: "New, I think. Can you tell me about your warranty options first?" },
+      {
+        id: "t4-2",
+        role: "user",
+        text: "New, I think. Can you tell me about your warranty options first?",
+      },
       {
         id: "t4-3",
         role: "assistant",
@@ -300,7 +305,11 @@ export const MOCK_CONVERSATIONS: Conversation[] = [
         role: "assistant",
         text: "No problem. Before you go — would you like me to save your name on file as a new customer so we can pick up faster next time?",
       },
-      { id: "t4-8", role: "user", text: "No, don't save anything. I'll start fresh when I call back." },
+      {
+        id: "t4-8",
+        role: "user",
+        text: "No, don't save anything. I'll start fresh when I call back.",
+      },
     ],
     tool_firings: [],
     confirmations: [

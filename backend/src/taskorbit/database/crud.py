@@ -1,15 +1,18 @@
 """CRUD operations for database models."""
 
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime
+
 import structlog
-from .models import User, Conversation, ConversationMessage
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+
+from .models import ConversationMessage, User
 
 logger = structlog.get_logger()
 
 
 # ============ USER CRUD ============
+
 
 def get_user(db: Session, user_id: int) -> User | None:
     """Get a user by ID."""
@@ -48,19 +51,12 @@ def get_users(db: Session, skip: int = 0, limit: int = 100) -> list[User]:
 
 
 def create_user(
-    db: Session,
-    username: str,
-    email: str,
-    hashed_password: str,
-    is_active: bool = True
+    db: Session, username: str, email: str, hashed_password: str, is_active: bool = True
 ) -> User | None:
     """Create a new user."""
     try:
         db_user = User(
-            username=username,
-            email=email,
-            hashed_password=hashed_password,
-            is_active=is_active
+            username=username, email=email, hashed_password=hashed_password, is_active=is_active
         )
         db.add(db_user)
         db.commit()
@@ -77,21 +73,21 @@ def update_user(
     user_id: int,
     username: str | None = None,
     email: str | None = None,
-    is_active: bool | None = None
+    is_active: bool | None = None,
 ) -> User | None:
     """Update an existing user."""
     try:
         user = get_user(db, user_id)
         if not user:
             return None
-        
+
         if username is not None:
             user.username = username
         if email is not None:
             user.email = email
         if is_active is not None:
             user.is_active = is_active
-        
+
         user.updated_at = datetime.now()
         db.commit()
         db.refresh(user)
@@ -119,6 +115,7 @@ def delete_user(db: Session, user_id: int) -> bool:
 
 # ============ CONVERSATION MESSAGE CRUD ============
 
+
 def get_conversation_message(db: Session, message_id: int) -> ConversationMessage | None:
     """Get a conversation message by ID."""
     try:
@@ -129,10 +126,7 @@ def get_conversation_message(db: Session, message_id: int) -> ConversationMessag
 
 
 def get_messages_by_conversation(
-    db: Session,
-    conversation_id: str,
-    skip: int = 0,
-    limit: int = 100
+    db: Session, conversation_id: str, skip: int = 0, limit: int = 100
 ) -> list[ConversationMessage]:
     """Get all messages for a conversation."""
     try:
@@ -150,10 +144,7 @@ def get_messages_by_conversation(
 
 
 def get_messages_by_user(
-    db: Session,
-    user_id: int,
-    skip: int = 0,
-    limit: int = 100
+    db: Session, user_id: int, skip: int = 0, limit: int = 100
 ) -> list[ConversationMessage]:
     """Get all messages for a user."""
     try:
@@ -171,19 +162,12 @@ def get_messages_by_user(
 
 
 def create_conversation_message(
-    db: Session,
-    conversation_id: str,
-    role: str,
-    content: str,
-    user_id: int | None = None
+    db: Session, conversation_id: str, role: str, content: str, user_id: int | None = None
 ) -> ConversationMessage | None:
     """Create a new conversation message."""
     try:
         db_message = ConversationMessage(
-            conversation_id=conversation_id,
-            user_id=user_id,
-            role=role,
-            content=content
+            conversation_id=conversation_id, user_id=user_id, role=role, content=content
         )
         db.add(db_message)
         db.commit()
@@ -212,10 +196,8 @@ def delete_conversation_message(db: Session, message_id: int) -> bool:
 
 # ============ CONVERSATION HELPERS ============
 
-def get_conversation_messages_formatted(
-    db: Session,
-    conversation_id: str
-) -> list[dict]:
+
+def get_conversation_messages_formatted(db: Session, conversation_id: str) -> list[dict]:
     """
     Get all messages for a conversation formatted as dicts.
     Returns a list of dicts with role, content, user_id, and created_at.
@@ -227,7 +209,7 @@ def get_conversation_messages_formatted(
                 "role": m.role,
                 "content": m.content,
                 "user_id": m.user_id,
-                "created_at": m.created_at.isoformat() if m.created_at else None
+                "created_at": m.created_at.isoformat() if m.created_at else None,
             }
             for m in messages
         ]

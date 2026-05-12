@@ -31,10 +31,7 @@ export function MicButton({ status, starting, onStart, onStop }: Props) {
   const recording = status === "recording";
   const interrupting = status === "speaking";
   const disabled =
-    starting ||
-    status === "connecting" ||
-    status === "thinking" ||
-    status === "reconnecting";
+    starting || status === "connecting" || status === "thinking" || status === "reconnecting";
 
   // The button toggles: tap-to-record from idle, tap-to-stop while
   // recording, tap-to-interrupt while the agent is speaking.
@@ -55,16 +52,11 @@ export function MicButton({ status, starting, onStart, onStop }: Props) {
       disabled={disabled}
       aria-pressed={recording}
       aria-label={
-        recording
-          ? "Stop recording"
-          : interrupting
-            ? "Interrupt and speak"
-            : "Start recording"
+        recording ? "Stop recording" : interrupting ? "Interrupt and speak" : "Start recording"
       }
       className={cn(
         "relative size-16 rounded-full transition-transform",
-        recording &&
-          "ring-4 ring-primary/40 ring-offset-2 ring-offset-background",
+        recording && "ring-4 ring-primary/40 ring-offset-2 ring-offset-background",
         recording && "scale-105",
       )}
     >

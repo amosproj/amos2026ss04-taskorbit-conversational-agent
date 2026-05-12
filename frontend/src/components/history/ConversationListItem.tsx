@@ -43,13 +43,9 @@ export function ConversationListItem({
             {formatRelativeStart(conversation.started_at)}
           </span>
         </div>
-        <span className="truncate text-sm text-muted-foreground">
-          {conversation.caller_label}
-        </span>
+        <span className="truncate text-sm text-muted-foreground">{conversation.caller_label}</span>
         <div className="flex flex-wrap items-center gap-1.5 pt-1">
-          <Badge variant="secondary">
-            {formatDuration(conversation.duration_seconds)}
-          </Badge>
+          <Badge variant="secondary">{formatDuration(conversation.duration_seconds)}</Badge>
           {toolCount > 0 ? (
             <Badge variant="outline">
               {toolCount} {toolCount === 1 ? "tool" : "tools"}

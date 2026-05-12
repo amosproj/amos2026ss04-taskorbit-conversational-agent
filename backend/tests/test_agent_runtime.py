@@ -8,6 +8,8 @@ Run with: poetry run pytest
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
+
 from taskorbit.agents import AgentRegistry
 from taskorbit.agents.sales import SalesAgent
 from taskorbit.agents.technical_support import TechnicalSupportAgent
@@ -119,36 +121,48 @@ def test_registry_agent_carries_config() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_process_message_returns_success_status() -> None:
+@patch.object(ConversationOrchestrator, "_call_llm", new_callable=AsyncMock)
+async def test_process_message_returns_success_status(mock_llm: AsyncMock) -> None:
+    mock_llm.return_value = "[Mocked LLM] Hello"
     response = await ConversationOrchestrator().process_message(_make_request())
     assert response.status == "success"
 
 
-async def test_process_message_sets_selected_intent() -> None:
+@patch.object(ConversationOrchestrator, "_call_llm", new_callable=AsyncMock)
+async def test_process_message_sets_selected_intent(mock_llm: AsyncMock) -> None:
+    mock_llm.return_value = "[Mocked LLM] Hello"
     response = await ConversationOrchestrator().process_message(_make_request())
     assert response.selected_intent == "book_service_appointment"
 
 
-async def test_process_message_sets_selected_agent_name() -> None:
+@patch.object(ConversationOrchestrator, "_call_llm", new_callable=AsyncMock)
+async def test_process_message_sets_selected_agent_name(mock_llm: AsyncMock) -> None:
+    mock_llm.return_value = "[Mocked LLM] Hello"
     request = _make_request()
     response = await ConversationOrchestrator().process_message(request)
     assert response.selected_agent == request.agent_config.name
 
 
-async def test_process_message_reply_contains_mocked_llm_marker() -> None:
+@patch.object(ConversationOrchestrator, "_call_llm", new_callable=AsyncMock)
+async def test_process_message_reply_contains_mocked_llm_marker(mock_llm: AsyncMock) -> None:
+    mock_llm.return_value = "[Mocked LLM] Hello"
     response = await ConversationOrchestrator().process_message(
         _make_request(message="Hello there")
     )
     assert "[Mocked LLM]" in response.reply.content
 
 
-async def test_process_message_preserves_conversation_id() -> None:
+@patch.object(ConversationOrchestrator, "_call_llm", new_callable=AsyncMock)
+async def test_process_message_preserves_conversation_id(mock_llm: AsyncMock) -> None:
+    mock_llm.return_value = "[Mocked LLM] Hello"
     request = _make_request(conversation_id="conv-abc-123")
     response = await ConversationOrchestrator().process_message(request)
     assert response.conversation_id == "conv-abc-123"
 
 
-async def test_process_message_reply_role_is_assistant() -> None:
+@patch.object(ConversationOrchestrator, "_call_llm", new_callable=AsyncMock)
+async def test_process_message_reply_role_is_assistant(mock_llm: AsyncMock) -> None:
+    mock_llm.return_value = "[Mocked LLM] Hello"
     response = await ConversationOrchestrator().process_message(_make_request())
     assert response.reply.role == MessageRole.ASSISTANT
 

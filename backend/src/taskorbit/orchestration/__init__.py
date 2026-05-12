@@ -10,7 +10,7 @@ Flow per message:
   2. Select the agent via AgentRegistry.
   3. Determine which tool (if any) should be in scope right now.
   4. Build a minimal system prompt from that task context only.
-  5. Call the LLM provider with a 10-second timeout (mocked until issue #18).
+  5. Call the LLM provider with a timeout (configurable via settings).
   6. Return a ConversationResponse with intent, agent, and status fields.
 """
 
@@ -30,6 +30,7 @@ from taskorbit.types import (
     AgentConfig,
     ConversationRequest,
     ConversationResponse,
+    LLMConfig,
     Message,
     MessageRole,
     ToolDefinition,
@@ -53,7 +54,7 @@ class ConversationOrchestrator:
                 None,
             )
             if not last_user or not last_user.content.strip():
-                raise ValueError("No user message found in request.")
+                raise ValueError("No user message content found in request.")
 
             # 1. Detect intent (mocked)
             intent = self._intent_detector.detect(last_user.content)
@@ -62,6 +63,10 @@ class ConversationOrchestrator:
             )
 
             # 2. Select agent — local import avoids circular dependency with agents/__init__.py
+            # NOTE: The agent object is currently a no-op placeholder. The orchestrator
+            # still drives the pipeline directly from AgentConfig. Wiring the agent
+            # logic (e.g. handle_message) will land when real intent routing replaces
+            # MockIntentDetector.
             from taskorbit.agents import AgentRegistry
 
             agent = AgentRegistry.get_agent(request.agent_config, self)
@@ -77,9 +82,9 @@ class ConversationOrchestrator:
             # 4. Build system prompt
             system_prompt = self._build_system_prompt(request.agent_config, active_tool)
 
-            # 5. Call LLM with a 10-second timeout
+            # 5. Call LLM with a timeout from settings
             llm_text = await asyncio.wait_for(
-                self._call_llm(system_prompt, request.messages),
+                self._call_llm(system_prompt, request.messages, request.agent_config.llm),
                 timeout=self._settings.llm_timeout_seconds,
             )
 
@@ -99,7 +104,7 @@ class ConversationOrchestrator:
                     "I'm sorry, I'm having trouble connecting to my brain right now. Please try again."
                 ),
                 status="error",
-                error="LLM call timed out after 10 seconds.",
+                error=f"LLM call timed out after {self._settings.llm_timeout_seconds} seconds.",
             )
         except ValueError as exc:
             logger.warning(
@@ -141,8 +146,11 @@ class ConversationOrchestrator:
         messages: list[Message],
         agent: BaseAgent,
     ) -> ToolDefinition | None:
-        # Returns first tool from the agent's own task definitions.
-        # Real selection based on conversation history lands in a later sprint.
+        """Decide which tool should be in scope for this turn, if any.
+
+        Returns first tool from the agent's own task definitions.
+        Real selection based on conversation history lands in a later sprint.
+        """
         tools = agent.get_task_definitions()
         return tools[0] if tools else None
 
@@ -150,15 +158,22 @@ class ConversationOrchestrator:
         self,
         system_prompt: str,
         messages: list[Message],
+        llm_config: LLMConfig,
     ) -> str:
-        # Mocked — real LLM routing lands in issue #18.
-        last_user = next(
-            (m for m in reversed(messages) if m.role == MessageRole.USER),
-            None,
-        )
-        preview = last_user.content[:60] if last_user else ""
-        await asyncio.sleep(0.5)
-        return f'[Mocked LLM] Received: "{preview}"'
+        """Call the LLM provider specified by ``llm_config`` and return its text.
+
+        Routes to the right concrete client via the factory in
+        ``integrations/llm/factory.py``. The same-language instruction is
+        appended to the system prompt before delegation so every provider
+        receives the multilingual directive consistently. Tool-call parsing
+        happens in the caller so this method stays provider-agnostic.
+        """
+        from taskorbit.integrations.llm.factory import get_llm_client
+        from taskorbit.integrations.llm.prompts import with_same_language_instruction
+
+        augmented_prompt = with_same_language_instruction(system_prompt)
+        client = get_llm_client(llm_config, settings=self._settings)
+        return await client.generate(augmented_prompt, messages, llm_config)
 
     async def _dispatch_tool(
         self,

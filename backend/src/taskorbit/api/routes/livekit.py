@@ -80,8 +80,7 @@ async def create_livekit_token(body: LiveKitTokenRequest) -> LiveKitTokenRespons
             builder = builder.with_metadata(metadata_str)
 
         dispatch_name = (body.agent_dispatch_name or "").strip() or (
-            settings.livekit_agent_dispatch_name.strip()
-            or settings.livekit_agent_name.strip()
+            settings.livekit_agent_dispatch_name.strip() or settings.livekit_agent_name.strip()
         )
         if dispatch_name:
             # Room creation dispatch: Cloud / hosted agent joins when the user connects.

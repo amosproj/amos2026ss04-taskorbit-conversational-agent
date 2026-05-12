@@ -96,8 +96,7 @@ You are the main orchestrator who guides customers through the service flow:
     {
       type: "agent_transfer",
       name: "transfer_to_billing",
-      description:
-        "Hand off the call to the billing team for invoice or payment questions.",
+      description: "Hand off the call to the billing team for invoice or payment questions.",
       targets: ["billing-agent"],
     },
   ],

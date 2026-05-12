@@ -39,8 +39,8 @@ export function InstructionsSection({ value, onChange, showErrors }: Props) {
           Instructions & first message
         </CardTitle>
         <CardDescription>
-          Persona, role, and guardrails the agent follows on every call,
-          plus the exact greeting it opens with.
+          Persona, role, and guardrails the agent follows on every call, plus the exact greeting it
+          opens with.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -57,12 +57,10 @@ export function InstructionsSection({ value, onChange, showErrors }: Props) {
               aria-invalid={instructionsInvalid || undefined}
             />
             <FieldDescription>
-              Persona, role, and guardrails for the agent. Markdown headings
-              are common but not required.
+              Persona, role, and guardrails for the agent. Markdown headings are common but not
+              required.
             </FieldDescription>
-            {instructionsInvalid ? (
-              <FieldError>Instructions are required.</FieldError>
-            ) : null}
+            {instructionsInvalid ? <FieldError>Instructions are required.</FieldError> : null}
           </Field>
 
           <FieldSeparator>First message</FieldSeparator>
@@ -106,8 +104,8 @@ export function InstructionsSection({ value, onChange, showErrors }: Props) {
               placeholder="(empty for type=text)"
             />
             <FieldDescription>
-              Reserved for future first-message types (e.g. dynamic). Empty when
-              the type is plain text.
+              Reserved for future first-message types (e.g. dynamic). Empty when the type is plain
+              text.
             </FieldDescription>
           </Field>
         </FieldGroup>

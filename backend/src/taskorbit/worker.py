@@ -57,7 +57,10 @@ async def entrypoint(ctx: JobContext) -> None:
     # silence detection to time out.
     @ctx.room.on("data_received")
     def _on_data(packet: rtc.DataPacket) -> None:
-        if packet.participant_identity == ctx.room.local_participant.identity:
+        # TODO: add a "type" field to the message schema and validate it here, instead of relying on try/except and .get() to avoid processing irrelevant messages. This is currently sufficient
+        if packet.participant is None:
+            return
+        if packet.participant.identity == ctx.room.local_participant.identity:
             return
         try:
             msg = json.loads(packet.data.decode("utf-8"))
@@ -74,7 +77,6 @@ async def entrypoint(ctx: JobContext) -> None:
         room=ctx.room,
         room_output_options=RoomOutputOptions(sync_transcription=False),
     )
-
 
 
 def run_worker() -> None:

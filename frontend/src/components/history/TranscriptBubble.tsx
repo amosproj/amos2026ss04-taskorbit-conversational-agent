@@ -12,12 +12,7 @@ type Props = { turn: TranscriptTurn };
 export function TranscriptBubble({ turn }: Props) {
   const isUser = turn.role === "user";
   return (
-    <li
-      className={cn(
-        "flex flex-col gap-1",
-        isUser ? "items-end" : "items-start",
-      )}
-    >
+    <li className={cn("flex flex-col gap-1", isUser ? "items-end" : "items-start")}>
       <span className="text-xs font-medium text-muted-foreground">
         {isUser ? "Caller" : "Agent"}
       </span>

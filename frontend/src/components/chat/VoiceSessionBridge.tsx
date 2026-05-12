@@ -12,10 +12,7 @@
 import { useVoiceAssistant } from "@livekit/components-react";
 import { useCallback, useEffect, useRef } from "react";
 
-import {
-  type TranscriptionSegment,
-  useAgentTranscription,
-} from "@/hooks/useAgentTranscription";
+import { type TranscriptionSegment, useAgentTranscription } from "@/hooks/useAgentTranscription";
 import { useConnectionStatus } from "@/hooks/useConnectionStatus";
 import type { CallStatus } from "@/types/callState";
 

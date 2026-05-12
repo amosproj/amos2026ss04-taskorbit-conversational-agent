@@ -1,11 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { AgentConfig, ToolDefinition } from "@/types/agentConfig";
 
@@ -77,9 +71,7 @@ export function AgentIdentityCard({ agent, className }: Props) {
         <div className="flex min-w-0 flex-col gap-1">
           <CardTitle className="truncate">{agent.name}</CardTitle>
           {description ? (
-            <CardDescription className="line-clamp-2">
-              {description}
-            </CardDescription>
+            <CardDescription className="line-clamp-2">{description}</CardDescription>
           ) : null}
         </div>
         <Badge variant="outline" className="shrink-0">
@@ -89,23 +81,17 @@ export function AgentIdentityCard({ agent, className }: Props) {
       <CardContent className="flex flex-col gap-3 border-t pt-4">
         <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
           <div className="flex flex-col gap-0.5">
-            <dt className="text-xs text-muted-foreground uppercase tracking-wide">
-              STT
-            </dt>
+            <dt className="text-xs text-muted-foreground uppercase tracking-wide">STT</dt>
             <dd className="font-mono">{agent.stt.provider}</dd>
           </div>
           <div className="flex flex-col gap-0.5">
-            <dt className="text-xs text-muted-foreground uppercase tracking-wide">
-              LLM
-            </dt>
+            <dt className="text-xs text-muted-foreground uppercase tracking-wide">LLM</dt>
             <dd className="font-mono">
               {agent.llm.provider} · {agent.llm.model}
             </dd>
           </div>
           <div className="flex flex-col gap-0.5">
-            <dt className="text-xs text-muted-foreground uppercase tracking-wide">
-              TTS
-            </dt>
+            <dt className="text-xs text-muted-foreground uppercase tracking-wide">TTS</dt>
             <dd className="font-mono">{agent.tts.provider}</dd>
           </div>
         </dl>

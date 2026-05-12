@@ -1,0 +1,111 @@
+# Backend Linting workflow.
+#
+# Runs on every push and every pull request, on every branch.
+#
+# Pipeline stages (each in its own job for clear pass/fail visibility):
+#   1. install  — set up Python, Poetry, restore cache, install dependencies
+#   2. lint     — `ruff check .`
+#   3. format   — `ruff format --check .`
+#   4. tests    — `pytest`
+#
+# Local equivalents (run from `backend/`):
+#   poetry install --with dev
+#   poetry run ruff check .
+#   poetry run ruff format --check .
+#   poetry run pytest
+
+name: Backend Linting
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: backend-lint-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.11"
+  POETRY_VERSION: "1.8.4"
+
+jobs:
+  install:
+    name: "1. Install"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Bootstrap backend environment
+        uses: ./.github/actions/backend-bootstrap
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          poetry-version: ${{ env.POETRY_VERSION }}
+
+      - name: Verify Poetry environment
+        working-directory: backend
+        run: poetry run python -c "import taskorbit; print('taskorbit import OK')"
+
+  lint:
+    name: "2. Lint (ruff check)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: install
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Bootstrap backend environment
+        uses: ./.github/actions/backend-bootstrap
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          poetry-version: ${{ env.POETRY_VERSION }}
+
+      - name: Lint with ruff
+        working-directory: backend
+        run: poetry run ruff check .
+
+  format:
+    name: "3. Format (ruff format --check)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: lint
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Bootstrap backend environment
+        uses: ./.github/actions/backend-bootstrap
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          poetry-version: ${{ env.POETRY_VERSION }}
+
+      - name: Check formatting with ruff
+        working-directory: backend
+        run: poetry run ruff format --check .
+
+  tests:
+    name: "4. Tests (pytest)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: format
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Bootstrap backend environment
+        uses: ./.github/actions/backend-bootstrap
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          poetry-version: ${{ env.POETRY_VERSION }}
+
+      - name: Run unit tests with pytest
+        working-directory: backend
+        run: poetry run pytest

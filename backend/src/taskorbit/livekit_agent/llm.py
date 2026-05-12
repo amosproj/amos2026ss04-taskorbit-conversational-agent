@@ -22,8 +22,6 @@ from livekit.agents import Agent, FunctionTool, ModelSettings, llm
 
 from taskorbit.logging.setup import get_logger
 from taskorbit.orchestration import ConversationOrchestrator
-
-log = get_logger(__name__)
 from taskorbit.types import (
     AgentConfig,
     ConversationRequest,
@@ -33,6 +31,8 @@ from taskorbit.types import (
     STTConfig,
     TTSConfig,
 )
+
+log = get_logger(__name__)
 
 
 def _default_agent_config() -> AgentConfig:
