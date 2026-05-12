@@ -49,18 +49,15 @@ export function useAgentTranscription(onSegment: TranscriptionHandler): void {
         if (!attrs["lk.transcribed_track_id"]) return;
 
         const isFinal = attrs["lk.transcription_final"] === "true";
-        const segmentId =
-          attrs["lk.segment_id"] ?? reader.info.id ?? `seg-${Date.now()}`;
+        const segmentId = attrs["lk.segment_id"] ?? reader.info.id ?? `seg-${Date.now()}`;
         const role: "user" | "assistant" =
-          participant.identity === room.localParticipant.identity
-            ? "user"
-            : "assistant";
+          participant.identity === room.localParticipant.identity ? "user" : "assistant";
 
         onSegment({ id: segmentId, role, text, isFinal });
       } catch (err) {
         // Don't break the room over a single malformed stream — just
         // log and let subsequent streams flow.
-        // eslint-disable-next-line no-console
+
         console.warn("[useAgentTranscription] failed to read stream", err);
       }
     };

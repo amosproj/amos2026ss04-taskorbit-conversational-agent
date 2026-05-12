@@ -13,10 +13,7 @@ export type SynthesizeOptions = {
   modelId?: string;
 };
 
-export async function synthesizeSpeech(
-  text: string,
-  options?: SynthesizeOptions,
-): Promise<string> {
+export async function synthesizeSpeech(text: string, options?: SynthesizeOptions): Promise<string> {
   const { signal, voiceId, modelId } = options ?? {};
   const body: Record<string, unknown> = { text };
   if (voiceId) body.voice_id = voiceId;

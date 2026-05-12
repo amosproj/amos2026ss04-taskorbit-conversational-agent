@@ -79,11 +79,5 @@ export function Waveform({ levelsRef, active, className }: Props) {
     };
   }, [active, levelsRef]);
 
-  return (
-    <canvas
-      ref={canvasRef}
-      aria-hidden
-      className={cn("h-8 w-full", className)}
-    />
-  );
+  return <canvas ref={canvasRef} aria-hidden className={cn("h-8 w-full", className)} />;
 }

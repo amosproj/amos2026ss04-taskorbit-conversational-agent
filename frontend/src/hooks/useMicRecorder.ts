@@ -14,11 +14,7 @@
  */
 
 import { useLocalParticipant } from "@livekit/components-react";
-import {
-  type LocalAudioTrack,
-  LocalTrackPublication,
-  Track,
-} from "livekit-client";
+import { type LocalAudioTrack, LocalTrackPublication, Track } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const FFT_SIZE = 64;
@@ -50,8 +46,7 @@ export type MicRecorderApi = {
 };
 
 export function useMicRecorder(): MicRecorderApi {
-  const { localParticipant, microphoneTrack, isMicrophoneEnabled } =
-    useLocalParticipant();
+  const { localParticipant, microphoneTrack, isMicrophoneEnabled } = useLocalParticipant();
 
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
@@ -168,9 +163,7 @@ export function useMicRecorder(): MicRecorderApi {
       // either rejected the prompt or has the device blocked at the OS.
       const name = (err as Error).name;
       if (name === "NotAllowedError" || /permission/i.test(message)) {
-        setError(
-          "Microphone access was denied. Please allow microphone access to use voice.",
-        );
+        setError("Microphone access was denied. Please allow microphone access to use voice.");
       } else {
         setError(message);
       }
@@ -185,8 +178,7 @@ export function useMicRecorder(): MicRecorderApi {
       // Capture the underlying track before unpublishing so we can stop
       // the hardware and remove the browser's "mic in use" indicator.
       const pub = localParticipant.getTrackPublication(Track.Source.Microphone);
-      const msTrack = (pub?.track as LocalAudioTrack | undefined)
-        ?.mediaStreamTrack;
+      const msTrack = (pub?.track as LocalAudioTrack | undefined)?.mediaStreamTrack;
 
       await localParticipant.setMicrophoneEnabled(false);
 
@@ -203,9 +195,7 @@ export function useMicRecorder(): MicRecorderApi {
   const sendUtterance = useCallback(async () => {
     // Signal end-of-turn to the agent worker (maps to AgentSession.commit_user_turn)
     // so the reply starts without waiting for VAD silence. Then mute locally.
-    const payload = new TextEncoder().encode(
-      JSON.stringify({ type: "commit_turn" }),
-    );
+    const payload = new TextEncoder().encode(JSON.stringify({ type: "commit_turn" }));
     try {
       await localParticipant.publishData(payload, { reliable: true });
     } catch {
