@@ -5,11 +5,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from taskorbit.database.crud import (
-    create_chat_history,
+    create_conversation_message,
     create_user,
-    delete_chat_history,
+    delete_conversation_message,
     delete_user,
-    get_chat_histories_by_user,
+    get_messages_by_conversation,
+    get_messages_by_user,
     get_user,
     get_user_by_email,
     get_user_by_username,
@@ -103,41 +104,85 @@ class TestUserCRUD:
         assert deleted is None
 
 
-class TestChatHistoryCRUD:
-    """Tests for ChatHistory CRUD operations."""
+class TestConversationMessageCRUD:
+    """Tests for ConversationMessage CRUD operations."""
 
-    def test_create_chat_history(self, db_session):
+    def test_create_conversation_message(self, db_session):
         user = create_user(
-            db_session, username="chatuser", email="chat@example.com", hashed_password="hash"
+            db_session, username="msguser", email="msg@example.com", hashed_password="hash"
         )
-        entry = create_chat_history(
+        message = create_conversation_message(
             db_session,
-            user_id=user.id,
             conversation_id="conv-123",
             role="user",
-            message="Hello, world!",
+            content="Hello, world!",
+            user_id=user.id,
         )
-        assert entry is not None
-        assert entry.id is not None
-        assert entry.user_id == user.id
-        assert entry.conversation_id == "conv-123"
-        assert entry.role == "user"
-        assert entry.message == "Hello, world!"
+        assert message is not None
+        assert message.id is not None
+        assert message.conversation_id == "conv-123"
+        assert message.role == "user"
+        assert message.content == "Hello, world!"
+        assert message.user_id == user.id
 
-    def test_get_chat_histories_by_user(self, db_session):
+    def test_get_messages_by_conversation(self, db_session):
         user = create_user(
-            db_session, username="multichat", email="multi@example.com", hashed_password="hash"
+            db_session, username="convuser", email="conv@example.com", hashed_password="hash"
         )
         for i in range(3):
-            create_chat_history(db_session, user.id, f"conv-{i}", "user", f"Message {i}")
-        histories = get_chat_histories_by_user(db_session, user.id)
-        assert len(histories) >= 3
+            create_conversation_message(
+                db_session,
+                conversation_id="conv-456",
+                role="user" if i % 2 == 0 else "assistant",
+                content=f"Message {i}",
+                user_id=user.id if i % 2 == 0 else None,
+            )
+        messages = get_messages_by_conversation(db_session, "conv-456")
+        assert len(messages) >= 3
 
-    def test_delete_chat_history(self, db_session):
+    def test_get_messages_by_user(self, db_session):
         user = create_user(
-            db_session, username="delchatuser", email="delchat@example.com", hashed_password="hash"
+            db_session, username="user123", email="user123@example.com", hashed_password="hash"
         )
-        entry = create_chat_history(db_session, user.id, "conv-del", "user", "Delete me")
-        entry_id = entry.id
-        result = delete_chat_history(db_session, entry_id)
+        other_user = create_user(
+            db_session, username="other", email="other@example.com", hashed_password="hash"
+        )
+
+        for i in range(3):
+            create_conversation_message(
+                db_session,
+                conversation_id=f"conv-{i}",
+                role="user",
+                content=f"Message {i}",
+                user_id=user.id,
+            )
+        create_conversation_message(
+            db_session,
+            conversation_id="conv-other",
+            role="user",
+            content="Other user message",
+            user_id=other_user.id,
+        )
+
+        user_messages = get_messages_by_user(db_session, user.id)
+        assert len(user_messages) >= 3
+
+        for msg in user_messages:
+            assert msg.user_id == user.id
+
+    def test_delete_conversation_message(self, db_session):
+        user = create_user(
+            db_session, username="deluser", email="del@example.com", hashed_password="hash"
+        )
+        message = create_conversation_message(
+            db_session,
+            conversation_id="conv-del",
+            role="user",
+            content="Delete me",
+            user_id=user.id,
+        )
+        message_id = message.id
+        result = delete_conversation_message(db_session, message_id)
         assert result is True
+        deleted = get_messages_by_conversation(db_session, "conv-del")
+        assert len(deleted) == 0

@@ -41,8 +41,8 @@ You are the main orchestrator who guides customers through the service flow:
   },
   tts: {
     provider: "elevenlabs",
-    model: "eleven_turbo_v2",
-    voice_id: "v3V1d2rk6528UrLKRuy8",
+    model: "eleven_multilingual_v2",
+    voice_id: "21m00Tcm4TlvDq8ikWAM",
   },
   llm: {
     provider: "openai",

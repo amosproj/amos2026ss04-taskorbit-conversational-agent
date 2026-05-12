@@ -1,11 +1,8 @@
 """CLI entry point wired into pyproject.toml's `[tool.poetry.scripts]`.
 
-After `poetry install` you get:
+After `poetry install`:
 
     poetry run taskorbit-api      # FastAPI HTTP server (uvicorn)
-
-The voice-agent worker entry point will be added by the downstream
-ticket that implements `livekit_agent/`.
 """
 
 from __future__ import annotations

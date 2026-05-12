@@ -128,6 +128,14 @@ class ConversationResponse(BaseModel):
 class LiveKitTokenRequest(BaseModel):
     identity: str = Field(..., min_length=1, max_length=128)
     room: str = Field(..., min_length=1, max_length=128)
+    # Optional structured payload the frontend may attach to the JWT.
+    # The LiveKit voice worker reads this back as participant metadata
+    # to customise its persona, greeting, and (later) tools per-call.
+    # Capped at a few KB to avoid bloating the JWT.
+    metadata: dict[str, Any] | None = Field(default=None)
+    # LiveKit Cloud agent dispatch name (often ``CA_...``). Overrides
+    # ``LIVEKIT_AGENT_DISPATCH_NAME`` from the environment when set.
+    agent_dispatch_name: str | None = Field(default=None, max_length=256)
 
 
 class LiveKitTokenResponse(BaseModel):
