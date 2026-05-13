@@ -1,4 +1,5 @@
 """Tests for /v1/conversations endpoints."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
