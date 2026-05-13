@@ -1,6 +1,5 @@
 Title	URL	Assignees	Status	Estimated size	Real size
 Build Process Video	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/43		Product Backlog		
-User Chat Interaction	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/48		Product Backlog		
 User Conversation History	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/45		Product Backlog		
 Save Agent Configuration	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/47		Product Backlog		
 Load Agent Configuration	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/51		Product Backlog		
@@ -8,9 +7,9 @@ Manage Agent Configuration	https://github.com/amosproj/amos2026ss04-taskorbit-co
 Logging & Monitoring Setup	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/11		Product Backlog		
 Integrate Cloud Environment	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/21		Product Backlog		
 Agent/LLM Memory	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/56		Product Backlog		
+User Intent Matching	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/8		Product Backlog		
 Voice Interruption for Audio Chat	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/55		Product Backlog		
 Critical Action Confirmation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/49		Product Backlog		
-User Intent Matching	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/8		Product Backlog		
 Stream LLM Responses	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/57		Product Backlog		
 External Tool Interface	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/44		Product Backlog		
 Context Model Foundation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/9		Product Backlog		
@@ -29,3 +28,4 @@ System Architecture	https://github.com/amosproj/amos2026ss04-taskorbit-conversat
 First UI Design & Implementation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/5	Asadraza17, shikharthakur2404	Feature Archive	5	5
 Setup Development Environment	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/17	K-Vineesh	Feature Archive	3	5
 Schema Foundation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/6	K-Vineesh, shikharthakur2404	Feature Archive	3	3
+User Chat Interaction	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/48		Feature Archive		
