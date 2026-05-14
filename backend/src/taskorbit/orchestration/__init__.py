@@ -106,6 +106,14 @@ class ConversationOrchestrator:
                 status="error",
                 error=f"LLM call timed out after {self._settings.llm_timeout_seconds} seconds.",
             )
+        except UnicodeEncodeError as exc:
+            logger.error("encoding_error", error=str(exc), conversation_id=request.conversation_id)
+            return ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message("An unexpected error occurred."),
+                status="error",
+                error=str(exc),
+            )
         except ValueError as exc:
             logger.warning(
                 "invalid_runtime_input", error=str(exc), conversation_id=request.conversation_id
@@ -136,7 +144,7 @@ class ConversationOrchestrator:
             f"Persona: {agent_config.persona}",
         ]
         if active_tool:
-            lines.append(f"Current task: {active_tool.name} — {active_tool.description}")
+            lines.append(f"Current task: {active_tool.name} - {active_tool.description}")
             if active_tool.parameters:
                 lines.append(f"Available parameters: {active_tool.parameters}")
         return "\n".join(lines)
