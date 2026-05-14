@@ -66,9 +66,16 @@ async def entrypoint(ctx: JobContext) -> None:
             msg = json.loads(packet.data.decode("utf-8"))
         except Exception:  # noqa: BLE001
             return
-        if msg.get("type") == "commit_turn":
+        msg_type = msg.get("type")
+        if msg_type == "commit_turn":
             agent.request_reply()
             asyncio.create_task(_commit_and_reply())
+        elif msg_type == "interrupt_playback":
+            try:
+                session.interrupt()
+                logger.info("worker_interrupt_requested")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("worker_interrupt_failed", error=str(exc))
 
     # sync_transcription=False: publish agent transcript immediately instead of
     # timing it to audio playback, so text appears before/with audio in the UI.
