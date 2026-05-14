@@ -162,7 +162,13 @@ export function useMicRecorder(): MicRecorderApi {
     setError(null);
     setStarting(true);
     try {
-      await localParticipant.setMicrophoneEnabled(true);
+      await localParticipant.setMicrophoneEnabled(true, {
+        // Native browser noise processing reduces background noise reaching
+        // both LiveKit and the AnalyserNode used for silence detection.
+        noiseSuppression: true,
+        echoCancellation: true,
+        autoGainControl: true,
+      });
     } catch (err) {
       const message = (err as Error).message || "Could not access microphone.";
       // Browsers report permission denial as NotAllowedError; the user

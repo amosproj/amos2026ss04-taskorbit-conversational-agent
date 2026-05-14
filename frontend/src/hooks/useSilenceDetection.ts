@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 
 const POLL_MS = 100;
 const SILENCE_DURATION_MS = 2000;
-const SILENCE_THRESHOLD = 10; // 0–255 average amplitude
+const SILENCE_THRESHOLD = 20; // 0–255 average amplitude; raised to ignore typical background noise
 
 /**
  * Fires `onSilence` once when the audio levels in `levelsRef` stay below
