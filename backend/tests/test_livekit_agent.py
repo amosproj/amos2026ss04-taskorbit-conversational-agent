@@ -79,8 +79,10 @@ def test_build_agent_session_uses_deepgram_elevenlabs_silero(
     assert kwargs["vad"] is mock_vad.load.return_value
     assert kwargs["stt"] is mock_stt.return_value
     assert kwargs["tts"] is mock_tts.return_value
-    # Session uses manual endpointing (push-to-talk); no allow_interruptions flag.
     assert kwargs["turn_handling"]["endpointing"]["mode"] == "manual"
+    # Barge-in is enabled; brief noises are ignored via the duration threshold.
+    assert kwargs["allow_interruptions"] is True
+    assert kwargs["min_interruption_duration"] == 0.5
 
 
 def _make_chat_ctx(messages: list[tuple[str, str]]) -> Any:

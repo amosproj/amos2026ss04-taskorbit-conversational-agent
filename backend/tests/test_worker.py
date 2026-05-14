@@ -167,3 +167,66 @@ async def test_server_packet_ignored(configured_settings: None) -> None:
     handler(_server_packet(json.dumps({"type": "commit_turn"}).encode()))
 
     mock_agent.request_reply.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_interrupt_playback_calls_session_interrupt(configured_settings: None) -> None:
+    """An "interrupt_playback" message should call session.interrupt() immediately."""
+    ctx, registered = _make_ctx()
+    mock_session = AsyncMock()
+    mock_session.interrupt = MagicMock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+    ):
+        await entrypoint(ctx)
+
+    handler = registered["data_received"]
+    handler(_data_packet(json.dumps({"type": "interrupt_playback"}).encode()))
+
+    mock_session.interrupt.assert_called_once()
+    mock_agent.request_reply.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_commit_turn_does_not_call_interrupt(configured_settings: None) -> None:
+    """A "commit_turn" message must not trigger session.interrupt()."""
+    ctx, registered = _make_ctx()
+    mock_session = AsyncMock()
+    mock_session.generate_reply = MagicMock(return_value=None)
+    mock_session.interrupt = MagicMock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+        patch("taskorbit.worker._DEEPGRAM_FLUSH_DELAY_S", 0),
+    ):
+        await entrypoint(ctx)
+
+        handler = registered["data_received"]
+        handler(_data_packet(json.dumps({"type": "commit_turn"}).encode()))
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+    mock_session.interrupt.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_interrupt_session_exception_is_logged(configured_settings: None) -> None:
+    """session.interrupt() failure should be caught and logged, not propagated."""
+    ctx, registered = _make_ctx()
+    mock_session = AsyncMock()
+    mock_session.interrupt = MagicMock(side_effect=RuntimeError("tts already stopped"))
+    mock_agent = MagicMock()
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+    ):
+        await entrypoint(ctx)
+
+    handler = registered["data_received"]
+    handler(_data_packet(json.dumps({"type": "interrupt_playback"}).encode()))
