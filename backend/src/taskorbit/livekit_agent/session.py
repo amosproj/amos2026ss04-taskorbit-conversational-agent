@@ -65,6 +65,11 @@ def build_agent_session(
                 use_speaker_boost=True,
             ),
         ),
+        # Barge-in: stop agent TTS as soon as the user sustains speech for
+        # min_interruption_duration seconds. Brief noises (clicks, coughs)
+        # shorter than the threshold do not trigger an interruption.
+        allow_interruptions=True,
+        min_interruption_duration=0.5,
         # Push-to-talk: only reply when generate_reply() is called explicitly.
         # "manual" endpointing disables VAD/silence auto-trigger.
         # preemptive_tts=False stops the session from calling llm_node early
