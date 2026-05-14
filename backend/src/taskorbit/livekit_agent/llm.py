@@ -85,17 +85,35 @@ def _extract_text(item: Any) -> str:
     """
     content = getattr(item, "content", None)
     if isinstance(content, str):
-        return content.strip()
+        return _normalize_text(content)
     if isinstance(content, list):
         parts: list[str] = []
         for entry in content:
             if isinstance(entry, str):
                 parts.append(entry)
-        return " ".join(parts).strip()
+        return _normalize_text(" ".join(parts))
     text_attr = getattr(item, "text_content", None)
     if isinstance(text_attr, str):
-        return text_attr.strip()
+        return _normalize_text(text_attr)
     return ""
+
+
+def _normalize_text(text: str) -> str:
+    """Replace common Unicode punctuation variants with ASCII equivalents.
+
+    STT providers (e.g. Deepgram) can emit Unicode dashes and smart quotes
+    in transcriptions. Replacing them prevents UnicodeEncodeError when the
+    text is passed to LLM HTTP clients that use ASCII-only JSON serialisation.
+    """
+    return (
+        text.replace("—", "-")  # em dash
+        .replace("–", "-")  # en dash
+        .replace("‘", "'")  # left single quotation mark
+        .replace("’", "'")  # right single quotation mark
+        .replace("“", '"')  # left double quotation mark
+        .replace("”", '"')  # right double quotation mark
+        .strip()
+    )
 
 
 class OrchestratorAgent(Agent):
