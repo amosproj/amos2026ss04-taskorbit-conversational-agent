@@ -64,6 +64,16 @@ export function InCallControls({
     }
   };
 
+  const handleInterruptAndSpeak = async (): Promise<void> => {
+    await mic.sendInterrupt();
+    try {
+      await mic.enable();
+      onPhase("recording");
+    } catch {
+      // useMicRecorder already surfaces the error via mic.error.
+    }
+  };
+
   const handleStopRecording = async (): Promise<void> => {
     await mic.disable();
     onPhase("idle_in_call");
@@ -100,7 +110,11 @@ export function InCallControls({
             <MicButton
               status={status}
               starting={mic.starting}
-              onStart={() => void handleStartRecording()}
+              onStart={
+                status === "speaking"
+                  ? () => void handleInterruptAndSpeak()
+                  : () => void handleStartRecording()
+              }
               onStop={() => void handleStopRecording()}
             />
             {recording ? (
