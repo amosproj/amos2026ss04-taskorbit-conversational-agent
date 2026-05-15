@@ -38,16 +38,25 @@ async def entrypoint(ctx: JobContext) -> None:
     session = build_agent_session(settings=cfg)
     agent = build_default_agent(settings=cfg)
 
+    # Holds the most-recent pending reply task so it can be cancelled on
+    # interruption before the orchestrator finishes processing.
+    reply_task: asyncio.Task[None] | None = None
+
     async def _commit_and_reply() -> None:
         # Small delay so Deepgram can flush its final transcription segment
         # into the ChatContext before generate_reply() reads it. Without this,
         # the last word(s) of the utterance may be missing from the reply.
-        await asyncio.sleep(_DEEPGRAM_FLUSH_DELAY_S)
         try:
+            await asyncio.sleep(_DEEPGRAM_FLUSH_DELAY_S)
             result = session.generate_reply()
             if asyncio.iscoroutine(result):
                 await result
             logger.info("worker_generate_reply_triggered")
+        except asyncio.CancelledError:
+            # Interruption arrived before the orchestrator finished — discard
+            # this turn cleanly so no stale reply reaches the user.
+            logger.info("worker_generate_reply_cancelled")
+            raise
         except Exception as exc:  # noqa: BLE001
             logger.warning("worker_generate_reply_failed", error=str(exc))
 
@@ -58,6 +67,7 @@ async def entrypoint(ctx: JobContext) -> None:
     @ctx.room.on("data_received")
     def _on_data(packet: rtc.DataPacket) -> None:
         # TODO: add a "type" field to the message schema and validate it here, instead of relying on try/except and .get() to avoid processing irrelevant messages. This is currently sufficient
+        nonlocal reply_task
         if packet.participant is None:
             return
         if packet.participant.identity == ctx.room.local_participant.identity:
@@ -69,8 +79,11 @@ async def entrypoint(ctx: JobContext) -> None:
         msg_type = msg.get("type")
         if msg_type == "commit_turn":
             agent.request_reply()
-            asyncio.create_task(_commit_and_reply())
+            reply_task = asyncio.create_task(_commit_and_reply())
         elif msg_type == "interrupt_playback":
+            if reply_task and not reply_task.done():
+                reply_task.cancel()
+                reply_task = None
             try:
                 session.interrupt()
                 logger.info("worker_interrupt_requested")
