@@ -2,15 +2,18 @@ import { useEffect, useRef } from "react";
 
 const POLL_MS = 100;
 const SILENCE_DURATION_MS = 2000;
-const SILENCE_THRESHOLD = 20; // 0–255 average amplitude; raised to ignore typical background noise
+const SILENCE_THRESHOLD = 20; // 0–255; below this is considered silence
+const SPEECH_THRESHOLD = 30; // 0–255; must cross this before silence detection arms
 
 /**
- * Fires `onSilence` once when the audio levels in `levelsRef` stay below
- * SILENCE_THRESHOLD for SILENCE_DURATION_MS while `active` is true.
+ * Fires `onSilence` once when the user STOPS speaking — specifically, when
+ * audio levels drop below SILENCE_THRESHOLD for SILENCE_DURATION_MS, but
+ * only AFTER the user has actually spoken (amplitude crossed SPEECH_THRESHOLD
+ * at least once during the current active window).
  *
- * Used as a frontend safety net: if the user stops speaking for 2 seconds
- * while the mic is open, the turn is auto-submitted without requiring the
- * Send button.
+ * This prevents the hook from auto-submitting on ambient silence when the mic
+ * opens but the user hasn't said anything yet, which would cause an infinite
+ * request loop in continuous voice mode.
  */
 export function useSilenceDetection({
   levelsRef,
@@ -30,6 +33,7 @@ export function useSilenceDetection({
   useEffect(() => {
     if (!active) return;
 
+    let hasSpeech = false; // armed only after real speech is detected
     let silenceStart: number | null = null;
     let fired = false;
 
@@ -39,6 +43,15 @@ export function useSilenceDetection({
       const levels = levelsRef.current;
       const avg = levels.reduce((s, v) => s + v, 0) / (levels.length || 1);
 
+      if (avg >= SPEECH_THRESHOLD) {
+        hasSpeech = true;
+        silenceStart = null; // speech detected — reset silence timer
+        return;
+      }
+
+      // Below silence threshold — only start counting if user already spoke.
+      if (!hasSpeech) return;
+
       if (avg < SILENCE_THRESHOLD) {
         if (silenceStart === null) {
           silenceStart = Date.now();
@@ -47,7 +60,7 @@ export function useSilenceDetection({
           onSilenceRef.current();
         }
       } else {
-        silenceStart = null; // speech detected — reset silence timer
+        silenceStart = null;
       }
     }, POLL_MS);
 
