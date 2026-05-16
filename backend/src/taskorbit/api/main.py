@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from taskorbit import __version__
 from taskorbit.api import health
-from taskorbit.api.routes import conversations, livekit, tts
+from taskorbit.api.routes import agent_configs, conversations, livekit, tts
 from taskorbit.config import get_settings
 from taskorbit.logging.setup import configure_logging, get_logger
 
@@ -67,6 +67,7 @@ def create_app() -> FastAPI:
     app.include_router(conversations.router)  # /v1/conversations/process
     app.include_router(livekit.router)  # /v1/livekit/token
     app.include_router(tts.router)  # /v1/tts/synthesize
+    app.include_router(agent_configs.router)  # /v1/agent-configs
 
     return app
 
