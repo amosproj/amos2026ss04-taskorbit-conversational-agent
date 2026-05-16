@@ -77,3 +77,15 @@ class User(Base):
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), onupdate=func.now()
     )
+
+
+class AgentConfiguration(Base):
+    __tablename__ = "agent_configurations"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), onupdate=func.now()
+    )
