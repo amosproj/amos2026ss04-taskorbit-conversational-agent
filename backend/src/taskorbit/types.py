@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # ---------------------------------------------------------------------------
 # Enumerations
@@ -147,3 +147,27 @@ class LiveKitTokenResponse(BaseModel):
     url: str
     room: str
     identity: str
+
+
+# ---------------------------------------------------------------------------
+# Agent-configuration persistence response shapes
+# ---------------------------------------------------------------------------
+
+
+class AgentConfigurationSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    created_at: datetime
+    updated_at: datetime | None = None
+
+
+class AgentConfigurationDetail(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    config: AgentConfig
+    created_at: datetime
+    updated_at: datetime | None = None
