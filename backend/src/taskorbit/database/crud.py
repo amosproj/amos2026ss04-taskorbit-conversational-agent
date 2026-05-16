@@ -1,12 +1,13 @@
 """CRUD operations for database models."""
 
 from datetime import datetime
+from uuid import uuid4
 
 import structlog
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from .models import ConversationMessage, User
+from .models import AgentConfiguration, ConversationMessage, User
 
 logger = structlog.get_logger()
 
@@ -216,3 +217,83 @@ def get_conversation_messages_formatted(db: Session, conversation_id: str) -> li
     except SQLAlchemyError as e:
         logger.error("get_conversation_messages_formatted_failed", error=str(e))
         return []
+
+
+# ============ AGENT CONFIGURATION CRUD ============
+
+
+def get_agent_configuration(db: Session, config_id: str) -> AgentConfiguration | None:
+    try:
+        return db.query(AgentConfiguration).filter(AgentConfiguration.id == config_id).first()
+    except SQLAlchemyError as e:
+        logger.error("get_agent_configuration_failed", error=str(e))
+        return None
+
+
+def list_agent_configurations(
+    db: Session, skip: int = 0, limit: int = 100
+) -> list[AgentConfiguration]:
+    try:
+        return (
+            db.query(AgentConfiguration)
+            .order_by(AgentConfiguration.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+    except SQLAlchemyError as e:
+        logger.error("list_agent_configurations_failed", error=str(e))
+        return []
+
+
+def create_agent_configuration(db: Session, name: str, config: dict) -> AgentConfiguration | None:
+    try:
+        db_config = AgentConfiguration(id=uuid4().hex, name=name, config=config)
+        db.add(db_config)
+        db.commit()
+        db.refresh(db_config)
+        return db_config
+    except SQLAlchemyError as e:
+        logger.error("create_agent_configuration_failed", error=str(e))
+        db.rollback()
+        return None
+
+
+def update_agent_configuration(
+    db: Session,
+    config_id: str,
+    name: str | None = None,
+    config: dict | None = None,
+) -> AgentConfiguration | None:
+    try:
+        db_config = get_agent_configuration(db, config_id)
+        if not db_config:
+            return None
+
+        if name is not None:
+            db_config.name = name
+        if config is not None:
+            db_config.config = config
+
+        db_config.updated_at = datetime.now()
+        db.commit()
+        db.refresh(db_config)
+        return db_config
+    except SQLAlchemyError as e:
+        logger.error("update_agent_configuration_failed", error=str(e))
+        db.rollback()
+        return None
+
+
+def delete_agent_configuration(db: Session, config_id: str) -> bool:
+    try:
+        db_config = get_agent_configuration(db, config_id)
+        if not db_config:
+            return False
+        db.delete(db_config)
+        db.commit()
+        return True
+    except SQLAlchemyError as e:
+        logger.error("delete_agent_configuration_failed", error=str(e))
+        db.rollback()
+        return False
