@@ -14,7 +14,10 @@ from taskorbit.types import AgentConfigurationDetail, AgentConfigurationSummary
 
 router = APIRouter(prefix="/v1/agent-configs", tags=["agent-configs"])
 
-_engine = create_engine(get_settings().database_url, pool_pre_ping=True)
+_engine = create_engine(
+    str(get_settings().database_url).replace("postgresql://", "postgresql+psycopg://"),
+    pool_pre_ping=True,
+)
 _SessionLocal = sessionmaker(bind=_engine, autocommit=False, autoflush=False)
 
 
