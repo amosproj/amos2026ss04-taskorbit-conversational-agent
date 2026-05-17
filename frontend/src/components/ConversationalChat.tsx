@@ -248,7 +248,8 @@ export function ConversationalChat() {
         </p>
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{appName}</h1>
         <p className="text-sm text-muted-foreground">
-          I'm here to help with your needs. Start chatting by sending a message or using the mic button to speak.
+          I'm here to help with your needs. Start chatting by sending a message or using the mic
+          button to speak.
         </p>
       </header>
 
@@ -264,9 +265,7 @@ export function ConversationalChat() {
           <CardHeader className="flex flex-row items-start justify-between gap-3 border-b">
             <div className="space-y-1">
               <CardTitle>{agent.name}</CardTitle>
-              <CardDescription>
-                Voice session active · live transcript below. 
-              </CardDescription>
+              <CardDescription>Voice session active · live transcript below.</CardDescription>
             </div>
             <CallStatusIndicator status={call.status} />
           </CardHeader>
