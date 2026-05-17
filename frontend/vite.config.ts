@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => {
       // relative URLs like `/api/health` and avoid CORS hassle.
       proxy: {
         "/api": {
-          target: env.VITE_API_URL ?? "http://localhost:8000",
+          target: process.env.VITE_API_URL ?? env.VITE_API_URL ?? "http://localhost:8000",
           changeOrigin: true,
           rewrite: (p) => p.replace(/^\/api/, ""),
         },

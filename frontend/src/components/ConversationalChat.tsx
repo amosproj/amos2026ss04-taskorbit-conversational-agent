@@ -4,7 +4,6 @@ import type { ReactNode } from "react";
 
 import { AgentIdentityCard } from "@/components/chat/AgentIdentityCard";
 import { CallControls } from "@/components/chat/CallControls";
-import { CallStatusIndicator } from "@/components/chat/CallStatusIndicator";
 import { ConfirmationPrompt } from "@/components/chat/ConfirmationPrompt";
 import { InCallControls } from "@/components/chat/InCallControls";
 import { PreCallDiagnostics } from "@/components/chat/PreCallDiagnostics";
@@ -204,14 +203,11 @@ export function ConversationalChat() {
 
       {isInCall ? (
         <Card>
-          <CardHeader className="flex flex-row items-start justify-between gap-3 border-b">
-            <div className="space-y-1">
-              <CardTitle>{agent.name}</CardTitle>
-              <CardDescription>
-                Live call · transcript updates as the conversation progresses.
-              </CardDescription>
-            </div>
-            <CallStatusIndicator status={call.status} agentName={agent.name} />
+          <CardHeader className="border-b">
+            <CardTitle>{agent.name}</CardTitle>
+            <CardDescription>
+              Live call · transcript updates as the conversation progresses.
+            </CardDescription>
           </CardHeader>
           <CardContent className="pt-6">
             <ScrollArea className="h-[min(50vh,28rem)] pr-3">
