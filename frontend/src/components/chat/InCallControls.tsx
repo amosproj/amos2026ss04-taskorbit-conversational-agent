@@ -123,6 +123,15 @@ export function InCallControls({
     setContinuousMode(true);
   }, [greetingInProgress]);
 
+  // ── Greeting mic lock ────────────────────────────────────────────────────
+  // Ensure the mic is off for the entire duration of the greeting. The
+  // button is already visually disabled, but this guard handles any race
+  // where the mic was open before greetingInProgress became true.
+  useEffect(() => {
+    if (!greetingInProgress) return;
+    void mic.disable();
+  }, [greetingInProgress, mic]);
+
   // ── Barge-in mic pre-warm ────────────────────────────────────────────────
   // Publish the mic as soon as the agent starts speaking so Deepgram is
   // already receiving audio before the user decides to interrupt.
@@ -133,9 +142,10 @@ export function InCallControls({
   // interrupt signal to stop TTS quickly.
   useEffect(() => {
     if (!continuousMode) return;
+    if (greetingInProgress) return;
     if (status !== "speaking") return;
     void mic.enable();
-  }, [status, continuousMode, mic]);
+  }, [status, continuousMode, greetingInProgress, mic]);
 
   // ── Silence / barge-in detection ─────────────────────────────────────────
 
@@ -150,8 +160,9 @@ export function InCallControls({
   // Passively monitors ambient mic audio (unpublished stream) while agent
   // is speaking. Fires handleInterruptAndSpeak() after 300 ms of sustained
   // speech so the agent audio stops and the user's new turn is recorded.
+  // Disabled during the greeting so ambient noise can't interrupt it.
   useVoiceActivityMonitor({
-    active: status === "speaking",
+    active: status === "speaking" && !greetingInProgress,
     onSpeech: () => {
       void handleInterruptAndSpeak();
     },

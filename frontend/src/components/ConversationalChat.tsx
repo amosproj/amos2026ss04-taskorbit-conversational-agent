@@ -297,7 +297,7 @@ export function ConversationalChat() {
             <ScrollArea className="h-[min(40vh,24rem)] pr-3">
               <ul className="flex flex-col gap-4" aria-label="Transcript">
                 {call.transcript.map((turn) => (
-                  <TranscriptBubble key={turn.id} turn={turn} />
+                  <TranscriptBubble key={turn.id} turn={turn} history />
                 ))}
               </ul>
             </ScrollArea>

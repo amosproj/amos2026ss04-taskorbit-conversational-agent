@@ -8,9 +8,11 @@ const MS_PER_WORD = 390;
 
 type Props = {
   turn: TranscriptTurn & { isFinal?: boolean };
+  /** When true, skip all animation and show the full text immediately. */
+  history?: boolean;
 };
 
-export function TranscriptBubble({ turn }: Props) {
+export function TranscriptBubble({ turn, history = false }: Props) {
   const isUser = turn.role === "user";
 
   // Once we see isFinal=false the turn is being streamed (LiveKit stream or
@@ -29,7 +31,7 @@ export function TranscriptBubble({ turn }: Props) {
   // Timer fallback: only for non-user, non-history, non-streaming turns where
   // the full sentence arrives in one shot (e.g. TTS fetch failed → full text).
   useEffect(() => {
-    if (isUser || isStreaming || turn.isFinal === undefined || !turn.text) return;
+    if (history || isUser || isStreaming || turn.isFinal === undefined || !turn.text) return;
     if (countRef.current >= wordsRef.current.length) return;
 
     let count = countRef.current;
@@ -41,10 +43,10 @@ export function TranscriptBubble({ turn }: Props) {
     }, MS_PER_WORD);
 
     return () => clearInterval(id);
-  }, [turn.text, isUser, isStreaming, turn.isFinal]);
+  }, [turn.text, isUser, isStreaming, turn.isFinal, history]);
 
   const displayText = (() => {
-    if (isUser) return turn.text;
+    if (isUser || history) return turn.text;
     // History turns (isFinal undefined) and streaming turns: show as-is.
     if (turn.isFinal === undefined || isStreaming) return turn.text;
     // Full-text-at-once fallback: timer-paced reveal.
