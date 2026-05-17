@@ -272,6 +272,62 @@ async def test_interrupt_cancels_pending_reply_task(configured_settings: None) -
 
 
 @pytest.mark.asyncio
+async def test_local_participant_packet_ignored(configured_settings: None) -> None:
+    """A packet whose sender identity matches the local participant must be ignored."""
+    ctx, registered = _make_ctx()
+    mock_session = AsyncMock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+    ):
+        await entrypoint(ctx)
+
+    handler = registered["data_received"]
+    local_identity = ctx.room.local_participant.identity
+    packet = _data_packet(json.dumps({"type": "commit_turn"}).encode(), local_identity)
+    handler(packet)
+
+    mock_agent.request_reply.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_interrupt_during_flush_delay_cancels_task(configured_settings: None) -> None:
+    """interrupt_playback arriving while _commit_and_reply is sleeping on the
+    Deepgram flush delay must cancel the task before generate_reply is called."""
+    ctx, registered = _make_ctx()
+    mock_session = AsyncMock()
+    mock_session.generate_reply = MagicMock(return_value=None)
+    mock_session.interrupt = MagicMock()
+    mock_agent = MagicMock()
+
+    small_delay = 0.01
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+        patch("taskorbit.worker._DEEPGRAM_FLUSH_DELAY_S", small_delay),
+    ):
+        await entrypoint(ctx)
+
+        handler = registered["data_received"]
+
+        # Start the commit/reply cycle — task enters asyncio.sleep(small_delay).
+        handler(_data_packet(json.dumps({"type": "commit_turn"}).encode()))
+        await asyncio.sleep(0)  # let the task start and reach the sleep
+
+        # Interrupt arrives while the task is still sleeping.
+        handler(_data_packet(json.dumps({"type": "interrupt_playback"}).encode()))
+
+        # Allow the event loop to process the cancellation.
+        await asyncio.sleep(small_delay * 2)
+
+    mock_session.interrupt.assert_called_once()
+    mock_session.generate_reply.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_interrupt_after_completed_task_does_not_raise(configured_settings: None) -> None:
     """interrupt_playback sent after the reply task already finished must still
     call session.interrupt() without raising an error (reply_task.done() guard)."""
