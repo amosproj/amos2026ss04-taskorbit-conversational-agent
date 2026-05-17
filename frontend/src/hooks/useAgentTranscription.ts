@@ -49,17 +49,17 @@ export function useAgentTranscription(onSegment: TranscriptionHandler): void {
         const role: "user" | "assistant" =
           participant.identity === room.localParticipant.identity ? "user" : "assistant";
 
-        // Each iteration yields the full accumulated text received so far.
-        // With sync_transcription=True on the backend, livekit-agents writes
-        // words progressively as the TTS audio plays — so words trickle in
-        // naturally timed to speech. upsertTurnById merges them into one bubble.
-        let latest = "";
+        // livekit-agents writes one word/phrase per stream write with
+        // sync_transcription=True. Each chunk is incremental — we accumulate
+        // manually so segment.text always holds the full sentence so far.
+        // The stream's own timing is already synchronized to the TTS audio.
+        let accumulated = "";
         for await (const chunk of reader) {
-          latest = chunk;
-          onSegment({ id: segmentId, role, text: latest, isFinal: false });
+          accumulated += chunk;
+          onSegment({ id: segmentId, role, text: accumulated.trim(), isFinal: false });
         }
-        if (latest) {
-          onSegment({ id: segmentId, role, text: latest, isFinal: true });
+        if (accumulated.trim()) {
+          onSegment({ id: segmentId, role, text: accumulated.trim(), isFinal: true });
         }
       } catch (err) {
         // Don't break the room over a single malformed stream — just

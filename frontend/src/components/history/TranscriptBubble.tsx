@@ -3,62 +3,46 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { TranscriptTurn } from "@/lib/mockConversations";
 
-/** ~155 WPM — matches typical ElevenLabs TTS speaking pace. */
+/** ~155 WPM — used only for static turns (greeting) that play via playSynthesizedSpeech. */
 const MS_PER_WORD = 390;
 
 type Props = {
   turn: TranscriptTurn & { isFinal?: boolean };
+  /**
+   * Pass true for assistant turns that are not streamed (e.g. the greeting).
+   * These play audio via playSynthesizedSpeech so a fixed-rate timer is the
+   * only way to approximate audio sync. Live streaming turns must NOT use
+   * this — the stream's own delivery timing is already audio-synchronized.
+   */
+  animate?: boolean;
 };
 
-/**
- * One transcript bubble.
- *
- * Assistant turns animate word-by-word at speech rate. The last revealed
- * word is highlighted (currently being spoken). Once all words are shown,
- * plain text with no highlight.
- *
- * User turns and History views: plain text, no animation.
- */
-export function TranscriptBubble({ turn }: Props) {
+export function TranscriptBubble({ turn, animate = false }: Props) {
   const isUser = turn.role === "user";
+  const shouldAnimate = animate && !isUser;
+
   const [shownCount, setShownCount] = useState(0);
-
-  // countRef mirrors shownCount so the timer closure always reads the
-  // latest position without capturing a stale state value.
   const countRef = useRef(0);
-
-  // Always holds the latest split words so the timer's stop condition
-  // uses the most up-to-date length (important when text grows via streaming).
   const wordsRef = useRef<string[]>([]);
   const allWords = turn.text.trim().split(/\s+/).filter(Boolean);
   wordsRef.current = allWords;
 
   useEffect(() => {
-    if (isUser || !turn.text) return;
+    if (!shouldAnimate || !turn.text) return;
     if (countRef.current >= wordsRef.current.length) return;
 
-    // Resume from wherever we left off — handles growing text (streaming)
-    // and also React StrictMode's mount→unmount→remount cycle correctly
-    // because the cleanup always nulls timerRef before the next run.
     let count = countRef.current;
-
     const id = setInterval(() => {
       count++;
       countRef.current = count;
       setShownCount(count);
-      if (count >= wordsRef.current.length) {
-        clearInterval(id);
-      }
+      if (count >= wordsRef.current.length) clearInterval(id);
     }, MS_PER_WORD);
 
-    return () => {
-      // Always clear AND null so StrictMode remount doesn't see a stale id
-      // and the next effect run can start a fresh timer if needed.
-      clearInterval(id);
-    };
-  }, [turn.text, isUser]);
+    return () => clearInterval(id);
+  }, [turn.text, shouldAnimate]);
 
-  const shownWords = isUser ? allWords : allWords.slice(0, shownCount);
+  const displayText = shouldAnimate ? allWords.slice(0, shownCount).join(" ") : turn.text;
 
   return (
     <li className={cn("flex flex-col gap-1", isUser ? "items-end" : "items-start")}>
@@ -73,7 +57,7 @@ export function TranscriptBubble({ turn }: Props) {
             : "rounded-tl-sm bg-muted text-foreground",
         )}
       >
-        {isUser ? turn.text : shownWords.join(" ")}
+        {displayText}
       </div>
     </li>
   );

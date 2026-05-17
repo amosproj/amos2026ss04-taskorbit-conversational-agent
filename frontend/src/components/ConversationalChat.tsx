@@ -248,7 +248,11 @@ export function ConversationalChat() {
             <ScrollArea className="h-[min(50vh,28rem)] pr-3">
               <ul className="flex flex-col gap-4" aria-label="Transcript">
                 {call.transcript.map((turn) => (
-                  <TranscriptBubble key={turn.id} turn={turn} />
+                  <TranscriptBubble
+                    key={turn.id}
+                    turn={turn}
+                    animate={turn.role === "assistant" && turn.isFinal === undefined}
+                  />
                 ))}
                 <div ref={transcriptEndRef} className="h-px" aria-hidden />
               </ul>
