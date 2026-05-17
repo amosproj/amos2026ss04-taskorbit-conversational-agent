@@ -17,15 +17,14 @@
 
 import { useEffect, useRef } from "react";
 
-// Amplitude threshold (0–255). 35 sits well above typical laptop/desk ambient
-// noise (~10–20) but below conversational speech (~50–120).
-const SPEECH_THRESHOLD = 35;
+// Amplitude threshold (0–255). 55 rejects typical ambient noise (~10–25) and
+// brief background sounds (~30–45), requiring clear conversational speech (~60–120).
+const SPEECH_THRESHOLD = 55;
 
-// Sustained duration required before onSpeech fires. Rejects transient noises
-// (keyboard clicks, single coughs) which rarely exceed 200 ms.
-// Aligned with the backend min_interruption_duration=0.5 s: the frontend fires
-// sooner so the interrupt_playback message arrives before VAD would cut in.
-const SPEECH_SUSTAIN_MS = 300;
+// Sustained duration before onSpeech fires. 500 ms rejects coughs, clicks, and
+// short background bursts that rarely exceed 300 ms, while still feeling
+// responsive for intentional speech.
+const SPEECH_SUSTAIN_MS = 500;
 
 // Poll interval. 50 ms gives ≤350 ms total detection latency (sustain + 1 poll).
 const POLL_MS = 50;

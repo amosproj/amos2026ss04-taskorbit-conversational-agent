@@ -41,7 +41,13 @@ def build_agent_session(
     cfg = settings or get_settings()
 
     return AgentSession(
-        vad=silero.VAD.load(),
+        vad=silero.VAD.load(
+            activation_threshold=0.7,
+            deactivation_threshold=0.45,
+            min_speech_duration=0.2,
+            min_silence_duration=0.55,
+            prefix_padding_duration=0.4,
+        ),
         stt=deepgram.STT(
             api_key=cfg.deepgram_api_key,
             model=cfg.deepgram_model,
@@ -74,7 +80,7 @@ def build_agent_session(
         # min_interruption_duration seconds. Brief noises (clicks, coughs)
         # shorter than the threshold do not trigger an interruption.
         allow_interruptions=True,
-        min_interruption_duration=0.5,
+        min_interruption_duration=0.8,
         # Push-to-talk: only reply when generate_reply() is called explicitly.
         # "manual" endpointing disables VAD/silence auto-trigger.
         # preemptive_tts=False stops the session from calling llm_node early

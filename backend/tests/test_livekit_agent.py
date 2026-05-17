@@ -63,7 +63,13 @@ def test_build_agent_session_uses_deepgram_elevenlabs_silero(
     ):
         build_agent_session()
 
-    mock_vad.load.assert_called_once_with()
+    mock_vad.load.assert_called_once_with(
+        activation_threshold=0.7,
+        deactivation_threshold=0.45,
+        min_speech_duration=0.2,
+        min_silence_duration=0.55,
+        prefix_padding_duration=0.4,
+    )
     mock_stt.assert_called_once_with(
         api_key=_FAKE_DG_KEY,
         model=_FAKE_DG_MODEL,
@@ -82,7 +88,7 @@ def test_build_agent_session_uses_deepgram_elevenlabs_silero(
     assert kwargs["turn_handling"]["endpointing"]["mode"] == "manual"
     # Barge-in is enabled; brief noises are ignored via the duration threshold.
     assert kwargs["allow_interruptions"] is True
-    assert kwargs["min_interruption_duration"] == 0.5
+    assert kwargs["min_interruption_duration"] == 0.8
 
 
 def _make_chat_ctx(messages: list[tuple[str, str]]) -> Any:
