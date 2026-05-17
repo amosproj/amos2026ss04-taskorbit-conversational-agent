@@ -173,16 +173,20 @@ export function InCallControls({
   const handleVoiceBtnClick = (): void => {
     if (continuousMode) {
       setContinuousMode(false);
-      if (status === "recording") void handleStopRecording();
-      // If thinking / speaking: mic is already off; disabling the mode means
-      // the effect won't restart it after the agent finishes.
+      if (status === "recording") {
+        void handleStopRecording(); // mutes mic + sets idle_in_call
+      } else if (status === "speaking") {
+        void mic.sendInterrupt(); // stop TTS playback
+        onPhase("idle_in_call");
+      } else {
+        // thinking or any other active phase — just surface Paused
+        onPhase("idle_in_call");
+      }
       return;
     }
     // Start continuous mode — works from idle or while agent is speaking.
     setContinuousMode(true);
     // Effect handles recording when status is already idle_in_call.
-    // If speaking: barge-in will fire next time the user speaks, and after
-    // the interrupted turn completes the cycle self-sustains.
   };
 
   // ── Derived UI values ────────────────────────────────────────────────────
