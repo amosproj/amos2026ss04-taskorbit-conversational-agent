@@ -17,6 +17,7 @@ Flow per message:
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -26,6 +27,7 @@ import structlog
 
 from taskorbit.config import Settings, get_settings
 from taskorbit.intent import MockIntentDetector
+from taskorbit.observability.metrics import get_metrics
 from taskorbit.types import (
     AgentConfig,
     ConversationRequest,
@@ -48,6 +50,7 @@ class ConversationOrchestrator:
 
     async def process_message(self, request: ConversationRequest) -> ConversationResponse:
         """Main entry point called by the API layer and agent workers."""
+        _pipeline_start = time.perf_counter()
         try:
             last_user = next(
                 (m for m in reversed(request.messages) if m.role == MessageRole.USER),
@@ -82,10 +85,22 @@ class ConversationOrchestrator:
             # 4. Build system prompt
             system_prompt = self._build_system_prompt(request.agent_config, active_tool)
 
-            # 5. Call LLM with a timeout from settings
+            # 5. Call LLM with a timeout from settings — measure latency
+            _llm_start = time.perf_counter()
             llm_text = await asyncio.wait_for(
                 self._call_llm(system_prompt, request.messages, request.agent_config.llm),
                 timeout=self._settings.llm_timeout_seconds,
+            )
+            _llm_elapsed = time.perf_counter() - _llm_start
+            get_metrics().pipeline_latency_seconds.labels(stage="llm_call").observe(_llm_elapsed)
+
+            _total_elapsed = time.perf_counter() - _pipeline_start
+            get_metrics().pipeline_latency_seconds.labels(stage="total").observe(_total_elapsed)
+            logger.info(
+                "pipeline_complete",
+                conversation_id=request.conversation_id,
+                llm_latency_ms=round(_llm_elapsed * 1000, 1),
+                total_latency_ms=round(_total_elapsed * 1000, 1),
             )
 
             return ConversationResponse(
@@ -97,6 +112,7 @@ class ConversationOrchestrator:
             )
 
         except TimeoutError:
+            get_metrics().conversation_errors_total.labels(error_type="llm_timeout").inc()
             logger.warning("llm_timeout", conversation_id=request.conversation_id)
             return ConversationResponse(
                 conversation_id=request.conversation_id,
@@ -107,6 +123,7 @@ class ConversationOrchestrator:
                 error=f"LLM call timed out after {self._settings.llm_timeout_seconds} seconds.",
             )
         except UnicodeEncodeError as exc:
+            get_metrics().conversation_errors_total.labels(error_type="encoding_error").inc()
             logger.error("encoding_error", error=str(exc), conversation_id=request.conversation_id)
             return ConversationResponse(
                 conversation_id=request.conversation_id,
@@ -115,6 +132,7 @@ class ConversationOrchestrator:
                 error=str(exc),
             )
         except ValueError as exc:
+            get_metrics().conversation_errors_total.labels(error_type="invalid_input").inc()
             logger.warning(
                 "invalid_runtime_input", error=str(exc), conversation_id=request.conversation_id
             )
@@ -125,6 +143,7 @@ class ConversationOrchestrator:
                 error=str(exc),
             )
         except Exception as exc:
+            get_metrics().conversation_errors_total.labels(error_type="runtime_error").inc()
             logger.error("runtime_error", error=str(exc), conversation_id=request.conversation_id)
             return ConversationResponse(
                 conversation_id=request.conversation_id,
