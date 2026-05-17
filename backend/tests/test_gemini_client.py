@@ -57,6 +57,8 @@ def llm_config() -> LLMConfig:
 async def test_generate_returns_assistant_text(client: GeminiClient, llm_config: LLMConfig) -> None:
     fake_response = MagicMock()
     fake_response.text = "4"
+    fake_response.usage_metadata.prompt_token_count = 10
+    fake_response.usage_metadata.candidates_token_count = 5
     with patch.object(
         client._client.aio.models, "generate_content", new=AsyncMock(return_value=fake_response)
     ) as mock_create:

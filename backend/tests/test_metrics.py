@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from taskorbit.api.main import create_app
 from taskorbit.config import get_settings
-from taskorbit.observability.metrics import get_metrics
+from taskorbit.observability.metrics import configure_default_metrics, get_metrics
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -73,6 +73,30 @@ def test_metrics_endpoint_contains_tokens_used_counter() -> None:
     assert "taskorbit_tokens_used_total" in response.text
 
 
+def test_default_metrics_idempotent() -> None:
+    """configure_default_metrics() is safe to call multiple times without error."""
+    configure_default_metrics()
+    configure_default_metrics()
+
+
+def test_default_metrics_gc_collector_present() -> None:
+    """GC collector metrics appear in /metrics output after configure_default_metrics()."""
+    configure_default_metrics()
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.get("/metrics")
+    assert "python_gc_collections_total" in response.text
+
+
+def test_default_metrics_python_info_present() -> None:
+    """Platform collector python_info gauge appears in /metrics output."""
+    configure_default_metrics()
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.get("/metrics")
+    assert "python_info" in response.text
+
+
 def test_tokens_used_counter_increments_correctly() -> None:
     """Verify tokens_used_total increments by the exact token count supplied."""
     from prometheus_client import REGISTRY
@@ -106,11 +130,17 @@ def test_tokens_used_counter_tracks_prompt_and_completion_separately() -> None:
 
 
 def _read_counter(registry: object, metric_name: str, labels: dict[str, str]) -> float:
-    """Helper: read a single labelled counter value from the Prometheus registry."""
+    """Helper: read a single labelled counter value from the Prometheus registry.
+
+    prometheus_client strips the _total suffix from Counter metric family names,
+    so Counter("foo_total") is stored with metric.name == "foo". We search both
+    the full name and the base name, then filter samples to the _total entry.
+    """
+    base_name = metric_name.removesuffix("_total")
     for metric in registry.collect():  # type: ignore[attr-defined]
-        if metric.name == metric_name:
+        if metric.name in (metric_name, base_name):
             for sample in metric.samples:
-                if sample.labels == labels:
+                if sample.labels == labels and sample.name == metric_name:
                     return sample.value
     return 0.0
 
