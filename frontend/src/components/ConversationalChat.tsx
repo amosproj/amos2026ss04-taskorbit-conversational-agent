@@ -144,11 +144,7 @@ export function ConversationalChat() {
           if (speakable) {
             call.setPhase("speaking");
             try {
-              await playSynthesizedSpeech(reply, {
-                signal: controller.signal,
-                voiceId: agent.tts.voice_id,
-                modelId: agent.tts.model,
-              });
+              await playSynthesizedSpeech(reply, { signal: controller.signal });
             } catch (audioErr) {
               if ((audioErr as Error).name !== "AbortError") {
                 console.warn("[ConversationalChat] ElevenLabs playback failed", audioErr);
@@ -184,24 +180,18 @@ export function ConversationalChat() {
   const handleApprove = useCallback(() => {
     const followup = "Thanks for confirming — I've saved that. Anything else?";
     call.approveConfirmation(followup);
-    void playSynthesizedSpeech(followup, {
-      voiceId: agent.tts.voice_id,
-      modelId: agent.tts.model,
-    }).catch(() => {
+    void playSynthesizedSpeech(followup).catch(() => {
       /* optional TTS */
     });
-  }, [agent.tts, call]);
+  }, [call]);
 
   const handleDeny = useCallback(() => {
     const followup = "Understood — I won't save that. Anything else?";
     call.denyConfirmation(followup);
-    void playSynthesizedSpeech(followup, {
-      voiceId: agent.tts.voice_id,
-      modelId: agent.tts.model,
-    }).catch(() => {
+    void playSynthesizedSpeech(followup).catch(() => {
       /* optional TTS */
     });
-  }, [agent.tts, call]);
+  }, [call]);
 
   const handleStartSession = useCallback(() => {
     call.start({ tokenMetadata: buildLiveKitWorkerMetadata(agent) });
@@ -219,8 +209,6 @@ export function ConversationalChat() {
     call.upsertTurnById("greeting", "assistant", "", false);
 
     void playWithWordSync(greetingText, {
-      voiceId: agent.tts.voice_id,
-      modelId: agent.tts.model,
       onWord: (partialText, isFinal) => {
         call.upsertTurnById("greeting", "assistant", partialText, isFinal);
         if (isFinal) setGreetingDone(true);
