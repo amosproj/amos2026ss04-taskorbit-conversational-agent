@@ -1,4 +1,4 @@
-import { Loader2, PauseCircle, ShieldCheck, WifiOff } from "lucide-react";
+import { Loader2, MicOff, ShieldCheck, WifiOff } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -26,7 +26,7 @@ function visualFor(status: CallStatus): Visual | null {
         label: "Reconnecting…",
       };
     case "idle_in_call":
-      return { kind: "icon", Icon: PauseCircle, spin: false, label: "Paused" };
+      return { kind: "icon", Icon: MicOff, spin: false, label: "Muted" };
     case "recording":
     case "listening":
       return { kind: "pulse", label: "Listening…" };
