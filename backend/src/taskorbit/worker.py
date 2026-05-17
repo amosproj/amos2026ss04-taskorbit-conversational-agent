@@ -30,6 +30,10 @@ logger = get_logger(__name__)
 # Tunable: increase if the last word of an utterance is missing from replies.
 _DEEPGRAM_FLUSH_DELAY_S: float = 0.3
 
+# Explicit allowlist of data-channel message types this worker handles.
+# Packets with any other `type` value are silently discarded.
+_RECOGNISED_MSG_TYPES: frozenset[str] = frozenset({"commit_turn", "interrupt_playback"})
+
 
 async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
@@ -66,7 +70,6 @@ async def entrypoint(ctx: JobContext) -> None:
     # silence detection to time out.
     @ctx.room.on("data_received")
     def _on_data(packet: rtc.DataPacket) -> None:
-        # TODO: add a "type" field to the message schema and validate it here, instead of relying on try/except and .get() to avoid processing irrelevant messages. This is currently sufficient
         nonlocal reply_task
         if packet.participant is None:
             return
@@ -77,6 +80,8 @@ async def entrypoint(ctx: JobContext) -> None:
         except Exception:  # noqa: BLE001
             return
         msg_type = msg.get("type")
+        if not isinstance(msg_type, str) or msg_type not in _RECOGNISED_MSG_TYPES:
+            return
         if msg_type == "commit_turn":
             agent.request_reply()
             reply_task = asyncio.create_task(_commit_and_reply())
