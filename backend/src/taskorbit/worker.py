@@ -24,6 +24,7 @@ from livekit.agents.voice.room_io import RoomOutputOptions
 from taskorbit.config import get_settings
 from taskorbit.livekit_agent import build_agent_session, build_default_agent
 from taskorbit.logging.setup import get_logger
+from taskorbit.observability.metrics import configure_default_metrics
 
 logger = get_logger(__name__)
 
@@ -80,6 +81,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
 
 def run_worker() -> None:
+    configure_default_metrics()
     cfg = get_settings()
     cli.run_app(
         WorkerOptions(

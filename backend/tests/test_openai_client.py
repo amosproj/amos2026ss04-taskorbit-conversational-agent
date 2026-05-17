@@ -34,6 +34,8 @@ def _mock_completion_response(content: str | None) -> MagicMock:
     choice = MagicMock()
     choice.message.content = content
     response.choices = [choice] if content is not None or content == "" else []
+    response.usage.prompt_tokens = 10
+    response.usage.completion_tokens = 5
     return response
 
 

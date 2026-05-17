@@ -21,7 +21,7 @@ from taskorbit.api import health
 from taskorbit.api.routes import conversations, livekit, tts
 from taskorbit.config import get_settings
 from taskorbit.logging.setup import configure_logging, get_logger
-from taskorbit.observability.metrics import get_metrics
+from taskorbit.observability.metrics import configure_default_metrics, get_metrics
 from taskorbit.observability.middleware import TraceIDMiddleware
 from taskorbit.observability.tracing import configure_tracing
 
@@ -64,6 +64,7 @@ def create_app() -> FastAPI:
     if settings.metrics_enabled:
         from prometheus_fastapi_instrumentator import Instrumentator
 
+        configure_default_metrics()
         Instrumentator(
             should_group_status_codes=True,
             excluded_handlers=["/health"],
