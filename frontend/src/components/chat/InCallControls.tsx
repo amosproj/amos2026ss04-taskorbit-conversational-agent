@@ -79,7 +79,8 @@ export function InCallControls({
   };
 
   const handleInterruptAndSpeak = async (): Promise<void> => {
-    await mic.sendInterrupt();
+    // Fire interrupt concurrently — don't await before enabling the mic.
+    void mic.sendInterrupt();
     try {
       await mic.enable();
       onPhase("recording");
@@ -101,6 +102,20 @@ export function InCallControls({
     if (status !== "idle_in_call") return;
     void handleStartRecordingRef.current();
   }, [status, continuousMode]);
+
+  // ── Barge-in mic pre-warm ────────────────────────────────────────────────
+  // Publish the mic as soon as the agent starts speaking so Deepgram is
+  // already receiving audio before the user decides to interrupt.
+  // Without this, the user's first words are always missed because
+  // enable() cold-starts the OS hardware (300–500 ms latency).
+  // The backend's allow_interruptions=True handles the actual interruption;
+  // the frontend VAD (useVoiceActivityMonitor) just sends the explicit
+  // interrupt signal to stop TTS quickly.
+  useEffect(() => {
+    if (!continuousMode) return;
+    if (status !== "speaking") return;
+    void mic.enable();
+  }, [status, continuousMode, mic]);
 
   // ── Silence / barge-in detection ─────────────────────────────────────────
 
