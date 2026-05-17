@@ -92,10 +92,13 @@ export function InCallControls({
     }
   };
 
-  // ── Stable ref so the auto-restart effect never captures a stale closure ─
+  // ── Stable refs so effects never capture stale closures ────────────────
 
   const handleStartRecordingRef = useRef(handleStartRecording);
   handleStartRecordingRef.current = handleStartRecording;
+
+  const handleStopRecordingRef = useRef(handleStopRecording);
+  handleStopRecordingRef.current = handleStopRecording;
 
   // ── Continuous-mode auto-restart ─────────────────────────────────────────
   // After each agent turn (speaking → idle_in_call), automatically re-enable
@@ -146,6 +149,34 @@ export function InCallControls({
     if (status !== "speaking") return;
     void mic.enable();
   }, [status, continuousMode, greetingInProgress, mic]);
+
+  // ── No-speech timeout ────────────────────────────────────────────────────
+  // If the mic is open but the user never speaks (amplitude stays below the
+  // speech floor for NO_SPEECH_MS), mute back to idle_in_call automatically.
+  // This handles the "agent is waiting, user says nothing" case. Distinct from
+  // silence detection which fires only after the user starts then pauses.
+  useEffect(() => {
+    if (status !== "recording") return;
+    const SPEECH_FLOOR = 45;
+    const NO_SPEECH_MS = 5000;
+    const start = Date.now();
+    let hasSpeech = false;
+    const id = setInterval(() => {
+      const levels = mic.levelsRef.current;
+      const avg = levels.reduce((s, v) => s + v, 0) / (levels.length || 1);
+      if (avg >= SPEECH_FLOOR) {
+        hasSpeech = true;
+        clearInterval(id);
+        return;
+      }
+      if (!hasSpeech && Date.now() - start >= NO_SPEECH_MS) {
+        clearInterval(id);
+        setContinuousMode(false);
+        void handleStopRecordingRef.current();
+      }
+    }, 100);
+    return () => clearInterval(id);
+  }, [status, mic.levelsRef]);
 
   // ── Silence / barge-in detection ─────────────────────────────────────────
 
