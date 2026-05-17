@@ -1,4 +1,4 @@
-import { Loader2, Mic, ShieldCheck, WifiOff } from "lucide-react";
+import { Loader2, ShieldCheck, WifiOff } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -27,12 +27,7 @@ function visualFor(status: CallStatus, agentName: string): Visual | null {
         label: "Reconnecting…",
       };
     case "idle_in_call":
-      return {
-        kind: "icon",
-        Icon: Mic,
-        spin: false,
-        label: `Tap the mic to speak · ${agentName}`,
-      };
+      return null;
     case "recording":
     case "listening":
       return { kind: "pulse", label: "Listening…" };

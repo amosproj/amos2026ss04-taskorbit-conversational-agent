@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowUp, PhoneOff, Wand2 } from "lucide-react";
+import { ArrowUp, Mic, PhoneOff, Wand2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useMicRecorder } from "@/hooks/useMicRecorder";
@@ -152,15 +152,6 @@ export function InCallControls({
 
   // ── Derived UI values ────────────────────────────────────────────────────
 
-  // While continuous mode is transitioning between cycles (idle_in_call →
-  // mic enable → recording) show "Listening" so the button doesn't flash.
-  const voiceBtnLabel = (() => {
-    if (status === "recording" || (continuousMode && status === "idle_in_call")) return "Listening";
-    if (status === "thinking") return "Sending…";
-    if (status === "speaking") return "Speaking";
-    return continuousMode ? "Listening" : "Voice";
-  })();
-
   const voiceBtnCls = (() => {
     if (status === "thinking") return "processing";
     if (status === "speaking") return "speaking";
@@ -229,15 +220,15 @@ export function InCallControls({
           </button>
         </div>
 
-        {/* ── Voice toggle button ── */}
+        {/* ── Mic toggle button ── */}
         <button
           type="button"
           onClick={handleVoiceBtnClick}
           disabled={voiceBtnDisabled}
           aria-pressed={continuousMode}
-          aria-label={continuousMode ? "Stop listening" : "Start continuous voice mode"}
+          aria-label={continuousMode ? "Stop listening" : "Start voice mode"}
           className={cn(
-            "inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-medium",
+            "flex size-11 shrink-0 items-center justify-center rounded-full border",
             "transition-all duration-200",
             "disabled:cursor-not-allowed disabled:opacity-50",
             voiceBtnCls === "" && "border-border bg-card text-foreground hover:bg-muted",
@@ -252,9 +243,8 @@ export function InCallControls({
           {voiceBtnCls === "listening" || voiceBtnCls === "speaking" ? (
             <VoiceWaveBars />
           ) : (
-            <VoicePulseIcon pulsing={voiceBtnCls === "processing"} />
+            <Mic size={18} />
           )}
-          <span>{voiceBtnLabel}</span>
         </button>
 
         {/* ── Demo confirmation (icon-only) ── */}
@@ -293,26 +283,6 @@ export function InCallControls({
 }
 
 /* ── Small decorative sub-components ── */
-
-function VoicePulseIcon({ pulsing }: { pulsing: boolean }) {
-  return (
-    <span className="relative flex size-4 items-center justify-center">
-      <span
-        className={cn(
-          "absolute inset-0 animate-ping rounded-full border border-current",
-          pulsing ? "opacity-70" : "opacity-60",
-        )}
-      />
-      <span
-        className={cn(
-          "absolute inset-0 animate-ping rounded-full border border-current [animation-delay:0.6s]",
-          pulsing ? "opacity-40" : "opacity-35",
-        )}
-      />
-      <span className="relative size-1.5 rounded-full bg-current" />
-    </span>
-  );
-}
 
 function VoiceWaveBars() {
   return (
