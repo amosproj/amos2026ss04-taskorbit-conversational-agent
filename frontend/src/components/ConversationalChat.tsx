@@ -17,7 +17,7 @@ import type { TranscriptionSegment } from "@/hooks/useAgentTranscription";
 import { buildLiveKitWorkerMetadata } from "@/lib/livekitAgentMetadata";
 import { sendMessage } from "@/lib/conversationApi";
 import { JOHN_DOE_AGENT } from "@/lib/mockAgents";
-import { playSynthesizedSpeech } from "@/lib/ttsApi";
+import { playSynthesizedSpeech, playWithWordSync } from "@/lib/ttsApi";
 import type { ConfirmationPromptState } from "@/types/callState";
 
 const mockConfirmationPrompt: ConfirmationPromptState = {
@@ -165,6 +165,17 @@ export function ConversationalChat() {
     [agent, call],
   );
 
+  const handleRoomError = useCallback(
+    (err: Error) => {
+      if (err.name === "NotAllowedError" || err.message.includes("Permission")) {
+        call.setMicError(
+          "Microphone access was denied. Please allow microphone access to use voice.",
+        );
+      }
+    },
+    [call.setMicError],
+  );
+
   const handleTriggerConfirmation = useCallback(() => {
     call.triggerConfirmation(mockConfirmationPrompt);
   }, [call]);
@@ -192,18 +203,25 @@ export function ConversationalChat() {
   }, [agent.tts, call]);
 
   const handleStartSession = useCallback(() => {
-    call.start({
-      tokenMetadata: buildLiveKitWorkerMetadata(agent),
-      greeting: agent.first_message.message,
+    call.start({ tokenMetadata: buildLiveKitWorkerMetadata(agent) });
+
+    const greetingText = agent.first_message.message;
+    if (!greetingText) return;
+
+    // Show an empty bubble immediately so the UI doesn't feel unresponsive
+    // while the audio is being synthesised. playWithWordSync will fill it
+    // word-by-word at each word's exact audio timestamp once ready.
+    call.upsertTurnById("greeting", "assistant", "", false);
+
+    void playWithWordSync(greetingText, {
+      voiceId: agent.tts.voice_id,
+      modelId: agent.tts.model,
+      onWord: (partialText, isFinal) => {
+        call.upsertTurnById("greeting", "assistant", partialText, isFinal);
+      },
+    }).catch(() => {
+      call.upsertTurnById("greeting", "assistant", greetingText, true);
     });
-    if (agent.first_message.message) {
-      void playSynthesizedSpeech(agent.first_message.message, {
-        voiceId: agent.tts.voice_id,
-        modelId: agent.tts.model,
-      }).catch(() => {
-        /* optional TTS */
-      });
-    }
   }, [agent, call]);
 
   const isPreCall = call.status === "idle";
@@ -248,11 +266,7 @@ export function ConversationalChat() {
             <ScrollArea className="h-[min(50vh,28rem)] pr-3">
               <ul className="flex flex-col gap-4" aria-label="Transcript">
                 {call.transcript.map((turn) => (
-                  <TranscriptBubble
-                    key={turn.id}
-                    turn={turn}
-                    animate={turn.role === "assistant" && turn.isFinal === undefined}
-                  />
+                  <TranscriptBubble key={turn.id} turn={turn} />
                 ))}
                 <div ref={transcriptEndRef} className="h-px" aria-hidden />
               </ul>
@@ -323,13 +337,7 @@ export function ConversationalChat() {
           connect
           audio={false}
           video={false}
-          onError={(err) => {
-            if (err.name === "NotAllowedError" || err.message.includes("Permission")) {
-              call.setMicError(
-                "Microphone access was denied. Please allow microphone access to use voice.",
-              );
-            }
-          }}
+          onError={handleRoomError}
         >
           <RoomAudioRenderer />
           <VoiceSessionBridge

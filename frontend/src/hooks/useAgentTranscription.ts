@@ -49,17 +49,25 @@ export function useAgentTranscription(onSegment: TranscriptionHandler): void {
         const role: "user" | "assistant" =
           participant.identity === room.localParticipant.identity ? "user" : "assistant";
 
-        // livekit-agents writes one word/phrase per stream write with
-        // sync_transcription=True. Each chunk is incremental — we accumulate
-        // manually so segment.text always holds the full sentence so far.
-        // The stream's own timing is already synchronized to the TTS audio.
+        // STT (user) and TTS (assistant) send different stream formats:
+        //   STT — Deepgram writes full partial transcripts that grow each time
+        //         ("Hi" → "Hi there" → "Hi there how"). Take the latest chunk.
+        //   TTS — livekit-agents writes one word at a time with sync_transcription=True.
+        //         Concatenate to build the sentence progressively.
+        let latest = "";
         let accumulated = "";
         for await (const chunk of reader) {
-          accumulated += chunk;
-          onSegment({ id: segmentId, role, text: accumulated.trim(), isFinal: false });
+          if (role === "user") {
+            latest = chunk;
+            onSegment({ id: segmentId, role, text: latest.trim(), isFinal: false });
+          } else {
+            accumulated += chunk;
+            onSegment({ id: segmentId, role, text: accumulated.trim(), isFinal: false });
+          }
         }
-        if (accumulated.trim()) {
-          onSegment({ id: segmentId, role, text: accumulated.trim(), isFinal: true });
+        const finalText = (role === "user" ? latest : accumulated).trim();
+        if (finalText) {
+          onSegment({ id: segmentId, role, text: finalText, isFinal: true });
         }
       } catch (err) {
         // Don't break the room over a single malformed stream — just
