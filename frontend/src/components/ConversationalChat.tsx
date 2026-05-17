@@ -17,7 +17,7 @@ import type { TranscriptionSegment } from "@/hooks/useAgentTranscription";
 import { buildLiveKitWorkerMetadata } from "@/lib/livekitAgentMetadata";
 import { sendMessage } from "@/lib/conversationApi";
 import { JOHN_DOE_AGENT } from "@/lib/mockAgents";
-import { playSynthesizedSpeech, playWithWordSync } from "@/lib/ttsApi";
+import { playSynthesizedSpeech } from "@/lib/ttsApi";
 import type { ConfirmationPromptState } from "@/types/callState";
 
 const mockConfirmationPrompt: ConfirmationPromptState = {
@@ -45,7 +45,12 @@ export function ConversationalChat() {
   const appName = import.meta.env.VITE_APP_NAME ?? "TaskOrbit";
 
   const call = useVoiceCall();
+  // Tracks whether the agent's opening greeting has finished playing.
+  // Starts true (no call active). Set false on call start, then back to
+  // true once the first speaking→idle_in_call transition is detected.
   const [greetingDone, setGreetingDone] = useState(true);
+  const greetingSeenSpeakingRef = useRef(false);
+  const greetingTimeoutRef = useRef<number | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastUserTurnIdRef = useRef<string | null>(null);
@@ -65,8 +70,27 @@ export function ConversationalChat() {
   useEffect(() => {
     return () => {
       abortRef.current?.abort();
+      if (greetingTimeoutRef.current !== null) clearTimeout(greetingTimeoutRef.current);
     };
   }, []);
+
+  // Detect greeting completion: first speaking → idle_in_call transition after
+  // a call starts. Unlocks the mic button and triggers continuous mode.
+  useEffect(() => {
+    if (greetingDone) return;
+    if (call.status === "speaking") {
+      greetingSeenSpeakingRef.current = true;
+      return;
+    }
+    if (call.status === "idle_in_call" && greetingSeenSpeakingRef.current) {
+      greetingSeenSpeakingRef.current = false;
+      if (greetingTimeoutRef.current !== null) {
+        clearTimeout(greetingTimeoutRef.current);
+        greetingTimeoutRef.current = null;
+      }
+      setGreetingDone(true);
+    }
+  }, [call.status, greetingDone]);
 
   const handleSegment = useCallback(
     (segment: TranscriptionSegment) => {
@@ -195,28 +219,18 @@ export function ConversationalChat() {
 
   const handleStartSession = useCallback(() => {
     call.start({ tokenMetadata: buildLiveKitWorkerMetadata(agent) });
-
-    const greetingText = agent.first_message.message;
-    if (!greetingText) return;
-
-    // Disable mic until the greeting finishes so the user can't accidentally
-    // start recording while the agent is still speaking its opening message.
+    // Lock the mic until the backend speaks the greeting through the LiveKit
+    // session. The greeting detection effect above unlocks it once the first
+    // speaking → idle_in_call transition is observed.
     setGreetingDone(false);
-
-    // Show an empty bubble immediately so the UI doesn't feel unresponsive
-    // while the audio is being synthesised. playWithWordSync will fill it
-    // word-by-word at each word's exact audio timestamp once ready.
-    call.upsertTurnById("greeting", "assistant", "", false);
-
-    void playWithWordSync(greetingText, {
-      onWord: (partialText, isFinal) => {
-        call.upsertTurnById("greeting", "assistant", partialText, isFinal);
-        if (isFinal) setGreetingDone(true);
-      },
-    }).catch(() => {
-      call.upsertTurnById("greeting", "assistant", greetingText, true);
+    greetingSeenSpeakingRef.current = false;
+    // Fallback: release the mic lock after 15 s in case the greeting never
+    // arrives (e.g. network delay or backend config without a greeting).
+    if (greetingTimeoutRef.current !== null) clearTimeout(greetingTimeoutRef.current);
+    greetingTimeoutRef.current = window.setTimeout(() => {
+      greetingTimeoutRef.current = null;
       setGreetingDone(true);
-    });
+    }, 15_000);
   }, [agent, call]);
 
   const isPreCall = call.status === "idle";
@@ -234,8 +248,7 @@ export function ConversationalChat() {
         </p>
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{appName}</h1>
         <p className="text-sm text-muted-foreground">
-          Start a voice session with the configured agent. Tap the mic to speak, then Send your turn
-          for a reply.
+          I'm here to help with your needs. Start chatting by sending a message or using the mic button to speak.
         </p>
       </header>
 
@@ -252,7 +265,7 @@ export function ConversationalChat() {
             <div className="space-y-1">
               <CardTitle>{agent.name}</CardTitle>
               <CardDescription>
-                Live call · transcript updates as the conversation progresses.
+                Voice session active · live transcript below. 
               </CardDescription>
             </div>
             <CallStatusIndicator status={call.status} />

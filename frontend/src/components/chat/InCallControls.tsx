@@ -174,12 +174,12 @@ export function InCallControls({
     if (continuousMode) {
       setContinuousMode(false);
       if (status === "recording") {
-        void handleStopRecording(); // mutes mic + sets idle_in_call
-      } else if (status === "speaking") {
-        void mic.sendInterrupt(); // stop TTS playback
-        onPhase("idle_in_call");
+        void handleStopRecording(); // disables mic + sets idle_in_call
       } else {
-        // thinking or any other active phase — just surface Paused
+        // Mic may be open from the pre-warm effect (speaking phase) or a
+        // previous recording phase — disable it regardless of current status.
+        void mic.disable();
+        if (status === "speaking") void mic.sendInterrupt();
         onPhase("idle_in_call");
       }
       return;
@@ -235,7 +235,7 @@ export function InCallControls({
                 handleSendText();
               }
             }}
-            placeholder="Ask From Orbit."
+            placeholder="Ask from Orbit."
             autoComplete="off"
             disabled={textDisabled}
             className={cn(

@@ -37,6 +37,20 @@ async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
     cfg = get_settings()
+
+    # Read the greeting from participant metadata so we can speak it through
+    # the session — same TTS/WebRTC pipeline as every other agent turn, so
+    # the voice is identical. The frontend used to call ElevenLabs directly
+    # for the greeting which produced a different audio path (plain MP3
+    # playback vs WebRTC Opus), making the voices sound different.
+    greeting: str = ""
+    try:
+        participant = await ctx.wait_for_participant()
+        meta = json.loads(participant.metadata or "{}")
+        greeting = str(meta.get("greeting") or "")
+    except Exception:  # noqa: BLE001
+        pass
+
     session = build_agent_session(settings=cfg)
     agent = build_default_agent(settings=cfg)
 
@@ -94,6 +108,10 @@ async def entrypoint(ctx: JobContext) -> None:
                 logger.warning("worker_interrupt_failed", error=str(exc))
 
     await session.start(agent, room=ctx.room)
+
+    if greeting:
+        session.say(greeting)
+        logger.info("worker_greeting_spoken", length=len(greeting))
 
 
 def run_worker() -> None:

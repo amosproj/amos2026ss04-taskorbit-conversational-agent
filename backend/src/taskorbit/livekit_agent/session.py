@@ -57,6 +57,11 @@ def build_agent_session(
             api_key=cfg.elevenlabs_api_key,
             voice_id=cfg.elevenlabs_voice_id,
             model=cfg.elevenlabs_model,
+            # Plugin default is mp3_22050_32 (22 kHz / 32 kbps) which sounds
+            # noticeably different from the REST endpoint used for the greeting
+            # (which returns mp3_44100_128 by default). Match that quality here
+            # so both paths use the same audio characteristics.
+            encoding="mp3_44100_128",
             voice_settings=VoiceSettings(
                 stability=0.75,
                 similarity_boost=0.75,

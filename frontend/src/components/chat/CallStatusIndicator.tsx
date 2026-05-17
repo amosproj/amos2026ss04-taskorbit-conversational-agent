@@ -38,7 +38,7 @@ function visualFor(status: CallStatus): Visual | null {
         label: "Processing…",
       };
     case "speaking":
-      return { kind: "speaking", label: "Responding…" };
+      return { kind: "speaking", label: "Speaking…" };
     case "awaiting_confirmation":
       return {
         kind: "icon",
