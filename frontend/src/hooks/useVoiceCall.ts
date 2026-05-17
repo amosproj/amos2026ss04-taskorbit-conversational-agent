@@ -56,6 +56,12 @@ export type VoiceCallApi = {
   appendAssistantTurn: (text: string) => void;
   /** Update an in-flight transcript turn by id (interim segments). */
   upsertTurnById: (id: string, role: "user" | "assistant", text: string, isFinal?: boolean) => void;
+  /**
+   * Insert a new assistant turn BEFORE any consecutive user turns at the tail
+   * of the array. Corrects the race where Deepgram delivers the user transcript
+   * before the agent's sync_transcription text stream sends its first word.
+   */
+  insertAssistantTurnBeforeUsers: (id: string, text: string, isFinal?: boolean) => void;
   /** Remove a turn by id (e.g. discard a failed user turn). */
   removeTurnById: (id: string) => void;
 };
@@ -124,6 +130,34 @@ export function useVoiceCall(): VoiceCallApi {
         }
         const next = turns.slice();
         next[existing] = { id, role, text, isFinal };
+        return next;
+      });
+    },
+    [],
+  );
+
+  const insertAssistantTurnBeforeUsers = useCallback(
+    (id: string, text: string, isFinal?: boolean) => {
+      setTranscript((turns) => {
+        const existing = turns.findIndex((t) => t.id === id);
+        if (existing !== -1) {
+          const next = turns.slice();
+          next[existing] = { id, role: "assistant", text, isFinal };
+          return next;
+        }
+        // Walk back from the tail and find the earliest consecutive user turn.
+        // Insert the new agent turn before that run so it always precedes the
+        // user turns that raced ahead of the agent's text stream.
+        let insertIdx = turns.length;
+        for (let i = turns.length - 1; i >= 0; i--) {
+          if (turns[i].role === "user") {
+            insertIdx = i;
+          } else {
+            break;
+          }
+        }
+        const next = turns.slice();
+        next.splice(insertIdx, 0, { id, role: "assistant", text, isFinal });
         return next;
       });
     },
@@ -254,6 +288,7 @@ export function useVoiceCall(): VoiceCallApi {
     appendUserTurn,
     appendAssistantTurn,
     upsertTurnById,
+    insertAssistantTurnBeforeUsers,
     removeTurnById,
   };
 }

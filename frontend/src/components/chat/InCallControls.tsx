@@ -27,6 +27,8 @@ import type { CallStatus } from "@/types/callState";
 
 type Props = {
   status: CallStatus;
+  /** When true the mic button is locked out — used while the greeting is playing. */
+  greetingInProgress?: boolean;
   onPhase: (phase: CallStatus) => void;
   onEnd: () => void;
   onSendText: (text: string) => void;
@@ -36,6 +38,7 @@ type Props = {
 
 export function InCallControls({
   status,
+  greetingInProgress = false,
   onPhase,
   onEnd,
   onSendText,
@@ -102,6 +105,23 @@ export function InCallControls({
     if (status !== "idle_in_call") return;
     void handleStartRecordingRef.current();
   }, [status, continuousMode]);
+
+  // ── Greeting completion auto-start ───────────────────────────────────────
+  // When the greeting finishes playing, automatically enter continuous mode
+  // and start recording so the user can respond without having to tap anything.
+  const greetingWasActiveRef = useRef(false);
+  if (greetingInProgress) greetingWasActiveRef.current = true;
+
+  useEffect(() => {
+    if (greetingInProgress) return;
+    if (!greetingWasActiveRef.current) return; // component mounted after greeting already done
+    greetingWasActiveRef.current = false;
+    // Only enable the mode — the auto-restart effect above will call
+    // handleStartRecording once status reaches idle_in_call. Calling
+    // handleStartRecording here can race against the LiveKit room not
+    // being fully connected yet (publishing track {room: undefined}).
+    setContinuousMode(true);
+  }, [greetingInProgress]);
 
   // ── Barge-in mic pre-warm ────────────────────────────────────────────────
   // Publish the mic as soon as the agent starts speaking so Deepgram is
@@ -176,7 +196,8 @@ export function InCallControls({
 
   // Allow stopping continuous mode at any non-network phase; keep disabled
   // only for actual connection states and while the mic track is initialising.
-  const voiceBtnDisabled = mic.starting || status === "connecting" || status === "reconnecting";
+  const voiceBtnDisabled =
+    greetingInProgress || mic.starting || status === "connecting" || status === "reconnecting";
 
   const thinking = status === "thinking";
   const textDisabled = status !== "idle_in_call" && status !== "speaking";

@@ -1,5 +1,5 @@
 import { LiveKitRoom, RoomAudioRenderer } from "@livekit/components-react";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { AgentIdentityCard } from "@/components/chat/AgentIdentityCard";
@@ -45,6 +45,7 @@ export function ConversationalChat() {
   const appName = import.meta.env.VITE_APP_NAME ?? "TaskOrbit";
 
   const call = useVoiceCall();
+  const [greetingDone, setGreetingDone] = useState(true);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastUserTurnIdRef = useRef<string | null>(null);
@@ -208,6 +209,10 @@ export function ConversationalChat() {
     const greetingText = agent.first_message.message;
     if (!greetingText) return;
 
+    // Disable mic until the greeting finishes so the user can't accidentally
+    // start recording while the agent is still speaking its opening message.
+    setGreetingDone(false);
+
     // Show an empty bubble immediately so the UI doesn't feel unresponsive
     // while the audio is being synthesised. playWithWordSync will fill it
     // word-by-word at each word's exact audio timestamp once ready.
@@ -218,9 +223,11 @@ export function ConversationalChat() {
       modelId: agent.tts.model,
       onWord: (partialText, isFinal) => {
         call.upsertTurnById("greeting", "assistant", partialText, isFinal);
+        if (isFinal) setGreetingDone(true);
       },
     }).catch(() => {
       call.upsertTurnById("greeting", "assistant", greetingText, true);
+      setGreetingDone(true);
     });
   }, [agent, call]);
 
@@ -310,6 +317,7 @@ export function ConversationalChat() {
         call.livekitCredentials !== null ? (
           <InCallControls
             status={call.status}
+            greetingInProgress={!greetingDone}
             onPhase={call.setPhase}
             onEnd={call.end}
             onSendText={handleSendText}
