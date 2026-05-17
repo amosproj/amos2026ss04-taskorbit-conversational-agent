@@ -49,6 +49,13 @@ export function ConversationalChat() {
   const abortRef = useRef<AbortController | null>(null);
   const lastUserTurnIdRef = useRef<string | null>(null);
 
+  // Agent segment merging: livekit-agents emits one stream per TTS chunk,
+  // each with a unique lk.segment_id. We collapse them into a single turn
+  // (agentTurnIdRef) so the bubble grows instead of spawning new bubbles.
+  const agentTurnIdRef = useRef<string | null>(null);
+  const agentCommittedRef = useRef<string>("");
+  const agentActiveSegRef = useRef<string | null>(null);
+
   // Keep transcript rendering anchored to the latest turn.
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -63,25 +70,49 @@ export function ConversationalChat() {
   const handleSegment = useCallback(
     (segment: TranscriptionSegment) => {
       if (segment.role === "user") {
+        // A new user turn resets the agent turn context for the next response.
+        agentTurnIdRef.current = null;
+        agentCommittedRef.current = "";
+        agentActiveSegRef.current = null;
+
         lastUserTurnIdRef.current = segment.id;
-        call.upsertTurnById(segment.id, "user", segment.text);
+        call.upsertTurnById(segment.id, "user", segment.text, segment.isFinal);
         return;
       }
 
       if (segment.isFinal) {
         if (segment.text.toLowerCase().includes("i didn't get your message")) {
-          // livekit-agents failure — discard the pending user turn
           if (lastUserTurnIdRef.current) {
             call.removeTurnById(lastUserTurnIdRef.current);
             lastUserTurnIdRef.current = null;
           }
         } else {
-          // Successful response — user turn is confirmed, stop tracking it
           lastUserTurnIdRef.current = null;
         }
       }
 
-      call.upsertTurnById(segment.id, "assistant", segment.text);
+      // Ensure a stable turn ID exists for this agent response.
+      if (agentTurnIdRef.current === null) {
+        agentTurnIdRef.current = segment.id;
+        agentActiveSegRef.current = segment.id;
+      }
+
+      // A new lk.segment_id means a new TTS chunk started. The previous chunk
+      // should have already been committed when its isFinal fired.
+      if (segment.id !== agentActiveSegRef.current) {
+        agentActiveSegRef.current = segment.id;
+      }
+
+      // Merged text = all previously finalized chunks + live text of the current chunk.
+      const prefix = agentCommittedRef.current;
+      const mergedText = prefix ? `${prefix} ${segment.text}` : segment.text;
+
+      call.upsertTurnById(agentTurnIdRef.current, "assistant", mergedText.trim(), segment.isFinal);
+
+      // Once this chunk is final, grow the committed base for the next chunk.
+      if (segment.isFinal) {
+        agentCommittedRef.current = mergedText.trim();
+      }
     },
     [call.upsertTurnById, call.removeTurnById],
   );

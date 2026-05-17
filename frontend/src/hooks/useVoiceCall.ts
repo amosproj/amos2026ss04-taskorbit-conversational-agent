@@ -55,7 +55,7 @@ export type VoiceCallApi = {
   /** Append an assistant transcript turn. */
   appendAssistantTurn: (text: string) => void;
   /** Update an in-flight transcript turn by id (interim segments). */
-  upsertTurnById: (id: string, role: "user" | "assistant", text: string) => void;
+  upsertTurnById: (id: string, role: "user" | "assistant", text: string, isFinal?: boolean) => void;
   /** Remove a turn by id (e.g. discard a failed user turn). */
   removeTurnById: (id: string) => void;
 };
@@ -115,17 +115,20 @@ export function useVoiceCall(): VoiceCallApi {
   // the same segment id arrives multiple times while STT is processing,
   // each one with a longer text. Replace the existing turn rather than
   // appending a new one each time.
-  const upsertTurnById = useCallback((id: string, role: "user" | "assistant", text: string) => {
-    setTranscript((turns) => {
-      const existing = turns.findIndex((t) => t.id === id);
-      if (existing === -1) {
-        return [...turns, { id, role, text }];
-      }
-      const next = turns.slice();
-      next[existing] = { id, role, text };
-      return next;
-    });
-  }, []);
+  const upsertTurnById = useCallback(
+    (id: string, role: "user" | "assistant", text: string, isFinal?: boolean) => {
+      setTranscript((turns) => {
+        const existing = turns.findIndex((t) => t.id === id);
+        if (existing === -1) {
+          return [...turns, { id, role, text, isFinal }];
+        }
+        const next = turns.slice();
+        next[existing] = { id, role, text, isFinal };
+        return next;
+      });
+    },
+    [],
+  );
 
   const removeTurnById = useCallback((id: string) => {
     setTranscript((turns) => turns.filter((t) => t.id !== id));

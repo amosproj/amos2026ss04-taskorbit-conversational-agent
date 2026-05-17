@@ -19,8 +19,6 @@ import json
 
 from livekit import rtc
 from livekit.agents import AutoSubscribe, JobContext, WorkerOptions, cli
-from livekit.agents.voice.room_io import RoomOutputOptions
-
 from taskorbit.config import get_settings
 from taskorbit.livekit_agent import build_agent_session, build_default_agent
 from taskorbit.logging.setup import get_logger
@@ -95,13 +93,7 @@ async def entrypoint(ctx: JobContext) -> None:
             except Exception as exc:  # noqa: BLE001
                 logger.warning("worker_interrupt_failed", error=str(exc))
 
-    # sync_transcription=False: publish agent transcript immediately instead of
-    # timing it to audio playback, so text appears before/with audio in the UI.
-    await session.start(
-        agent,
-        room=ctx.room,
-        room_output_options=RoomOutputOptions(sync_transcription=False),
-    )
+    await session.start(agent, room=ctx.room)
 
 
 def run_worker() -> None:
