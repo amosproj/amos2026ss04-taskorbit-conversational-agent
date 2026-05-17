@@ -61,7 +61,9 @@ def _chars_to_word_timestamps(
     for char, start, end in zip(characters, start_times, end_times, strict=False):
         if char in (" ", "\n", "\t"):
             if current_word:
-                words.append(WordTimestamp(word=current_word, start_time=word_start, end_time=word_end))
+                words.append(
+                    WordTimestamp(word=current_word, start_time=word_start, end_time=word_end)
+                )
                 current_word = ""
         else:
             if not current_word:
