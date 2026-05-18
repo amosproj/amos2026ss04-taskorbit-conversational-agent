@@ -158,7 +158,7 @@ export function InCallControls({
   useEffect(() => {
     if (status !== "recording") return;
     const SPEECH_FLOOR = 45;
-    const NO_SPEECH_MS = 5000;
+    const NO_SPEECH_MS = 10000;
     const start = Date.now();
     let hasSpeech = false;
     const id = setInterval(() => {
