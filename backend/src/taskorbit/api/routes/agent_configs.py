@@ -1,4 +1,4 @@
-"""GET /v1/agent-configs — load saved agent configurations."""
+"""Routes for /v1/agent-configs — save, load, list agent configurations."""
 
 from __future__ import annotations
 
@@ -9,8 +9,19 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from taskorbit.config import get_settings
-from taskorbit.database.crud import get_agent_configuration, list_agent_configurations
-from taskorbit.types import AgentConfigurationDetail, AgentConfigurationSummary
+from taskorbit.database.crud import (
+    create_agent_configuration,
+    get_agent_configuration,
+    list_agent_configurations,
+)
+from taskorbit.logging.setup import get_logger
+from taskorbit.types import (
+    AgentConfigurationCreate,
+    AgentConfigurationDetail,
+    AgentConfigurationSummary,
+)
+
+log = get_logger(__name__)
 
 router = APIRouter(prefix="/v1/agent-configs", tags=["agent-configs"])
 
@@ -49,10 +60,19 @@ def get_config(
     return result
 
 
-# ---------------------------------------------------------------------------
-# POST /v1/agent-configs — create a new saved configuration.
-# Implemented separately as part of the save-configuration ticket.
-# ---------------------------------------------------------------------------
+@router.post("", response_model=AgentConfigurationDetail, status_code=201)
+def save_config(
+    body: AgentConfigurationCreate,
+    db: Session = Depends(get_sync_session),  # noqa: B008
+) -> AgentConfigurationDetail:
+    """Persist a new agent configuration and return its DB-assigned id."""
+    result = create_agent_configuration(db, name=body.name, config=body.config)
+    if result is None:
+        log.error("agent_config_create_failed", name=body.name)
+        raise HTTPException(status_code=500, detail="Could not save configuration.")
+    log.info("agent_config_created", config_id=result.id, name=result.name)
+    return result
+
 
 # ---------------------------------------------------------------------------
 # PUT /v1/agent-configs/{config_id} — update an existing configuration.
