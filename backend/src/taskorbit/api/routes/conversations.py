@@ -7,7 +7,8 @@ from datetime import UTC, datetime
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from taskorbit.config import Settings, get_settings
 from taskorbit.database import get_session
@@ -34,7 +35,7 @@ def get_orchestrator(
 async def process_conversation(
     request: ConversationRequest,
     orchestrator: ConversationOrchestrator = Depends(get_orchestrator),  # noqa: B008
-    db: Session = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ConversationResponse:
     """Process one turn of a conversation and persist messages."""
     try:
@@ -46,7 +47,7 @@ async def process_conversation(
             None,
         )
         if last_user:
-            create_conversation_message(
+            await create_conversation_message(
                 db=db,
                 conversation_id=request.conversation_id,
                 role=last_user.role.value,
@@ -55,7 +56,7 @@ async def process_conversation(
 
         # Save assistant reply
         if response.reply:
-            create_conversation_message(
+            await create_conversation_message(
                 db=db,
                 conversation_id=request.conversation_id,
                 role=response.reply.role.value,
@@ -72,8 +73,8 @@ async def process_conversation(
 
 
 @router.post("", status_code=201)
-def create_conversation(
-    db: Session = Depends(get_session),  # noqa: B008
+async def create_conversation(
+    db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> dict:
     """Create a new conversation."""
     conversation = Conversation(
@@ -84,27 +85,28 @@ def create_conversation(
     )
     try:
         db.add(conversation)
-        db.commit()
-        db.refresh(conversation)
+        await db.commit()
+        await db.refresh(conversation)
         logger.info("conversation_created", conversation_id=conversation.id)
         return {"conversation_id": conversation.id, "started_at": str(conversation.started_at)}
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         logger.error("conversation_create_failed", error=str(e))
         raise HTTPException(status_code=500, detail="Failed to create conversation") from e
 
 
 @router.get("")
-def get_conversations(
-    db: Session = Depends(get_session),  # noqa: B008
+async def get_conversations(
+    db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> dict:
     """Get all conversations."""
     try:
-        conversations = db.query(Conversation).order_by(Conversation.started_at.desc()).all()
+        result = await db.execute(select(Conversation).order_by(Conversation.started_at.desc()))
+        conversations = result.scalars().all()
         return {
             "conversations": [
                 {
-                    "conversation_id": c.id,
+                    "id": c.id,
                     "agent_name": c.agent_name,
                     "started_at": str(c.started_at),
                     "ended_at": str(c.ended_at) if c.ended_at else None,
@@ -118,15 +120,13 @@ def get_conversations(
 
 
 @router.get("/{conversation_id}/messages")
-def get_conversation_messages(
+async def get_conversation_messages(
     conversation_id: str,
-    db: Session = Depends(get_session),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> dict:
     """Get all messages for a conversation."""
     try:
-        messages = get_messages_by_conversation(db=db, conversation_id=conversation_id)
-        if messages is None:
-            raise HTTPException(status_code=404, detail="Conversation not found")
+        messages = await get_messages_by_conversation(db=db, conversation_id=conversation_id)
         return {
             "conversation_id": conversation_id,
             "messages": [
@@ -139,8 +139,6 @@ def get_conversation_messages(
                 for m in messages
             ],
         }
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error("get_messages_failed", error=str(e), conversation_id=conversation_id)
         raise HTTPException(status_code=500, detail="Failed to retrieve messages") from e
