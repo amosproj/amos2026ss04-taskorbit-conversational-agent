@@ -48,7 +48,7 @@ export function ConversationalChat() {
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastUserTurnIdRef = useRef<string | null>(null);
-  const [previousConversations, setPreviousConversations] = useState<any[]>([]);
+  const [previousConversations, setPreviousConversations] = useState<Record<string, unknown>[]>([]);
 
   // Load previous conversations on page load (reload restores conversations)
   useEffect(() => {
@@ -197,9 +197,6 @@ export function ConversationalChat() {
   const isPostCall = call.status === "ended";
   const isInCall = !isPreCall && !isPostCall;
 
-  // The page body. We render it directly while idle/ended, and wrap it
-  // in `<LiveKitRoom>` once we have credentials so that hooks inside
-  // (mic recorder, transcription) get the room context.
   const body: ReactNode = (
     <div className="mx-auto flex min-h-svh max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
       <header className="space-y-1">
@@ -285,9 +282,6 @@ export function ConversationalChat() {
           onDeny={handleDeny}
         />
       ) : isInCall ? (
-        // InCallControls reads `useLocalParticipant` and must live
-        // inside LiveKitRoom — only render when credentials are
-        // available so the hook can find the room context.
         call.livekitCredentials !== null ? (
           <InCallControls
             status={call.status}
