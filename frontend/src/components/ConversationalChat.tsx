@@ -1,5 +1,5 @@
 import { LiveKitRoom, RoomAudioRenderer } from "@livekit/components-react";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { AgentIdentityCard } from "@/components/chat/AgentIdentityCard";
@@ -15,7 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useVoiceCall } from "@/hooks/useVoiceCall";
 import type { TranscriptionSegment } from "@/hooks/useAgentTranscription";
 import { buildLiveKitWorkerMetadata } from "@/lib/livekitAgentMetadata";
-import { sendMessage } from "@/lib/conversationApi";
+import { sendMessage, getConversations } from "@/lib/conversationApi";
 import { JOHN_DOE_AGENT } from "@/lib/mockAgents";
 import { playSynthesizedSpeech } from "@/lib/ttsApi";
 import type { ConfirmationPromptState } from "@/types/callState";
@@ -48,6 +48,24 @@ export function ConversationalChat() {
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastUserTurnIdRef = useRef<string | null>(null);
+  const [previousConversations, setPreviousConversations] = useState<any[]>([]);
+
+  // Load previous conversations on page load (reload restores conversations)
+  useEffect(() => {
+    const loadConversations = async () => {
+      try {
+        const data = await getConversations();
+        console.log("Loaded conversations from DB:", data);
+        setPreviousConversations(data.conversations || []);
+        if (data.conversations && data.conversations.length > 0) {
+          console.log(`Found ${data.conversations.length} previous conversations`);
+        }
+      } catch (error) {
+        console.error("Failed to load conversations:", error);
+      }
+    };
+    loadConversations();
+  }, []);
 
   // Keep transcript rendering anchored to the latest turn.
   useEffect(() => {
@@ -194,6 +212,18 @@ export function ConversationalChat() {
           for a reply.
         </p>
       </header>
+
+      {previousConversations.length > 0 && isPreCall && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Previous Conversations</CardTitle>
+            <CardDescription>
+              You have {previousConversations.length} previous conversation
+              {previousConversations.length !== 1 ? "s" : ""}. Start a new call to continue.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
 
       {isPreCall ? (
         <>
