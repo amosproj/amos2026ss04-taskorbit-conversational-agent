@@ -150,7 +150,7 @@ class LiveKitTokenResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Agent-configuration persistence response shapes
+# Agent-configuration persistence request / response shapes
 # ---------------------------------------------------------------------------
 
 
@@ -168,6 +168,17 @@ class AgentConfigurationDetail(BaseModel):
 
     id: str
     name: str
-    config: AgentConfig
+    # Stored as opaque JSON so the full FE contract (Preet's reference shape,
+    # which is wider than the orchestrator's narrow AgentConfig wire type)
+    # round-trips intact through save → load. The orchestrator path uses its
+    # own narrower AgentConfig + an FE-side adapter (conversationApi.ts).
+    config: dict[str, Any]
     created_at: datetime
     updated_at: datetime | None = None
+
+
+class AgentConfigurationCreate(BaseModel):
+    """Request body for POST /v1/agent-configs."""
+
+    name: str = Field(..., min_length=1, max_length=200)
+    config: dict[str, Any]
