@@ -94,6 +94,7 @@ export function ConversationalChat() {
 
   const handleSegment = useCallback(
     (segment: TranscriptionSegment) => {
+      // console.log("[greeting] handleSegment:", segment.role, segment.id, JSON.stringify(segment.text).slice(0, 60), "final:", segment.isFinal);
       if (segment.role === "user") {
         // A new user turn resets the agent turn context for the next response.
         agentTurnIdRef.current = null;
@@ -218,14 +219,10 @@ export function ConversationalChat() {
   }, [call]);
 
   const handleStartSession = useCallback(() => {
+    // console.log("[greeting] handleStartSession fired");
     call.start({ tokenMetadata: buildLiveKitWorkerMetadata(agent) });
-    // Lock the mic until the backend speaks the greeting through the LiveKit
-    // session. The greeting detection effect above unlocks it once the first
-    // speaking → idle_in_call transition is observed.
     setGreetingDone(false);
     greetingSeenSpeakingRef.current = false;
-    // Fallback: release the mic lock after 15 s in case the greeting never
-    // arrives (e.g. network delay or backend config without a greeting).
     if (greetingTimeoutRef.current !== null) clearTimeout(greetingTimeoutRef.current);
     greetingTimeoutRef.current = window.setTimeout(() => {
       greetingTimeoutRef.current = null;
@@ -265,18 +262,28 @@ export function ConversationalChat() {
           <CardHeader className="flex flex-row items-start justify-between gap-3 border-b">
             <div className="space-y-1">
               <CardTitle>{agent.name}</CardTitle>
-              <CardDescription>Voice session active · live transcript below.</CardDescription>
+              <CardDescription>
+                {call.status === "connecting"
+                  ? "Connecting to your agent…"
+                  : "Voice session active · live transcript below."}
+              </CardDescription>
             </div>
             <CallStatusIndicator status={call.status} />
           </CardHeader>
           <CardContent className="pt-6">
             <ScrollArea className="h-[min(50vh,28rem)] pr-3">
-              <ul className="flex flex-col gap-4" aria-label="Transcript">
-                {call.transcript.map((turn) => (
-                  <TranscriptBubble key={turn.id} turn={turn} />
-                ))}
-                <div ref={transcriptEndRef} className="h-px" aria-hidden />
-              </ul>
+              {call.status === "connecting" ? (
+                <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
+                  Waiting for agent to join…
+                </div>
+              ) : (
+                <ul className="flex flex-col gap-4" aria-label="Transcript">
+                  {call.transcript.map((turn) => (
+                    <TranscriptBubble key={turn.id} turn={turn} />
+                  ))}
+                  <div ref={transcriptEndRef} className="h-px" aria-hidden />
+                </ul>
+              )}
             </ScrollArea>
           </CardContent>
         </Card>

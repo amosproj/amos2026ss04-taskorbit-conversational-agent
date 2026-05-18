@@ -24,7 +24,7 @@ const SPEECH_THRESHOLD = 55;
 // Sustained duration before onSpeech fires. 500 ms rejects coughs, clicks, and
 // short background bursts that rarely exceed 300 ms, while still feeling
 // responsive for intentional speech.
-const SPEECH_SUSTAIN_MS = 500;
+const SPEECH_SUSTAIN_MS = 1000;
 
 // Poll interval. 50 ms gives ≤350 ms total detection latency (sustain + 1 poll).
 const POLL_MS = 50;
