@@ -11,6 +11,7 @@ import { ToolsSection } from "@/components/agent-config/ToolsSection";
 import { VariablesSection } from "@/components/agent-config/VariablesSection";
 import { Button } from "@/components/ui/button";
 
+import { saveAgentConfig } from "@/lib/agentConfigApi";
 import { EMPTY_AGENT, JOHN_DOE_AGENT } from "@/lib/mockAgents";
 import { serializeAgent, type AgentConfig } from "@/types/agentConfig";
 
@@ -47,7 +48,7 @@ export function AgentConfigPage() {
     }
   };
 
-  const save = () => {
+  const save = async () => {
     if (!isComplete(agent)) {
       setShowErrors(true);
       toast.error("Some required fields are empty.", {
@@ -55,11 +56,15 @@ export function AgentConfigPage() {
       });
       return;
     }
-    // No backend yet — surface the result in the console so the JSON shape
-    // can be verified end-to-end against the orchestrator contract.
-
-    console.info("[AgentConfig] save", serializeAgent(agent));
-    toast.success("Configuration saved.");
+    try {
+      const saved = await saveAgentConfig(agent);
+      toast.success("Configuration saved.", {
+        description: `Saved as "${saved.name}".`,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error.";
+      toast.error("Could not save configuration.", { description: message });
+    }
   };
 
   return (
