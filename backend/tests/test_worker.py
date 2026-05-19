@@ -55,6 +55,19 @@ def _make_ctx() -> tuple[MagicMock, dict[str, object]]:
     return ctx, registered
 
 
+def _make_session_mock() -> AsyncMock:
+    """Return an AsyncMock session where .on() acts as a synchronous decorator factory.
+
+    AgentSession.on() is synchronous (not a coroutine) — it registers a callback
+    and returns the decorator. AsyncMock makes child attributes AsyncMocks by default,
+    which means session.on(...) would return a coroutine instead of a callable.
+    Replacing it with a plain MagicMock preserves the synchronous decorator pattern.
+    """
+    session = AsyncMock()
+    session.on = MagicMock(side_effect=lambda event: (lambda fn: fn))
+    return session
+
+
 def _data_packet(payload: bytes, participant_identity: str = "remote-user") -> MagicMock:
     packet = MagicMock()
     packet.data = payload
@@ -75,7 +88,7 @@ def _server_packet(payload: bytes) -> MagicMock:
 async def test_entrypoint_starts_session(configured_settings: None) -> None:
     """entrypoint() should connect, build session/agent, and call session.start()."""
     ctx, _ = _make_ctx()
-    mock_session = AsyncMock()
+    mock_session = _make_session_mock()
     mock_agent = MagicMock()
 
     with (
@@ -95,7 +108,7 @@ async def test_entrypoint_starts_session(configured_settings: None) -> None:
 async def test_commit_turn_triggers_reply(configured_settings: None) -> None:
     """A "commit_turn" data message should call request_reply() then generate_reply()."""
     ctx, registered = _make_ctx()
-    mock_session = AsyncMock()
+    mock_session = _make_session_mock()
     mock_session.generate_reply = MagicMock(return_value=None)
     mock_agent = MagicMock()
 
@@ -120,7 +133,7 @@ async def test_commit_turn_triggers_reply(configured_settings: None) -> None:
 async def test_invalid_json_ignored(configured_settings: None) -> None:
     """Malformed JSON in a data packet should be silently ignored."""
     ctx, registered = _make_ctx()
-    mock_session = AsyncMock()
+    mock_session = _make_session_mock()
     mock_agent = MagicMock()
 
     with (
@@ -139,7 +152,7 @@ async def test_invalid_json_ignored(configured_settings: None) -> None:
 async def test_unknown_message_type_ignored(configured_settings: None) -> None:
     """A data packet with an unrecognised type should not trigger a reply."""
     ctx, registered = _make_ctx()
-    mock_session = AsyncMock()
+    mock_session = _make_session_mock()
     mock_agent = MagicMock()
 
     with (
@@ -158,7 +171,7 @@ async def test_unknown_message_type_ignored(configured_settings: None) -> None:
 async def test_server_packet_ignored(configured_settings: None) -> None:
     """A packet with participant=None (server-SDK origin) should be silently ignored."""
     ctx, registered = _make_ctx()
-    mock_session = AsyncMock()
+    mock_session = _make_session_mock()
     mock_agent = MagicMock()
 
     with (
@@ -177,7 +190,7 @@ async def test_server_packet_ignored(configured_settings: None) -> None:
 async def test_interrupt_playback_calls_session_interrupt(configured_settings: None) -> None:
     """An "interrupt_playback" message should call session.interrupt() immediately."""
     ctx, registered = _make_ctx()
-    mock_session = AsyncMock()
+    mock_session = _make_session_mock()
     mock_session.interrupt = MagicMock()
     mock_agent = MagicMock()
 
@@ -198,7 +211,7 @@ async def test_interrupt_playback_calls_session_interrupt(configured_settings: N
 async def test_commit_turn_does_not_call_interrupt(configured_settings: None) -> None:
     """A "commit_turn" message must not trigger session.interrupt()."""
     ctx, registered = _make_ctx()
-    mock_session = AsyncMock()
+    mock_session = _make_session_mock()
     mock_session.generate_reply = MagicMock(return_value=None)
     mock_session.interrupt = MagicMock()
     mock_agent = MagicMock()
@@ -222,7 +235,7 @@ async def test_commit_turn_does_not_call_interrupt(configured_settings: None) ->
 async def test_interrupt_session_exception_is_logged(configured_settings: None) -> None:
     """session.interrupt() failure should be caught and logged, not propagated."""
     ctx, registered = _make_ctx()
-    mock_session = AsyncMock()
+    mock_session = _make_session_mock()
     mock_session.interrupt = MagicMock(side_effect=RuntimeError("tts already stopped"))
     mock_agent = MagicMock()
 
@@ -241,7 +254,7 @@ async def test_interrupt_cancels_pending_reply_task(configured_settings: None) -
     """interrupt_playback arriving before _commit_and_reply completes must cancel
     the task so generate_reply() is never called for the stale turn."""
     ctx, registered = _make_ctx()
-    mock_session = AsyncMock()
+    mock_session = _make_session_mock()
     mock_session.generate_reply = MagicMock(return_value=None)
     mock_session.interrupt = MagicMock()
     mock_agent = MagicMock()
@@ -275,7 +288,7 @@ async def test_interrupt_cancels_pending_reply_task(configured_settings: None) -
 async def test_local_participant_packet_ignored(configured_settings: None) -> None:
     """A packet whose sender identity matches the local participant must be ignored."""
     ctx, registered = _make_ctx()
-    mock_session = AsyncMock()
+    mock_session = _make_session_mock()
     mock_agent = MagicMock()
 
     with (
@@ -297,7 +310,7 @@ async def test_interrupt_during_flush_delay_cancels_task(configured_settings: No
     """interrupt_playback arriving while _commit_and_reply is sleeping on the
     Deepgram flush delay must cancel the task before generate_reply is called."""
     ctx, registered = _make_ctx()
-    mock_session = AsyncMock()
+    mock_session = _make_session_mock()
     mock_session.generate_reply = MagicMock(return_value=None)
     mock_session.interrupt = MagicMock()
     mock_agent = MagicMock()
@@ -332,7 +345,7 @@ async def test_interrupt_after_completed_task_does_not_raise(configured_settings
     """interrupt_playback sent after the reply task already finished must still
     call session.interrupt() without raising an error (reply_task.done() guard)."""
     ctx, registered = _make_ctx()
-    mock_session = AsyncMock()
+    mock_session = _make_session_mock()
     mock_session.generate_reply = MagicMock(return_value=None)
     mock_session.interrupt = MagicMock()
     mock_agent = MagicMock()

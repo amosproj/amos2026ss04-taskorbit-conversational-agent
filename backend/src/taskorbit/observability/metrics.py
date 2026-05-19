@@ -86,8 +86,10 @@ def configure_default_metrics() -> None:
         "llm_api_openai",
         "llm_api_google",
         "tts_synthesis",
+        "tts_ttfb",
         "worker_turn",
         "total",
+        "stt_processing",
     ):
         m.pipeline_latency_seconds.labels(stage=stage)
     for error_type in ("llm_timeout", "encoding_error", "invalid_input", "runtime_error"):

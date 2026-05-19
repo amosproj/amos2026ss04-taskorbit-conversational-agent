@@ -1203,11 +1203,117 @@
     },
     {
       "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 78 },
+      "id": 55,
+      "title": "Voice Pipeline Latency (STT / TTS)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2 }, "unit": "s" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 79 },
+      "id": 56,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "title": "STT Processing Latency P50 / P95 / P99",
+      "description": "Time from commit_turn received to Deepgram transcript available in llm_node.",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.50, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"stt_processing\"}[5m]))",
+          "legendFormat": "p50 STT", "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.95, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"stt_processing\"}[5m]))",
+          "legendFormat": "p95 STT", "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.99, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"stt_processing\"}[5m]))",
+          "legendFormat": "p99 STT", "refId": "C"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2 }, "unit": "s" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 79 },
+      "id": 57,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "title": "TTS Time-to-First-Byte P50 / P95 / P99",
+      "description": "Time from ElevenLabs synthesis request to first audio byte returned. From LiveKit TTSMetrics.",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.50, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"tts_ttfb\"}[5m]))",
+          "legendFormat": "p50 TTS TTFB", "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.95, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"tts_ttfb\"}[5m]))",
+          "legendFormat": "p95 TTS TTFB", "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.99, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"tts_ttfb\"}[5m]))",
+          "legendFormat": "p99 TTS TTFB", "refId": "C"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2 }, "unit": "s" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 79 },
+      "id": 58,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "title": "TTS Synthesis Duration P50 / P95 / P99",
+      "description": "Total ElevenLabs synthesis duration per turn. From LiveKit TTSMetrics.",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.50, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"tts_synthesis\"}[5m]))",
+          "legendFormat": "p50 TTS duration", "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.95, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"tts_synthesis\"}[5m]))",
+          "legendFormat": "p95 TTS duration", "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.99, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"tts_synthesis\"}[5m]))",
+          "legendFormat": "p99 TTS duration", "refId": "C"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 86
+        "y": 87
       },
       "id": 52,
       "title": "Logs & Traces",
@@ -1222,7 +1328,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 87
+        "y": 88
       },
       "id": 29,
       "options": {
@@ -1258,7 +1364,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 97
+        "y": 98
       },
       "id": 30,
       "options": {

@@ -181,6 +181,16 @@ class OrchestratorAgent(Agent):
             return
         self._reply_requested = False
 
+        # STT latency: time from commit_turn received to transcript available in llm_node.
+        # llm_node is only invoked after AgentSession has a final Deepgram transcript,
+        # so this measures how long STT processing took after the user committed their turn.
+        if self._t_commit is not None:
+            stt_elapsed = time.perf_counter() - self._t_commit
+            get_metrics().pipeline_latency_seconds.labels(stage="stt_processing").observe(
+                stt_elapsed
+            )
+            log.debug("stt_processing_complete", latency_ms=round(stt_elapsed * 1000, 1))
+
         messages = _convert_chat_ctx_to_messages(chat_ctx)
         last_user = next((m for m in reversed(messages) if m.role == MessageRole.USER), None)
         if last_user:
