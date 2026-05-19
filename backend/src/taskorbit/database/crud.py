@@ -2,13 +2,14 @@
 
 from datetime import datetime
 
-import structlog
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from taskorbit.logging.setup import get_logger
+
 from .models import ConversationMessage, User
 
-logger = structlog.get_logger()
+logger = get_logger(__name__)
 
 
 # ============ USER CRUD ============
