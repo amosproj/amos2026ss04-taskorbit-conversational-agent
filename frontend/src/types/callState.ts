@@ -43,6 +43,8 @@ export type LiveTranscriptTurn = {
   id: string;
   role: "user" | "assistant";
   text: string;
+  /** False while a segment is still streaming; true once the stream closes. */
+  isFinal?: boolean;
 };
 
 /**

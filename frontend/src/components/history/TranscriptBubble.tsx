@@ -1,16 +1,58 @@
+import { useEffect, useRef, useState } from "react";
+
 import { cn } from "@/lib/utils";
 import type { TranscriptTurn } from "@/lib/mockConversations";
 
-type Props = { turn: TranscriptTurn };
+/** ~155 WPM — only used when the full text arrives at once with no prior streaming. */
+const MS_PER_WORD = 390;
 
-/**
- * One transcript line in the History detail pane. Visually mirrors the live
- * chat surface so transcripts read as the same conversation pattern, but
- * labels the user side as "Caller" since the viewer is reviewing a past call
- * rather than participating in one.
- */
-export function TranscriptBubble({ turn }: Props) {
+type Props = {
+  turn: TranscriptTurn & { isFinal?: boolean };
+  /** When true, skip all animation and show the full text immediately. */
+  history?: boolean;
+};
+
+export function TranscriptBubble({ turn, history = false }: Props) {
   const isUser = turn.role === "user";
+
+  // Once we see isFinal=false the turn is being streamed (LiveKit stream or
+  // playWithWordSync timestamps). Text is already arriving at the right time
+  // so we show it directly — the timer would only add unwanted delay.
+  const wasStreamedRef = useRef(false);
+  if (turn.isFinal === false) wasStreamedRef.current = true;
+  const isStreaming = wasStreamedRef.current;
+
+  const [shownCount, setShownCount] = useState(0);
+  const countRef = useRef(0);
+  const allWords = turn.text.trim().split(/\s+/).filter(Boolean);
+  const wordsRef = useRef<string[]>([]);
+  wordsRef.current = allWords;
+
+  // Timer fallback: only for non-user, non-history, non-streaming turns where
+  // the full sentence arrives in one shot (e.g. TTS fetch failed → full text).
+  useEffect(() => {
+    if (history || isUser || isStreaming || turn.isFinal === undefined || !turn.text) return;
+    if (countRef.current >= wordsRef.current.length) return;
+
+    let count = countRef.current;
+    const id = setInterval(() => {
+      count++;
+      countRef.current = count;
+      setShownCount(count);
+      if (count >= wordsRef.current.length) clearInterval(id);
+    }, MS_PER_WORD);
+
+    return () => clearInterval(id);
+  }, [turn.text, isUser, isStreaming, turn.isFinal, history]);
+
+  const displayText = (() => {
+    if (isUser || history) return turn.text;
+    // History turns (isFinal undefined) and streaming turns: show as-is.
+    if (turn.isFinal === undefined || isStreaming) return turn.text;
+    // Full-text-at-once fallback: timer-paced reveal.
+    return allWords.slice(0, shownCount).join(" ");
+  })();
+
   return (
     <li className={cn("flex flex-col gap-1", isUser ? "items-end" : "items-start")}>
       <span className="text-xs font-medium text-muted-foreground">
@@ -24,7 +66,7 @@ export function TranscriptBubble({ turn }: Props) {
             : "rounded-tl-sm bg-muted text-foreground",
         )}
       >
-        {turn.text}
+        {displayText}
       </div>
     </li>
   );

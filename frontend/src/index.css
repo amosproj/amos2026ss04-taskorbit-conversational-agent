@@ -92,3 +92,15 @@
       "calt" 1;
   }
 }
+
+@keyframes wavebar {
+  0%,
+  100% {
+    transform: scaleY(0.3);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}

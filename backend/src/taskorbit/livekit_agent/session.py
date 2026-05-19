@@ -41,7 +41,13 @@ def build_agent_session(
     cfg = settings or get_settings()
 
     return AgentSession(
-        vad=silero.VAD.load(),
+        vad=silero.VAD.load(
+            activation_threshold=0.7,
+            deactivation_threshold=0.45,
+            min_speech_duration=0.2,
+            min_silence_duration=0.55,
+            prefix_padding_duration=0.4,
+        ),
         stt=deepgram.STT(
             api_key=cfg.deepgram_api_key,
             model=cfg.deepgram_model,
@@ -57,6 +63,11 @@ def build_agent_session(
             api_key=cfg.elevenlabs_api_key,
             voice_id=cfg.elevenlabs_voice_id,
             model=cfg.elevenlabs_model,
+            # Plugin default is mp3_22050_32 (22 kHz / 32 kbps) which sounds
+            # noticeably different from the REST endpoint used for the greeting
+            # (which returns mp3_44100_128 by default). Match that quality here
+            # so both paths use the same audio characteristics.
+            encoding="mp3_44100_128",
             voice_settings=VoiceSettings(
                 stability=0.75,
                 similarity_boost=0.75,
@@ -65,6 +76,11 @@ def build_agent_session(
                 use_speaker_boost=True,
             ),
         ),
+        # Barge-in: stop agent TTS as soon as the user sustains speech for
+        # min_interruption_duration seconds. Brief noises (clicks, coughs)
+        # shorter than the threshold do not trigger an interruption.
+        allow_interruptions=True,
+        min_interruption_duration=0.8,
         # Push-to-talk: only reply when generate_reply() is called explicitly.
         # "manual" endpointing disables VAD/silence auto-trigger.
         # preemptive_tts=False stops the session from calling llm_node early
