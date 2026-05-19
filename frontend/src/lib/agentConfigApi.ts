@@ -9,8 +9,9 @@
  * `frontend/vite.config.ts`), so this works without CORS configuration
  * in development.
  *
- * Implements ticket #47 (Save Agent Configuration). Load + update + delete
- * are owned by the sibling tickets #51 and #52 on the same feature branch.
+ * Implements the save (#47) and load (#51) sides of the agent-config trio.
+ * Update + delete (PUT/DELETE) are owned by the sibling ticket #52 on the
+ * same feature branch.
  */
 
 import { serializeAgent, type AgentConfig } from "@/types/agentConfig";
@@ -19,6 +20,14 @@ export type SavedAgentConfig = {
   id: string;
   name: string;
   config: Record<string, unknown>;
+  created_at: string;
+  updated_at: string | null;
+};
+
+/** Shape returned by `GET /api/v1/agent-configs` — omits the heavy `config` blob. */
+export type SavedAgentConfigSummary = {
+  id: string;
+  name: string;
   created_at: string;
   updated_at: string | null;
 };
@@ -48,6 +57,54 @@ export async function saveAgentConfig(
     }),
     signal,
   });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(String(err.detail ?? `HTTP ${res.status}`));
+  }
+
+  return (await res.json()) as SavedAgentConfig;
+}
+
+/**
+ * Fetch the list of saved agent configurations (most recent first).
+ *
+ * Used to populate the "Load preset" dropdown on the Agent Configuration
+ * page so the user can pick a previously saved preset and have its form
+ * fields re-populated.
+ *
+ * @param signal - Optional AbortSignal to cancel the in-flight request
+ * @returns Array of summaries (id + name + timestamps, no config blob)
+ * @throws Error with the backend's `detail` message when the response is non-2xx.
+ */
+export async function listAgentConfigs(signal?: AbortSignal): Promise<SavedAgentConfigSummary[]> {
+  const res = await fetch("/api/v1/agent-configs", { signal });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(String(err.detail ?? `HTTP ${res.status}`));
+  }
+
+  return (await res.json()) as SavedAgentConfigSummary[];
+}
+
+/**
+ * Fetch a single saved agent configuration by id.
+ *
+ * The returned `config` is the full FE contract that was saved, so it can
+ * be fed straight into `setAgent(...)` on the page to re-populate every
+ * section.
+ *
+ * @param configId - The DB id from a previous save / list response
+ * @param signal   - Optional AbortSignal to cancel the in-flight request
+ * @returns The saved row including the full `config` JSON
+ * @throws Error with the backend's `detail` message when the response is non-2xx.
+ */
+export async function loadAgentConfig(
+  configId: string,
+  signal?: AbortSignal,
+): Promise<SavedAgentConfig> {
+  const res = await fetch(`/api/v1/agent-configs/${encodeURIComponent(configId)}`, { signal });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
