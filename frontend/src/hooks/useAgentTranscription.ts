@@ -13,6 +13,7 @@
  */
 
 import { useRoomContext } from "@livekit/components-react";
+import { type TextStreamReader } from "livekit-client";
 import { useEffect } from "react";
 
 const TRANSCRIPTION_TOPIC = "lk.transcription";
@@ -34,47 +35,54 @@ export function useAgentTranscription(onSegment: TranscriptionHandler): void {
     if (!room) return;
 
     const handler = async (
-      reader: {
-        info: { attributes?: Record<string, string>; id?: string };
-        readAll: () => Promise<string>;
-      },
+      reader: TextStreamReader,
       participant: { identity: string },
     ): Promise<void> => {
       try {
-        const text = await reader.readAll();
         const attrs = reader.info.attributes ?? {};
         // The agent worker stamps `lk.transcribed_track_id` only on
         // transcription streams (vs other text streams that share the
         // topic accidentally). Treat absence as a non-transcription.
         if (!attrs["lk.transcribed_track_id"]) return;
 
-        const isFinal = attrs["lk.transcription_final"] === "true";
         const segmentId = attrs["lk.segment_id"] ?? reader.info.id ?? `seg-${Date.now()}`;
         const role: "user" | "assistant" =
           participant.identity === room.localParticipant.identity ? "user" : "assistant";
 
-        onSegment({ id: segmentId, role, text, isFinal });
+        // STT (user) and TTS (assistant) send different stream formats:
+        //   STT — Deepgram writes full partial transcripts that grow each time
+        //         ("Hi" → "Hi there" → "Hi there how"). Take the latest chunk.
+        //   TTS — livekit-agents writes one word at a time with sync_transcription=True.
+        //         Concatenate to build the sentence progressively.
+        let latest = "";
+        let accumulated = "";
+        for await (const chunk of reader) {
+          if (role === "user") {
+            latest = chunk;
+            onSegment({ id: segmentId, role, text: latest.trim(), isFinal: false });
+          } else {
+            accumulated += chunk;
+            onSegment({ id: segmentId, role, text: accumulated.trim(), isFinal: false });
+          }
+        }
+        const finalText = (role === "user" ? latest : accumulated).trim();
+        if (finalText) {
+          onSegment({ id: segmentId, role, text: finalText, isFinal: true });
+        }
       } catch (err) {
         // Don't break the room over a single malformed stream — just
         // log and let subsequent streams flow.
-
         console.warn("[useAgentTranscription] failed to read stream", err);
       }
     };
 
-    // Cast through unknown — registerTextStreamHandler types vary across
-    // livekit-client minor versions, but the runtime contract is stable.
-    const register = room.registerTextStreamHandler.bind(room) as (
-      topic: string,
-      cb: typeof handler,
-    ) => void;
     const unregister = (
       room as unknown as {
         unregisterTextStreamHandler?: (topic: string) => void;
       }
     ).unregisterTextStreamHandler?.bind(room);
 
-    register(TRANSCRIPTION_TOPIC, handler);
+    room.registerTextStreamHandler(TRANSCRIPTION_TOPIC, handler);
 
     return () => {
       try {

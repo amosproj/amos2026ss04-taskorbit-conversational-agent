@@ -43,6 +43,12 @@ export type MicRecorderApi = {
    * future change in how we signal end-of-turn to the agent.
    */
   sendUtterance: () => Promise<void>;
+  /**
+   * Signal the agent worker to immediately stop TTS playback (button-triggered
+   * barge-in). The backend calls session.interrupt() in response. Automatic
+   * VAD barge-in runs independently via allow_interruptions=True on the backend.
+   */
+  sendInterrupt: () => Promise<void>;
 };
 
 export function useMicRecorder(): MicRecorderApi {
@@ -156,7 +162,13 @@ export function useMicRecorder(): MicRecorderApi {
     setError(null);
     setStarting(true);
     try {
-      await localParticipant.setMicrophoneEnabled(true);
+      await localParticipant.setMicrophoneEnabled(true, {
+        // Native browser noise processing reduces background noise reaching
+        // both LiveKit and the AnalyserNode used for silence detection.
+        noiseSuppression: true,
+        echoCancellation: true,
+        autoGainControl: true,
+      });
     } catch (err) {
       const message = (err as Error).message || "Could not access microphone.";
       // Browsers report permission denial as NotAllowedError; the user
@@ -204,6 +216,15 @@ export function useMicRecorder(): MicRecorderApi {
     await disable();
   }, [disable, localParticipant]);
 
+  const sendInterrupt = useCallback(async () => {
+    const payload = new TextEncoder().encode(JSON.stringify({ type: "interrupt_playback" }));
+    try {
+      await localParticipant.publishData(payload, { reliable: true });
+    } catch {
+      // Best-effort — VAD barge-in on the backend is the primary mechanism.
+    }
+  }, [localParticipant]);
+
   // Snapshot the published-state into a stable variable so the public
   // surface doesn't change identity unless the underlying value does.
   const enabled =
@@ -225,5 +246,6 @@ export function useMicRecorder(): MicRecorderApi {
     enable,
     disable,
     sendUtterance,
+    sendInterrupt,
   };
 }

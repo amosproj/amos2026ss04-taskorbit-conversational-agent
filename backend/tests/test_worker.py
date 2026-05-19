@@ -5,6 +5,10 @@ Covers:
   2. A valid "commit_turn" data message triggers request_reply() + generate_reply().
   3. Malformed JSON packets are silently ignored.
   4. Unrecognised message types are silently ignored.
+  5. "interrupt_playback" calls session.interrupt().
+  6. "interrupt_playback" arriving while a reply task is pending cancels the task
+     so generate_reply() is never called for that stale turn.
+  7. A completed reply task is not double-cancelled on a subsequent interrupt.
 """
 
 from __future__ import annotations
@@ -167,3 +171,189 @@ async def test_server_packet_ignored(configured_settings: None) -> None:
     handler(_server_packet(json.dumps({"type": "commit_turn"}).encode()))
 
     mock_agent.request_reply.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_interrupt_playback_calls_session_interrupt(configured_settings: None) -> None:
+    """An "interrupt_playback" message should call session.interrupt() immediately."""
+    ctx, registered = _make_ctx()
+    mock_session = AsyncMock()
+    mock_session.interrupt = MagicMock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+    ):
+        await entrypoint(ctx)
+
+    handler = registered["data_received"]
+    handler(_data_packet(json.dumps({"type": "interrupt_playback"}).encode()))
+
+    mock_session.interrupt.assert_called_once()
+    mock_agent.request_reply.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_commit_turn_does_not_call_interrupt(configured_settings: None) -> None:
+    """A "commit_turn" message must not trigger session.interrupt()."""
+    ctx, registered = _make_ctx()
+    mock_session = AsyncMock()
+    mock_session.generate_reply = MagicMock(return_value=None)
+    mock_session.interrupt = MagicMock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+        patch("taskorbit.worker._DEEPGRAM_FLUSH_DELAY_S", 0),
+    ):
+        await entrypoint(ctx)
+
+        handler = registered["data_received"]
+        handler(_data_packet(json.dumps({"type": "commit_turn"}).encode()))
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+    mock_session.interrupt.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_interrupt_session_exception_is_logged(configured_settings: None) -> None:
+    """session.interrupt() failure should be caught and logged, not propagated."""
+    ctx, registered = _make_ctx()
+    mock_session = AsyncMock()
+    mock_session.interrupt = MagicMock(side_effect=RuntimeError("tts already stopped"))
+    mock_agent = MagicMock()
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+    ):
+        await entrypoint(ctx)
+
+    handler = registered["data_received"]
+    handler(_data_packet(json.dumps({"type": "interrupt_playback"}).encode()))
+
+
+@pytest.mark.asyncio
+async def test_interrupt_cancels_pending_reply_task(configured_settings: None) -> None:
+    """interrupt_playback arriving before _commit_and_reply completes must cancel
+    the task so generate_reply() is never called for the stale turn."""
+    ctx, registered = _make_ctx()
+    mock_session = AsyncMock()
+    mock_session.generate_reply = MagicMock(return_value=None)
+    mock_session.interrupt = MagicMock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+        patch("taskorbit.worker._DEEPGRAM_FLUSH_DELAY_S", 0),
+    ):
+        await entrypoint(ctx)
+
+        handler = registered["data_received"]
+
+        # commit_turn creates the _commit_and_reply task (not yet started).
+        handler(_data_packet(json.dumps({"type": "commit_turn"}).encode()))
+
+        # interrupt_playback arrives before any await — cancels the pending task.
+        handler(_data_packet(json.dumps({"type": "interrupt_playback"}).encode()))
+
+        # Let the event loop run: the task starts, hits asyncio.sleep(0), receives
+        # the cancellation, raises CancelledError, and exits cleanly.
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+    mock_session.interrupt.assert_called_once()
+    # generate_reply must NOT have been called — the task was cancelled first.
+    mock_session.generate_reply.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_local_participant_packet_ignored(configured_settings: None) -> None:
+    """A packet whose sender identity matches the local participant must be ignored."""
+    ctx, registered = _make_ctx()
+    mock_session = AsyncMock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+    ):
+        await entrypoint(ctx)
+
+    handler = registered["data_received"]
+    local_identity = ctx.room.local_participant.identity
+    packet = _data_packet(json.dumps({"type": "commit_turn"}).encode(), local_identity)
+    handler(packet)
+
+    mock_agent.request_reply.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_interrupt_during_flush_delay_cancels_task(configured_settings: None) -> None:
+    """interrupt_playback arriving while _commit_and_reply is sleeping on the
+    Deepgram flush delay must cancel the task before generate_reply is called."""
+    ctx, registered = _make_ctx()
+    mock_session = AsyncMock()
+    mock_session.generate_reply = MagicMock(return_value=None)
+    mock_session.interrupt = MagicMock()
+    mock_agent = MagicMock()
+
+    small_delay = 0.01
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+        patch("taskorbit.worker._DEEPGRAM_FLUSH_DELAY_S", small_delay),
+    ):
+        await entrypoint(ctx)
+
+        handler = registered["data_received"]
+
+        # Start the commit/reply cycle — task enters asyncio.sleep(small_delay).
+        handler(_data_packet(json.dumps({"type": "commit_turn"}).encode()))
+        await asyncio.sleep(0)  # let the task start and reach the sleep
+
+        # Interrupt arrives while the task is still sleeping.
+        handler(_data_packet(json.dumps({"type": "interrupt_playback"}).encode()))
+
+        # Allow the event loop to process the cancellation.
+        await asyncio.sleep(small_delay * 2)
+
+    mock_session.interrupt.assert_called_once()
+    mock_session.generate_reply.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_interrupt_after_completed_task_does_not_raise(configured_settings: None) -> None:
+    """interrupt_playback sent after the reply task already finished must still
+    call session.interrupt() without raising an error (reply_task.done() guard)."""
+    ctx, registered = _make_ctx()
+    mock_session = AsyncMock()
+    mock_session.generate_reply = MagicMock(return_value=None)
+    mock_session.interrupt = MagicMock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+        patch("taskorbit.worker._DEEPGRAM_FLUSH_DELAY_S", 0),
+    ):
+        await entrypoint(ctx)
+
+        handler = registered["data_received"]
+
+        # Let commit_turn run to completion first.
+        handler(_data_packet(json.dumps({"type": "commit_turn"}).encode()))
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+        mock_session.generate_reply.assert_called_once()
+
+        # Now interrupt arrives — reply_task is already done, should not raise.
+        handler(_data_packet(json.dumps({"type": "interrupt_playback"}).encode()))
+
+    mock_session.interrupt.assert_called_once()
