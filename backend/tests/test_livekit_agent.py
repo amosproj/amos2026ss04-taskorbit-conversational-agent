@@ -170,3 +170,45 @@ async def test_llm_node_filters_unsupported_chat_items() -> None:
     assert [(m.role, m.content) for m in request.messages] == [
         (MessageRole.USER, "real message"),
     ]
+
+
+# ---------------------------------------------------------------------------
+# voice_turn_latency_seconds metric
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_llm_node_records_voice_turn_latency() -> None:
+    """voice_turn_latency_seconds is observed when request_reply(t_commit) is set."""
+    import time
+
+    agent, _ = _make_agent("reply")
+    chat_ctx = _make_chat_ctx([("user", "hello")])
+    mock_metrics = MagicMock()
+
+    t_commit = time.perf_counter()
+    agent.request_reply(t_commit=t_commit)
+
+    with patch("taskorbit.livekit_agent.llm.get_metrics", return_value=mock_metrics):
+        [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
+
+    mock_metrics.voice_turn_latency_seconds.observe.assert_called_once()
+    observed = mock_metrics.voice_turn_latency_seconds.observe.call_args.args[0]
+    assert 0 <= observed < 5.0
+
+
+@pytest.mark.asyncio
+async def test_llm_node_skips_latency_when_no_commit_time() -> None:
+    """voice_turn_latency_seconds is NOT observed when request_reply() has no t_commit set."""
+    agent, _ = _make_agent("reply")
+    chat_ctx = _make_chat_ctx([("user", "hello")])
+    mock_metrics = MagicMock()
+
+    # Manually set _t_commit to None to simulate no commit time
+    agent._reply_requested = True
+    agent._t_commit = None
+
+    with patch("taskorbit.livekit_agent.llm.get_metrics", return_value=mock_metrics):
+        [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
+
+    mock_metrics.voice_turn_latency_seconds.observe.assert_not_called()
