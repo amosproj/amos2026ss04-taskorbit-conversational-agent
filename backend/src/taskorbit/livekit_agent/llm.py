@@ -201,6 +201,10 @@ class OrchestratorAgent(Agent):
             messages=messages,
         )
         response = await self._orchestrator.process_message(request)
+        status = "success" if response.status == "success" else "error"
+        get_metrics().voice_pipeline_requests_total.labels(
+            handler="/v1/conversations/process", status=status
+        ).inc()
         text = response.reply.content or ""
 
         if self._t_commit is not None:
