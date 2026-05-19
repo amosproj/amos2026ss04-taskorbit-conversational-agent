@@ -15,7 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useVoiceCall } from "@/hooks/useVoiceCall";
 import type { TranscriptionSegment } from "@/hooks/useAgentTranscription";
 import { buildLiveKitWorkerMetadata } from "@/lib/livekitAgentMetadata";
-import { sendMessage } from "@/lib/conversationApi";
+import { sendMessage, getConversations } from "@/lib/conversationApi";
 import { JOHN_DOE_AGENT } from "@/lib/mockAgents";
 import { playSynthesizedSpeech } from "@/lib/ttsApi";
 import type { ConfirmationPromptState } from "@/types/callState";
@@ -54,6 +54,22 @@ export function ConversationalChat() {
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastUserTurnIdRef = useRef<string | null>(null);
+  const [previousConversations, setPreviousConversations] = useState<
+    Record<string, string | null>[]
+  >([]);
+
+  // Load previous conversations on page load (reload restores conversations)
+  useEffect(() => {
+    const loadConversations = async () => {
+      try {
+        const data = await getConversations();
+        setPreviousConversations(data.conversations || []);
+      } catch (error) {
+        console.error("Failed to load conversations:", error);
+      }
+    };
+    loadConversations();
+  }, []);
 
   // Agent segment merging: livekit-agents emits one stream per TTS chunk,
   // each with a unique lk.segment_id. We collapse them into a single turn
@@ -143,10 +159,6 @@ export function ConversationalChat() {
     [call.upsertTurnById, call.removeTurnById],
   );
 
-  // Text fallback path — keeps the typed input working when the user
-  // can't or doesn't want to speak. Uses the legacy /v1/conversations
-  // endpoint which round-trips through the orchestrator stub. The voice
-  // path streams its own transcript via VoiceSessionBridge.
   const handleSendText = useCallback(
     (text: string) => {
       call.appendUserTurn(text);
@@ -234,9 +246,6 @@ export function ConversationalChat() {
   const isPostCall = call.status === "ended";
   const isInCall = !isPreCall && !isPostCall;
 
-  // The page body. We render it directly while idle/ended, and wrap it
-  // in `<LiveKitRoom>` once we have credentials so that hooks inside
-  // (mic recorder, transcription) get the room context.
   const body: ReactNode = (
     <div className="mx-auto flex min-h-svh max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
       <header className="space-y-1">
@@ -249,6 +258,18 @@ export function ConversationalChat() {
           button to speak.
         </p>
       </header>
+
+      {previousConversations.length > 0 && isPreCall && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Previous Conversations</CardTitle>
+            <CardDescription>
+              You have {previousConversations.length} previous conversation
+              {previousConversations.length !== 1 ? "s" : ""}. Start a new call to continue.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
 
       {isPreCall ? (
         <>
@@ -318,9 +339,6 @@ export function ConversationalChat() {
           onDeny={handleDeny}
         />
       ) : isInCall ? (
-        // InCallControls reads `useLocalParticipant` and must live
-        // inside LiveKitRoom — only render when credentials are
-        // available so the hook can find the room context.
         call.livekitCredentials !== null ? (
           <InCallControls
             status={call.status}

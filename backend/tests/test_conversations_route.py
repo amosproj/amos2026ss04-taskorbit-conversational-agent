@@ -1,13 +1,13 @@
-"""Tests for POST /v1/conversations/process."""
+"""Tests for /v1/conversations endpoints."""
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
 from taskorbit.api.main import create_app
-from taskorbit.api.routes.conversations import get_orchestrator
+from taskorbit.api.routes.conversations import get_orchestrator, get_session
 from taskorbit.types import (
     ConversationResponse,
     Message,
@@ -26,6 +26,17 @@ _VALID_PAYLOAD = {
 }
 
 
+def _mock_db() -> AsyncMock:
+    """Return a mock async DB session."""
+    db = AsyncMock()
+    mock_scalars = MagicMock()
+    mock_scalars.all.return_value = []
+    mock_result = MagicMock()
+    mock_result.scalars.return_value = mock_scalars
+    db.execute = AsyncMock(return_value=mock_result)
+    return db
+
+
 def test_process_conversation_returns_200_with_mock() -> None:
     """Verifies that the endpoint returns a 200 and a valid response using a mock orchestrator."""
     mock_response = ConversationResponse(
@@ -33,24 +44,23 @@ def test_process_conversation_returns_200_with_mock() -> None:
         reply=Message(role=MessageRole.ASSISTANT, content="[Mocked] Hello"),
         status="success",
     )
-
     mock_orchestrator = AsyncMock()
     mock_orchestrator.process_message.return_value = mock_response
-
     app = create_app()
-    # Use dependency overrides for robust mocking in FastAPI
     app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
-
-    with TestClient(app) as client:
-        response = client.post("/v1/conversations/process", json=_VALID_PAYLOAD)
-
+    app.dependency_overrides[get_session] = _mock_db
+    with patch(
+        "taskorbit.api.routes.conversations.create_conversation_message",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        with TestClient(app) as client:
+            response = client.post("/v1/conversations/process", json=_VALID_PAYLOAD)
     assert response.status_code == 200
     body = response.json()
     assert body["conversation_id"] == "conv-1"
     assert "[Mocked] Hello" == body["reply"]["content"]
     assert body["reply"]["role"] == "assistant"
-
-    # Clean up overrides
     app.dependency_overrides = {}
 
 
@@ -59,3 +69,44 @@ def test_process_conversation_rejects_invalid_payload() -> None:
     with TestClient(app) as client:
         response = client.post("/v1/conversations/process", json={"bad": "payload"})
     assert response.status_code == 422
+
+
+def test_get_conversations_returns_200() -> None:
+    """Verifies that GET /v1/conversations returns 200 with empty list."""
+    app = create_app()
+    app.dependency_overrides[get_session] = _mock_db
+    with TestClient(app) as client:
+        response = client.get("/v1/conversations")
+    assert response.status_code == 200
+    body = response.json()
+    assert "conversations" in body
+    assert isinstance(body["conversations"], list)
+    app.dependency_overrides = {}
+
+
+def test_get_conversation_messages_returns_200() -> None:
+    """Verifies that GET /v1/conversations/{id}/messages returns 200."""
+    app = create_app()
+    app.dependency_overrides[get_session] = _mock_db
+    with patch(
+        "taskorbit.api.routes.conversations.get_messages_by_conversation",
+        new_callable=AsyncMock,
+        return_value=[],
+    ):
+        with TestClient(app) as client:
+            response = client.get("/v1/conversations/conv-1/messages")
+    assert response.status_code == 200
+    body = response.json()
+    assert "messages" in body
+    assert isinstance(body["messages"], list)
+    app.dependency_overrides = {}
+
+
+def test_create_conversation_returns_201() -> None:
+    """Verifies that POST /v1/conversations creates a conversation."""
+    app = create_app()
+    app.dependency_overrides[get_session] = _mock_db
+    with TestClient(app) as client:
+        response = client.post("/v1/conversations")
+    assert response.status_code == 201
+    app.dependency_overrides = {}

@@ -2,8 +2,9 @@
 
 from datetime import datetime
 
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from taskorbit.logging.setup import get_logger
 
@@ -15,44 +16,48 @@ logger = get_logger(__name__)
 # ============ USER CRUD ============
 
 
-def get_user(db: Session, user_id: int) -> User | None:
+async def get_user(db: AsyncSession, user_id: int) -> User | None:
     """Get a user by ID."""
     try:
-        return db.query(User).filter(User.id == user_id).first()
+        result = await db.execute(select(User).where(User.id == user_id))
+        return result.scalar_one_or_none()
     except SQLAlchemyError as e:
         logger.error("get_user_failed", error=str(e))
         return None
 
 
-def get_user_by_email(db: Session, email: str) -> User | None:
+async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
     """Get a user by email."""
     try:
-        return db.query(User).filter(User.email == email).first()
+        result = await db.execute(select(User).where(User.email == email))
+        return result.scalar_one_or_none()
     except SQLAlchemyError as e:
         logger.error("get_user_by_email_failed", error=str(e))
         return None
 
 
-def get_user_by_username(db: Session, username: str) -> User | None:
+async def get_user_by_username(db: AsyncSession, username: str) -> User | None:
     """Get a user by username."""
     try:
-        return db.query(User).filter(User.username == username).first()
+        result = await db.execute(select(User).where(User.username == username))
+        return result.scalar_one_or_none()
     except SQLAlchemyError as e:
         logger.error("get_user_by_username_failed", error=str(e))
         return None
 
 
-def get_users(db: Session, skip: int = 0, limit: int = 100) -> list[User]:
+async def get_users(db: AsyncSession, skip: int = 0, limit: int = 100) -> list[User]:
     """Get all users with pagination."""
     try:
-        return db.query(User).offset(skip).limit(limit).all()
+        result = await db.execute(select(User).offset(skip).limit(limit))
+        return list(result.scalars().all())
     except SQLAlchemyError as e:
         logger.error("get_users_failed", error=str(e))
         return []
 
 
-def create_user(
-    db: Session, username: str, email: str, hashed_password: str, is_active: bool = True
+async def create_user(
+    db: AsyncSession, username: str, email: str, hashed_password: str, is_active: bool = True
 ) -> User | None:
     """Create a new user."""
     try:
@@ -60,17 +65,17 @@ def create_user(
             username=username, email=email, hashed_password=hashed_password, is_active=is_active
         )
         db.add(db_user)
-        db.commit()
-        db.refresh(db_user)
+        await db.commit()
+        await db.refresh(db_user)
         return db_user
     except SQLAlchemyError as e:
         logger.error("create_user_failed", error=str(e))
-        db.rollback()
+        await db.rollback()
         return None
 
 
-def update_user(
-    db: Session,
+async def update_user(
+    db: AsyncSession,
     user_id: int,
     username: str | None = None,
     email: str | None = None,
@@ -78,7 +83,7 @@ def update_user(
 ) -> User | None:
     """Update an existing user."""
     try:
-        user = get_user(db, user_id)
+        user = await get_user(db, user_id)
         if not user:
             return None
 
@@ -90,80 +95,83 @@ def update_user(
             user.is_active = is_active
 
         user.updated_at = datetime.now()
-        db.commit()
-        db.refresh(user)
+        await db.commit()
+        await db.refresh(user)
         return user
     except SQLAlchemyError as e:
         logger.error("update_user_failed", error=str(e))
-        db.rollback()
+        await db.rollback()
         return None
 
 
-def delete_user(db: Session, user_id: int) -> bool:
+async def delete_user(db: AsyncSession, user_id: int) -> bool:
     """Delete a user by ID."""
     try:
-        user = get_user(db, user_id)
+        user = await get_user(db, user_id)
         if not user:
             return False
-        db.delete(user)
-        db.commit()
+        await db.delete(user)
+        await db.commit()
         return True
     except SQLAlchemyError as e:
         logger.error("delete_user_failed", error=str(e))
-        db.rollback()
+        await db.rollback()
         return False
 
 
 # ============ CONVERSATION MESSAGE CRUD ============
 
 
-def get_conversation_message(db: Session, message_id: int) -> ConversationMessage | None:
+async def get_conversation_message(db: AsyncSession, message_id: int) -> ConversationMessage | None:
     """Get a conversation message by ID."""
     try:
-        return db.query(ConversationMessage).filter(ConversationMessage.id == message_id).first()
+        result = await db.execute(
+            select(ConversationMessage).where(ConversationMessage.id == message_id)
+        )
+        return result.scalar_one_or_none()
     except SQLAlchemyError as e:
         logger.error("get_conversation_message_failed", error=str(e))
         return None
 
 
-def get_messages_by_conversation(
-    db: Session, conversation_id: str, skip: int = 0, limit: int = 100
+async def get_messages_by_conversation(
+    db: AsyncSession, conversation_id: str, skip: int = 0, limit: int = 100
 ) -> list[ConversationMessage]:
     """Get all messages for a conversation."""
     try:
-        return (
-            db.query(ConversationMessage)
-            .filter(ConversationMessage.conversation_id == conversation_id)
+        result = await db.execute(
+            select(ConversationMessage)
+            .where(ConversationMessage.conversation_id == conversation_id)
             .order_by(ConversationMessage.created_at.asc())
             .offset(skip)
             .limit(limit)
-            .all()
         )
+        return list(result.scalars().all())
     except SQLAlchemyError as e:
         logger.error("get_messages_by_conversation_failed", error=str(e))
         return []
 
 
-def get_messages_by_user(
-    db: Session, user_id: int, skip: int = 0, limit: int = 100
+async def get_messages_by_user(
+    db: AsyncSession, user_id: int, skip: int = 0, limit: int = 100
 ) -> list[ConversationMessage]:
     """Get all messages for a user."""
     try:
-        return (
-            db.query(ConversationMessage)
-            .filter(ConversationMessage.user_id == user_id)
+        result = await db.execute(
+            select(ConversationMessage)
+            .where(ConversationMessage.user_id == user_id)
             .order_by(ConversationMessage.created_at.desc())
             .offset(skip)
             .limit(limit)
-            .all()
         )
+        return list(result.scalars().all())
     except SQLAlchemyError as e:
         logger.error("get_messages_by_user_failed", error=str(e))
         return []
 
 
-def create_conversation_message(
-    db: Session, conversation_id: str, role: str, content: str, user_id: int | None = None
+async def create_conversation_message(
+    db: AsyncSession, conversation_id: str, role: str, content: str, user_id: int | None = None
 ) -> ConversationMessage | None:
     """Create a new conversation message."""
     try:
@@ -171,40 +179,40 @@ def create_conversation_message(
             conversation_id=conversation_id, user_id=user_id, role=role, content=content
         )
         db.add(db_message)
-        db.commit()
-        db.refresh(db_message)
+        await db.commit()
+        await db.refresh(db_message)
         return db_message
     except SQLAlchemyError as e:
         logger.error("create_conversation_message_failed", error=str(e))
-        db.rollback()
+        await db.rollback()
         return None
 
 
-def delete_conversation_message(db: Session, message_id: int) -> bool:
+async def delete_conversation_message(db: AsyncSession, message_id: int) -> bool:
     """Delete a conversation message by ID."""
     try:
-        message = get_conversation_message(db, message_id)
+        message = await get_conversation_message(db, message_id)
         if not message:
             return False
-        db.delete(message)
-        db.commit()
+        await db.delete(message)
+        await db.commit()
         return True
     except SQLAlchemyError as e:
         logger.error("delete_conversation_message_failed", error=str(e))
-        db.rollback()
+        await db.rollback()
         return False
 
 
 # ============ CONVERSATION HELPERS ============
 
 
-def get_conversation_messages_formatted(db: Session, conversation_id: str) -> list[dict]:
+async def get_conversation_messages_formatted(db: AsyncSession, conversation_id: str) -> list[dict]:
     """
     Get all messages for a conversation formatted as dicts.
     Returns a list of dicts with role, content, user_id, and created_at.
     """
     try:
-        messages = get_messages_by_conversation(db, conversation_id)
+        messages = await get_messages_by_conversation(db, conversation_id)
         return [
             {
                 "role": m.role,
