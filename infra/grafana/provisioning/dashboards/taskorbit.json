@@ -912,7 +912,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(increase(taskorbit_tokens_used_total{token_type=\"prompt\"}[1d]))",
+          "expr": "sum(taskorbit_tokens_used_total{token_type=\"prompt\"}) or vector(0)",
           "legendFormat": "Prompt Tokens",
           "refId": "A"
         },
@@ -921,7 +921,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(increase(taskorbit_tokens_used_total{token_type=\"completion\"}[1d]))",
+          "expr": "sum(taskorbit_tokens_used_total{token_type=\"completion\"}) or vector(0)",
           "legendFormat": "Completion Tokens",
           "refId": "B"
         },
@@ -930,7 +930,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(increase(taskorbit_tokens_used_total[1d]))",
+          "expr": "sum(taskorbit_tokens_used_total) or vector(0)",
           "legendFormat": "Total Tokens",
           "refId": "C"
         }
