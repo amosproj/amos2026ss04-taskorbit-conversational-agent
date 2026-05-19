@@ -119,6 +119,7 @@ services:
       - "--storage.tsdb.path=/prometheus"
     depends_on:
       - backend
+      - worker
 
   loki:
     image: grafana/loki:3.2.0
