@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Copy, FileDown, Loader2, RefreshCw, RotateCcw, Save } from "lucide-react";
+import { Copy, FileDown, Loader2, RefreshCw, RotateCcw, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { AdvancedSection } from "@/components/agent-config/AdvancedSection";
@@ -20,9 +20,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 import {
+  deleteAgentConfig,
   listAgentConfigs,
   loadAgentConfig,
   saveAgentConfig,
+  updateAgentConfig,
   type SavedAgentConfigSummary,
 } from "@/lib/agentConfigApi";
 import { EMPTY_AGENT, JOHN_DOE_AGENT } from "@/lib/mockAgents";
@@ -96,6 +98,23 @@ export function AgentConfigPage() {
     }
   };
 
+  const handleDelete = async (e: React.MouseEvent, id: string, name: string) => {
+    e.stopPropagation(); // Don't trigger the loadById parent
+    if (!window.confirm(`Are you sure you want to delete "${name}"?`)) return;
+
+    try {
+      await deleteAgentConfig(id);
+      toast.success("Configuration deleted.");
+      if (loadedConfigId === id) {
+        setLoadedConfigId(null);
+      }
+      void refreshList();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error.";
+      toast.error("Could not delete configuration.", { description: msg });
+    }
+  };
+
   const copyJson = async () => {
     try {
       await navigator.clipboard.writeText(JSON.stringify(serializeAgent(agent), null, 2));
@@ -125,6 +144,25 @@ export function AgentConfigPage() {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error.";
       toast.error("Could not save configuration.", { description: message });
+    }
+  };
+
+  const update = async () => {
+    if (!loadedConfigId) return;
+    if (!isComplete(agent)) {
+      setShowErrors(true);
+      toast.error("Some required fields are empty.");
+      return;
+    }
+    try {
+      const saved = await updateAgentConfig(loadedConfigId, agent);
+      toast.success("Configuration updated.", {
+        description: `Updated "${saved.name}".`,
+      });
+      void refreshList();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error.";
+      toast.error("Could not update configuration.", { description: message });
     }
   };
 
@@ -207,9 +245,21 @@ export function AgentConfigPage() {
                       <DropdownMenuItem
                         key={c.id}
                         onClick={() => loadById(c.id)}
-                        className={cn(loadedConfigId === c.id && "bg-muted")}
+                        className={cn(
+                          "group flex items-center justify-between",
+                          loadedConfigId === c.id && "bg-muted",
+                        )}
                       >
                         <span className="truncate">{c.name}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 opacity-0 group-hover:opacity-100 hover:text-destructive"
+                          onClick={(e) => handleDelete(e, c.id, c.name)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          <span className="sr-only">Delete</span>
+                        </Button>
                       </DropdownMenuItem>
                     ))}
                   </>
@@ -236,9 +286,20 @@ export function AgentConfigPage() {
               <Copy data-icon="inline-start" />
               Copy JSON
             </Button>
-            <Button size="sm" onClick={save} type="button">
+            {loadedConfigId ? (
+              <Button size="sm" onClick={update} type="button">
+                <Save data-icon="inline-start" />
+                Update
+              </Button>
+            ) : null}
+            <Button
+              size="sm"
+              onClick={save}
+              variant={loadedConfigId ? "outline" : "default"}
+              type="button"
+            >
               <Save data-icon="inline-start" />
-              Save
+              {loadedConfigId ? "Save as new" : "Save"}
             </Button>
           </div>
         </div>
