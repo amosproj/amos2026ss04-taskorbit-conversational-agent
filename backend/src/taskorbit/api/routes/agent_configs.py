@@ -4,21 +4,24 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from taskorbit.config import get_settings
 from taskorbit.database.crud import (
     create_agent_configuration,
+    delete_agent_configuration,
     get_agent_configuration,
     list_agent_configurations,
+    update_agent_configuration,
 )
 from taskorbit.logging.setup import get_logger
 from taskorbit.types import (
     AgentConfigurationCreate,
     AgentConfigurationDetail,
     AgentConfigurationSummary,
+    AgentConfigurationUpdate,
 )
 
 log = get_logger(__name__)
@@ -74,8 +77,28 @@ def save_config(
     return result
 
 
-# ---------------------------------------------------------------------------
-# PUT /v1/agent-configs/{config_id} — update an existing configuration.
-# DELETE /v1/agent-configs/{config_id} — delete a configuration.
-# Implemented separately as part of the update-and-delete-configuration ticket.
-# ---------------------------------------------------------------------------
+@router.put("/{config_id}", response_model=AgentConfigurationDetail)
+def update_config(
+    config_id: str,
+    body: AgentConfigurationUpdate,
+    db: Session = Depends(get_sync_session),  # noqa: B008
+) -> AgentConfigurationDetail:
+    """Update an existing agent configuration."""
+    result = update_agent_configuration(db, config_id=config_id, name=body.name, config=body.config)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Agent configuration '{config_id}' not found.")
+    log.info("agent_config_updated", config_id=config_id)
+    return result
+
+
+@router.delete("/{config_id}", status_code=204)
+def delete_config(
+    config_id: str,
+    db: Session = Depends(get_sync_session),  # noqa: B008
+) -> Response:
+    """Delete an agent configuration."""
+    success = delete_agent_configuration(db, config_id=config_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Agent configuration '{config_id}' not found.")
+    log.info("agent_config_deleted", config_id=config_id)
+    return Response(status_code=204)
