@@ -23,10 +23,9 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from taskorbit.agents import BaseAgent
 
-import structlog
-
 from taskorbit.config import Settings, get_settings
 from taskorbit.intent import MockIntentDetector
+from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import get_metrics
 from taskorbit.types import (
     AgentConfig,
@@ -38,7 +37,7 @@ from taskorbit.types import (
     ToolDefinition,
 )
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 class ConversationOrchestrator:
@@ -124,7 +123,12 @@ class ConversationOrchestrator:
             )
         except UnicodeEncodeError as exc:
             get_metrics().conversation_errors_total.labels(error_type="encoding_error").inc()
-            logger.error("encoding_error", error=str(exc), conversation_id=request.conversation_id)
+            logger.error(
+                "encoding_error",
+                error=str(exc),
+                conversation_id=request.conversation_id,
+                exc_info=True,
+            )
             return ConversationResponse(
                 conversation_id=request.conversation_id,
                 reply=self._make_assistant_message("An unexpected error occurred."),
@@ -144,7 +148,12 @@ class ConversationOrchestrator:
             )
         except Exception as exc:
             get_metrics().conversation_errors_total.labels(error_type="runtime_error").inc()
-            logger.error("runtime_error", error=str(exc), conversation_id=request.conversation_id)
+            logger.error(
+                "runtime_error",
+                error=str(exc),
+                conversation_id=request.conversation_id,
+                exc_info=True,
+            )
             return ConversationResponse(
                 conversation_id=request.conversation_id,
                 reply=self._make_assistant_message("An unexpected error occurred."),
