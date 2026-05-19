@@ -63,9 +63,7 @@
       "options": {
         "reduceOptions": {
           "values": false,
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": ""
         },
         "orientation": "auto",
@@ -115,9 +113,7 @@
       "options": {
         "reduceOptions": {
           "values": false,
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": ""
         },
         "orientation": "horizontal",
@@ -169,9 +165,7 @@
       "options": {
         "reduceOptions": {
           "values": false,
-          "calcs": [
-            "mean"
-          ],
+          "calcs": ["mean"],
           "fields": ""
         },
         "orientation": "horizontal",
@@ -241,9 +235,7 @@
       "options": {
         "reduceOptions": {
           "values": false,
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": ""
         },
         "orientation": "auto",
@@ -297,10 +289,7 @@
       "id": 5,
       "options": {
         "legend": {
-          "calcs": [
-            "mean",
-            "last"
-          ],
+          "calcs": ["mean", "last"],
           "displayMode": "list",
           "placement": "bottom"
         },
@@ -352,10 +341,7 @@
       "id": 6,
       "options": {
         "legend": {
-          "calcs": [
-            "mean",
-            "last"
-          ],
+          "calcs": ["mean", "last"],
           "displayMode": "list",
           "placement": "bottom"
         },
@@ -405,10 +391,7 @@
       "id": 7,
       "options": {
         "legend": {
-          "calcs": [
-            "mean",
-            "max"
-          ],
+          "calcs": ["mean", "max"],
           "displayMode": "list",
           "placement": "bottom"
         },
@@ -458,10 +441,7 @@
       "id": 8,
       "options": {
         "legend": {
-          "calcs": [
-            "mean",
-            "max"
-          ],
+          "calcs": ["mean", "max"],
           "displayMode": "list",
           "placement": "bottom"
         },
@@ -511,10 +491,7 @@
       "id": 9,
       "options": {
         "legend": {
-          "calcs": [
-            "mean",
-            "max"
-          ],
+          "calcs": ["mean", "max"],
           "displayMode": "list",
           "placement": "bottom"
         },
@@ -900,6 +877,76 @@
             "mode": "palette-classic"
           },
           "custom": {},
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{"color": "green", "value": null}]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 50
+      },
+      "id": 54,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "title": "Total Tokens Used Today",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(increase(taskorbit_tokens_used_total{token_type=\"prompt\"}[1d]))",
+          "legendFormat": "Prompt Tokens",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(increase(taskorbit_tokens_used_total{token_type=\"completion\"}[1d]))",
+          "legendFormat": "Completion Tokens",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(increase(taskorbit_tokens_used_total[1d]))",
+          "legendFormat": "Total Tokens",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {},
           "unit": "short"
         },
         "overrides": []
@@ -908,7 +955,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 50
+        "y": 54
       },
       "id": 24,
       "options": {
@@ -963,7 +1010,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 50
+        "y": 54
       },
       "id": 25,
       "options": {
@@ -1009,7 +1056,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 58
+        "y": 62
       },
       "id": 26,
       "options": {
@@ -1073,7 +1120,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 58
+        "y": 62
       },
       "id": 27,
       "options": {
@@ -1127,7 +1174,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 66
+        "y": 70
       },
       "id": 28,
       "options": {
@@ -1160,7 +1207,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 82
+        "y": 86
       },
       "id": 52,
       "title": "Logs & Traces",
@@ -1175,7 +1222,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 83
+        "y": 87
       },
       "id": 29,
       "options": {
@@ -1211,7 +1258,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 93
+        "y": 97
       },
       "id": 30,
       "options": {
@@ -1247,7 +1294,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 66
+        "y": 70
       },
       "datasource": {
         "type": "loki",
@@ -1299,11 +1346,7 @@
   ],
   "refresh": "5s",
   "schemaVersion": 39,
-  "tags": [
-    "taskorbit",
-    "fastapi",
-    "observability"
-  ],
+  "tags": ["taskorbit", "fastapi", "observability"],
   "templating": {
     "list": [
       {
