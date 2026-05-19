@@ -196,7 +196,9 @@ async def test_generate_records_token_metrics(client: GeminiClient, llm_config: 
 
     labels_calls = mock_metrics.tokens_used_total.labels.call_args_list
     assert call(provider="google", model="gemini-2.0-flash", token_type="prompt") in labels_calls
-    assert call(provider="google", model="gemini-2.0-flash", token_type="completion") in labels_calls
+    assert (
+        call(provider="google", model="gemini-2.0-flash", token_type="completion") in labels_calls
+    )
     inc_calls = mock_metrics.tokens_used_total.labels().inc.call_args_list
     assert call(10) in inc_calls
     assert call(5) in inc_calls
@@ -221,7 +223,9 @@ async def test_generate_records_zero_tokens_when_usage_metadata_is_none(
     assert result == "ok"
     labels_calls = mock_metrics.tokens_used_total.labels.call_args_list
     assert call(provider="google", model="gemini-2.0-flash", token_type="prompt") in labels_calls
-    assert call(provider="google", model="gemini-2.0-flash", token_type="completion") in labels_calls
+    assert (
+        call(provider="google", model="gemini-2.0-flash", token_type="completion") in labels_calls
+    )
     inc_calls = mock_metrics.tokens_used_total.labels().inc.call_args_list
     assert call(0) in inc_calls
     assert len([c for c in inc_calls if c == call(0)]) == 2
