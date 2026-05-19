@@ -182,3 +182,10 @@ class AgentConfigurationCreate(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=200)
     config: dict[str, Any]
+
+
+class AgentConfigurationUpdate(BaseModel):
+    """Request body for PUT /v1/agent-configs/{id}."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    config: dict[str, Any] | None = None
