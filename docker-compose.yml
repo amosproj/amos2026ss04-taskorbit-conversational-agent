@@ -48,6 +48,8 @@ services:
       PYTHONUNBUFFERED: "1"
       # Ensure Python can find the 'taskorbit' module inside the /app/src directory
       PYTHONPATH: /app/src
+      # Force JSON logs so Promtail/Loki can parse them even in dev mode.
+      LOG_JSON: "true"
     ports:
       - "8000:8000"
     volumes:
@@ -74,6 +76,7 @@ services:
       - ./backend/.env
     environment:
       PYTHONUNBUFFERED: "1"
+      LOG_JSON: "true"
     ports:
       - "8001:8001"
     volumes:

@@ -619,7 +619,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "sum by (level) (rate({service=~\"$application\"} | json | level != \"\" [5m]))",
+          "expr": "sum by (level) (rate({service=~\"backend|worker\"} | json | level != \"\" [5m]))",
           "legendFormat": "{{level}}",
           "refId": "A"
         }
@@ -655,7 +655,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "{service=~\"$application\"} | json ${log_query}",
+          "expr": "{service=~\"backend|worker\"} | json ${log_query}",
           "legendFormat": "",
           "refId": "A"
         }
@@ -1349,7 +1349,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "{service=~\"taskorbit-backend|taskorbit-worker\"} | json | level =~ \"error|warning\"",
+          "expr": "{service=~\"backend|worker\"} | json | level =~ \"error|warning\"",
           "legendFormat": "",
           "refId": "A"
         }
@@ -1385,7 +1385,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "{service=~\"taskorbit-backend|taskorbit-worker\"} | json | trace_id != \"\"",
+          "expr": "{service=~\"backend|worker\"} | json | trace_id != \"\"",
           "legendFormat": "",
           "refId": "A"
         }

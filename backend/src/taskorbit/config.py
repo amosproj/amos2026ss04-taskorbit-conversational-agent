@@ -76,6 +76,8 @@ class Settings(BaseSettings):
     metrics_enabled: bool = True
     otel_enabled: bool = False
     otel_exporter_otlp_endpoint: str = ""
+    # Force JSON log output even in development (set true in Docker so Promtail/Loki can parse logs).
+    log_json: bool = False
 
     @property
     def cors_origins_list(self) -> list[str]:

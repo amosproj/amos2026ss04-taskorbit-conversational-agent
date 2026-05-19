@@ -28,6 +28,14 @@ from taskorbit.observability.tracing import configure_tracing
 _log = get_logger(__name__)
 
 
+# async def _dev_warning_loop() -> None:
+#     """Emit a warning every 30 s in development so the Grafana logs panel has data."""
+#     log = get_logger(__name__)
+#     while True:
+#         await asyncio.sleep(30)
+#         log.warning("dev_test_warning", note="periodic warning for Grafana log panel testing")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Run once on startup, once on shutdown."""
@@ -42,7 +50,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         host=settings.api_host,
         port=settings.api_port,
     )
+    # task = None
+    # if settings.is_development:
+    #     task = asyncio.create_task(_dev_warning_loop())
     yield
+    # if task is not None:
+    #     task.cancel()
     log.info("api_shutdown")
 
 
