@@ -76,8 +76,9 @@ async def entrypoint(ctx: JobContext) -> None:
         except Exception:  # noqa: BLE001
             return
         if msg.get("type") == "commit_turn":
-            agent.request_reply()
-            asyncio.create_task(_commit_and_reply(time.perf_counter()))
+            t_now = time.perf_counter()
+            agent.request_reply(t_commit=t_now)
+            asyncio.create_task(_commit_and_reply(t_now))
 
     # sync_transcription=False: publish agent transcript immediately instead of
     # timing it to audio playback, so text appears before/with audio in the UI.

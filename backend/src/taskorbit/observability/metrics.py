@@ -103,6 +103,13 @@ class MetricsRegistry:
             ["provider", "model", "token_type"],  # token_type: prompt | completion
         )
     )
+    voice_turn_latency_seconds: Histogram = field(
+        default_factory=lambda: Histogram(
+            "taskorbit_voice_turn_latency_seconds",
+            "End-to-end voice turn latency from commit_turn received to reply text ready",
+            buckets=[0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 15.0],
+        )
+    )
 
 
 @lru_cache(maxsize=1)
