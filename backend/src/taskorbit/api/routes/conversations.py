@@ -41,27 +41,40 @@ async def process_conversation(
     try:
         response = await orchestrator.process_message(request)
 
-        # Save user message
-        last_user = next(
-            (m for m in reversed(request.messages) if m.role == MessageRole.USER),
-            None,
-        )
+        # Save user message (only the last message if it's from user)
+        last_msg = request.messages[-1] if request.messages else None
+        last_user = last_msg if last_msg and last_msg.role == MessageRole.USER else None
+
         if last_user:
-            await create_conversation_message(
+            # Check if conversation exists
+            result = await db.execute(
+                select(Conversation).where(Conversation.id == request.conversation_id)
+            )
+            conversation = result.scalar_one_or_none()
+            if not conversation:
+                logger.warning("conversation_not_found", conversation_id=request.conversation_id)
+
+            saved = await create_conversation_message(
                 db=db,
                 conversation_id=request.conversation_id,
                 role=last_user.role.value,
                 content=last_user.content,
             )
+            if saved is None:
+                logger.error("failed_to_save_user_message", conversation_id=request.conversation_id)
 
         # Save assistant reply
         if response.reply:
-            await create_conversation_message(
+            saved = await create_conversation_message(
                 db=db,
                 conversation_id=request.conversation_id,
                 role=response.reply.role.value,
                 content=response.reply.content,
             )
+            if saved is None:
+                logger.error(
+                    "failed_to_save_assistant_message", conversation_id=request.conversation_id
+                )
 
         logger.info("messages_persisted", conversation_id=request.conversation_id)
         return response
