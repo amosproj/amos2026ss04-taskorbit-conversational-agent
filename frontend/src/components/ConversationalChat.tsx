@@ -48,18 +48,14 @@ export function ConversationalChat() {
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastUserTurnIdRef = useRef<string | null>(null);
-  const [previousConversations, setPreviousConversations] = useState<Record<string, unknown>[]>([]);
+  const [previousConversations, setPreviousConversations] = useState<Record<string, string | null>[]>([]);
 
   // Load previous conversations on page load (reload restores conversations)
   useEffect(() => {
     const loadConversations = async () => {
       try {
         const data = await getConversations();
-        console.log("Loaded conversations from DB:", data);
         setPreviousConversations(data.conversations || []);
-        if (data.conversations && data.conversations.length > 0) {
-          console.log(`Found ${data.conversations.length} previous conversations`);
-        }
       } catch (error) {
         console.error("Failed to load conversations:", error);
       }
@@ -104,10 +100,6 @@ export function ConversationalChat() {
     [call.upsertTurnById, call.removeTurnById],
   );
 
-  // Text fallback path — keeps the typed input working when the user
-  // can't or doesn't want to speak. Uses the legacy /v1/conversations
-  // endpoint which round-trips through the orchestrator stub. The voice
-  // path streams its own transcript via VoiceSessionBridge.
   const handleSendText = useCallback(
     (text: string) => {
       call.appendUserTurn(text);
