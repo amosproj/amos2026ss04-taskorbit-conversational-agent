@@ -113,3 +113,54 @@ export async function loadAgentConfig(
 
   return (await res.json()) as SavedAgentConfig;
 }
+
+/**
+ * Update an existing agent configuration in the backend.
+ *
+ * @param configId - The DB id of the configuration to update
+ * @param agent    - The updated AgentConfig
+ * @param signal   - Optional AbortSignal to cancel the in-flight request
+ * @returns The updated row
+ * @throws Error with the backend's `detail` message when the response is non-2xx.
+ */
+export async function updateAgentConfig(
+  configId: string,
+  agent: AgentConfig,
+  signal?: AbortSignal,
+): Promise<SavedAgentConfig> {
+  const res = await fetch(`/api/v1/agent-configs/${encodeURIComponent(configId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: agent.name,
+      config: serializeAgent(agent),
+    }),
+    signal,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(String(err.detail ?? `HTTP ${res.status}`));
+  }
+
+  return (await res.json()) as SavedAgentConfig;
+}
+
+/**
+ * Delete a saved agent configuration from the backend.
+ *
+ * @param configId - The DB id of the configuration to delete
+ * @param signal   - Optional AbortSignal to cancel the in-flight request
+ * @throws Error with the backend's `detail` message when the response is non-2xx.
+ */
+export async function deleteAgentConfig(configId: string, signal?: AbortSignal): Promise<void> {
+  const res = await fetch(`/api/v1/agent-configs/${encodeURIComponent(configId)}`, {
+    method: "DELETE",
+    signal,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(String(err.detail ?? `HTTP ${res.status}`));
+  }
+}
