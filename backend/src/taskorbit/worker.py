@@ -91,6 +91,10 @@ async def entrypoint(ctx: JobContext) -> None:
 
 def run_worker() -> None:
     configure_default_metrics()
+    from prometheus_client import start_http_server
+
+    start_http_server(port=8001)
+    logger.info("worker_metrics_server_started", port=8001)
     cfg = get_settings()
     cli.run_app(
         WorkerOptions(

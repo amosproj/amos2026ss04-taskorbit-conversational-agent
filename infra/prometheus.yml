@@ -8,3 +8,9 @@ scrape_configs:
       - targets:
           - backend:8000
     metrics_path: /metrics
+
+  - job_name: taskorbit-worker
+    static_configs:
+      - targets:
+          - worker:8001
+    metrics_path: /metrics

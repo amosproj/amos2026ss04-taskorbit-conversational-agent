@@ -11,7 +11,7 @@
 # Services:
 #   postgres  → :5435 (host) → :5432 in container; avoids clashing with a local Postgres on 5432.
 #   backend   → :8000  FastAPI HTTP API (token issuance, REST fallback)
-#   worker    → no port  LiveKit voice agent (STT → orchestrator → TTS)
+#   worker    → :8001  LiveKit voice agent (STT → orchestrator → TTS); /metrics for Prometheus
 #   frontend  → :5173  Vite dev server with HMR
 
 services:
@@ -74,6 +74,8 @@ services:
       - ./backend/.env
     environment:
       PYTHONUNBUFFERED: "1"
+    ports:
+      - "8001:8001"
     volumes:
       - ./backend/src:/app/src
     command: poetry run taskorbit-worker dev
