@@ -174,3 +174,78 @@ def test_save_then_load_round_trip(client: TestClient) -> None:
     assert body["id"] == saved_id
     assert body["name"] == "round-trip"
     assert body["config"] == _FULL_FE_CONFIG
+
+
+# ---------------------------------------------------------------------------
+# PUT /v1/agent-configs/{config_id}
+# ---------------------------------------------------------------------------
+
+
+def test_update_config_happy_path(client: TestClient) -> None:
+    """Updating both name and config returns 200 and reflects changes."""
+    create_response = client.post("/v1/agent-configs", json={"name": "old", "config": {"a": 1}})
+    config_id = create_response.json()["id"]
+
+    update_payload = {"name": "new", "config": {"b": 2}}
+    update_response = client.put(f"/v1/agent-configs/{config_id}", json=update_payload)
+
+    assert update_response.status_code == 200
+    body = update_response.json()
+    assert body["name"] == "new"
+    assert body["config"] == {"b": 2}
+    assert body["updated_at"] is not None
+
+
+def test_update_config_partial_name(client: TestClient) -> None:
+    """Updating only the name keeps the old config intact."""
+    create_response = client.post("/v1/agent-configs", json={"name": "old", "config": {"a": 1}})
+    config_id = create_response.json()["id"]
+
+    update_response = client.put(f"/v1/agent-configs/{config_id}", json={"name": "new"})
+
+    assert update_response.status_code == 200
+    body = update_response.json()
+    assert body["name"] == "new"
+    assert body["config"] == {"a": 1}
+
+
+def test_update_config_partial_config(client: TestClient) -> None:
+    """Updating only the config keeps the old name intact."""
+    create_response = client.post("/v1/agent-configs", json={"name": "old", "config": {"a": 1}})
+    config_id = create_response.json()["id"]
+
+    update_response = client.put(f"/v1/agent-configs/{config_id}", json={"config": {"b": 2}})
+
+    assert update_response.status_code == 200
+    body = update_response.json()
+    assert body["name"] == "old"
+    assert body["config"] == {"b": 2}
+
+
+def test_update_nonexistent_config_returns_404(client: TestClient) -> None:
+    """PUT to a missing ID returns 404."""
+    response = client.put("/v1/agent-configs/missing", json={"name": "x"})
+    assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# DELETE /v1/agent-configs/{config_id}
+# ---------------------------------------------------------------------------
+
+
+def test_delete_config_happy_path(client: TestClient) -> None:
+    """DELETE returns 204 and the config is no longer fetchable."""
+    create_response = client.post("/v1/agent-configs", json={"name": "to-delete", "config": {}})
+    config_id = create_response.json()["id"]
+
+    delete_response = client.delete(f"/v1/agent-configs/{config_id}")
+    assert delete_response.status_code == 204
+
+    load_response = client.get(f"/v1/agent-configs/{config_id}")
+    assert load_response.status_code == 404
+
+
+def test_delete_nonexistent_config_returns_404(client: TestClient) -> None:
+    """DELETE for a missing ID returns 404."""
+    response = client.delete("/v1/agent-configs/missing")
+    assert response.status_code == 404
