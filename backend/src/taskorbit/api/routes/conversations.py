@@ -36,7 +36,7 @@ async def process_conversation(
         log.info(
             "conversation_request_completed",
             conversation_id=request.conversation_id,
-            intent=response.intent,
+            intent=response.selected_intent,
             status=response.status,
         )
         return response
