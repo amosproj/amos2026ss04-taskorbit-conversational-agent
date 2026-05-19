@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
@@ -9,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from taskorbit.config import get_settings
 from taskorbit.logging.setup import get_logger
+from taskorbit.observability.metrics import get_metrics
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/v1/tts", tags=["tts"])
@@ -36,6 +39,7 @@ async def synthesize_speech(request: TTSSynthesizeRequest) -> Response:
     )
     model = request.model_id or settings.elevenlabs_model
 
+    _tts_start = time.perf_counter()
     async with httpx.AsyncClient(timeout=30) as client:
         el_response = await client.post(
             url,
@@ -55,6 +59,7 @@ async def synthesize_speech(request: TTSSynthesizeRequest) -> Response:
                 },
             },
         )
+    _tts_elapsed = time.perf_counter() - _tts_start
 
     if not el_response.is_success:
         error_detail = el_response.text[:500]
@@ -64,15 +69,18 @@ async def synthesize_speech(request: TTSSynthesizeRequest) -> Response:
             status=el_response.status_code,
             detail=error_detail,
             voice_id=voice_used,
+            tts_latency_ms=round(_tts_elapsed * 1000, 1),
         )
         raise HTTPException(
             status_code=502,
             detail=f"ElevenLabs error {el_response.status_code}: {error_detail}",
         )
 
+    get_metrics().pipeline_latency_seconds.labels(stage="tts_synthesis").observe(_tts_elapsed)
     logger.info(
         "tts_synthesize_ok",
         text_length=len(request.text),
         audio_bytes=len(el_response.content),
+        tts_latency_ms=round(_tts_elapsed * 1000, 1),
     )
     return Response(content=el_response.content, media_type="audio/mpeg")

@@ -13,6 +13,8 @@ google-genai uses a different shape than OpenAI:
 
 from __future__ import annotations
 
+import time
+
 from google import genai
 from google.genai import errors as genai_errors
 from google.genai.types import GenerateContentConfig, HttpOptions
@@ -73,6 +75,7 @@ class GeminiClient:
             message_count=len(contents),
         )
 
+        _api_start = time.perf_counter()
         try:
             response = await self._client.aio.models.generate_content(
                 model=llm_config.model,
@@ -129,6 +132,7 @@ class GeminiClient:
         prompt_tokens = getattr(usage, "prompt_token_count", 0) or 0
         completion_tokens = getattr(usage, "candidates_token_count", 0) or 0
 
+        _api_elapsed = time.perf_counter() - _api_start
         _log.info(
             "llm_call_completed",
             provider="google",
@@ -136,11 +140,13 @@ class GeminiClient:
             chars=len(text),
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
+            llm_api_latency_ms=round(_api_elapsed * 1000, 1),
         )
         _m = get_metrics()
         _m.llm_requests_total.labels(
             provider="google", model=llm_config.model, status="success"
         ).inc()
+        _m.pipeline_latency_seconds.labels(stage="llm_api_google").observe(_api_elapsed)
         _m.llm_response_chars.labels(provider="google", model=llm_config.model).observe(len(text))
         _m.tokens_used_total.labels(
             provider="google", model=llm_config.model, token_type="prompt"

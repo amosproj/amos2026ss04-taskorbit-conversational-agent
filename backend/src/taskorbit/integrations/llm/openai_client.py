@@ -11,6 +11,8 @@ than by SDK internals.
 
 from __future__ import annotations
 
+import time
+
 import openai
 
 from taskorbit.config import Settings
@@ -76,6 +78,7 @@ class OpenAIClient:
             message_count=len(wire_messages),
         )
 
+        _api_start = time.perf_counter()
         try:
             response = await self._client.chat.completions.create(
                 model=llm_config.model,
@@ -120,6 +123,7 @@ class OpenAIClient:
         prompt_tokens = usage.prompt_tokens if usage else 0
         completion_tokens = usage.completion_tokens if usage else 0
 
+        _api_elapsed = time.perf_counter() - _api_start
         _log.info(
             "llm_call_completed",
             provider="openai",
@@ -127,11 +131,13 @@ class OpenAIClient:
             chars=len(text),
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
+            llm_api_latency_ms=round(_api_elapsed * 1000, 1),
         )
         _m = get_metrics()
         _m.llm_requests_total.labels(
             provider="openai", model=llm_config.model, status="success"
         ).inc()
+        _m.pipeline_latency_seconds.labels(stage="llm_api_openai").observe(_api_elapsed)
         _m.llm_response_chars.labels(provider="openai", model=llm_config.model).observe(len(text))
         _m.tokens_used_total.labels(
             provider="openai", model=llm_config.model, token_type="prompt"

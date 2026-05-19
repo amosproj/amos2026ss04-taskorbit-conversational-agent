@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 
 from livekit import rtc
 from livekit.agents import AutoSubscribe, JobContext, WorkerOptions, cli
@@ -24,7 +25,7 @@ from livekit.agents.voice.room_io import RoomOutputOptions
 from taskorbit.config import get_settings
 from taskorbit.livekit_agent import build_agent_session, build_default_agent
 from taskorbit.logging.setup import get_logger
-from taskorbit.observability.metrics import configure_default_metrics
+from taskorbit.observability.metrics import configure_default_metrics, get_metrics
 
 logger = get_logger(__name__)
 
@@ -39,7 +40,7 @@ async def entrypoint(ctx: JobContext) -> None:
     session = build_agent_session(settings=cfg)
     agent = build_default_agent(settings=cfg)
 
-    async def _commit_and_reply() -> None:
+    async def _commit_and_reply(turn_start: float) -> None:
         # Small delay so Deepgram can flush its final transcription segment
         # into the ChatContext before generate_reply() reads it. Without this,
         # the last word(s) of the utterance may be missing from the reply.
@@ -48,7 +49,14 @@ async def entrypoint(ctx: JobContext) -> None:
             result = session.generate_reply()
             if asyncio.iscoroutine(result):
                 await result
-            logger.info("worker_generate_reply_triggered")
+            _turn_elapsed = time.perf_counter() - turn_start
+            get_metrics().pipeline_latency_seconds.labels(stage="worker_turn").observe(
+                _turn_elapsed
+            )
+            logger.info(
+                "worker_generate_reply_triggered",
+                turn_latency_ms=round(_turn_elapsed * 1000, 1),
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning("worker_generate_reply_failed", error=str(exc))
 
@@ -69,7 +77,7 @@ async def entrypoint(ctx: JobContext) -> None:
             return
         if msg.get("type") == "commit_turn":
             agent.request_reply()
-            asyncio.create_task(_commit_and_reply())
+            asyncio.create_task(_commit_and_reply(time.perf_counter()))
 
     # sync_transcription=False: publish agent transcript immediately instead of
     # timing it to audio playback, so text appears before/with audio in the UI.
