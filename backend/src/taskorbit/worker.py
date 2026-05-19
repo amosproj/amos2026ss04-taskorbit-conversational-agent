@@ -97,6 +97,7 @@ async def entrypoint(ctx: JobContext) -> None:
             if asyncio.iscoroutine(result):
                 await result
             _turn_elapsed = time.perf_counter() - turn_start
+            _turn_elapsed = time.perf_counter() - turn_start
             get_metrics().pipeline_latency_seconds.labels(stage="worker_turn").observe(
                 _turn_elapsed
             )
@@ -147,10 +148,28 @@ async def entrypoint(ctx: JobContext) -> None:
 
 
 def run_worker() -> None:
-    configure_default_metrics()
-    from prometheus_client import start_http_server
+    import os
 
-    start_http_server(port=8001)
+    # prometheus_client multiprocess mode: when PROMETHEUS_MULTIPROC_DIR is set,
+    # each LiveKit subprocess writes metrics to files in that directory.
+    # MultiProcessCollector aggregates them so the HTTP server reflects all processes.
+    multiproc_dir = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
+    if multiproc_dir:
+        os.makedirs(multiproc_dir, exist_ok=True)
+
+    configure_default_metrics()
+
+    from prometheus_client import CollectorRegistry, start_http_server
+
+    if multiproc_dir:
+        from prometheus_client.multiprocess import MultiProcessCollector
+
+        registry = CollectorRegistry()
+        MultiProcessCollector(registry)
+        start_http_server(port=8001, registry=registry)
+    else:
+        start_http_server(port=8001)
+
     logger.info("worker_metrics_server_started", port=8001)
     cfg = get_settings()
     cli.run_app(

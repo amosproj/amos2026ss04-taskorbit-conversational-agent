@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from taskorbit.agents import BaseAgent
 
 from taskorbit.config import Settings, get_settings
+from taskorbit.integrations.llm.errors import LLMConfigError
 from taskorbit.intent import MockIntentDetector
 from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import get_metrics
@@ -110,6 +111,22 @@ class ConversationOrchestrator:
                 status="success",
             )
 
+        except LLMConfigError as exc:
+            get_metrics().conversation_errors_total.labels(error_type="llm_config").inc()
+            logger.error(
+                "llm_config_error",
+                error=str(exc),
+                conversation_id=request.conversation_id,
+                hint="Check that the provider API key is set in .env",
+            )
+            return ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message(
+                    "I'm not properly configured to respond right now. Please contact support."
+                ),
+                status="error",
+                error=str(exc),
+            )
         except TimeoutError:
             get_metrics().conversation_errors_total.labels(error_type="llm_timeout").inc()
             logger.warning("llm_timeout", conversation_id=request.conversation_id)

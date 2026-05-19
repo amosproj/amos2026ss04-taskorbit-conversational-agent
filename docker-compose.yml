@@ -77,10 +77,12 @@ services:
     environment:
       PYTHONUNBUFFERED: "1"
       LOG_JSON: "true"
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
     ports:
       - "8001:8001"
     volumes:
       - ./backend/src:/app/src
+      - taskorbit-worker-prometheus:/tmp/prometheus_multiproc
     command: poetry run taskorbit-worker dev
     depends_on:
       backend:
@@ -164,3 +166,4 @@ volumes:
   taskorbit-postgres-data:
   taskorbit-prometheus-data:
   taskorbit-grafana-data:
+  taskorbit-worker-prometheus:

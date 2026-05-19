@@ -92,7 +92,13 @@ def configure_default_metrics() -> None:
         "stt_processing",
     ):
         m.pipeline_latency_seconds.labels(stage=stage)
-    for error_type in ("llm_timeout", "encoding_error", "invalid_input", "runtime_error"):
+    for error_type in (
+        "llm_timeout",
+        "encoding_error",
+        "invalid_input",
+        "runtime_error",
+        "llm_config",
+    ):
         m.conversation_errors_total.labels(error_type=error_type)
     _log.debug("metrics_labels_initialized")
 
