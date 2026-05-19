@@ -24,6 +24,28 @@ from taskorbit.config import get_settings
 from taskorbit.worker import entrypoint
 
 
+def _make_tts_metrics(
+    ttfb: float = 0.12, duration: float = 1.5, audio_duration: float = 1.8
+) -> MagicMock:
+    from livekit.agents.metrics import TTSMetrics
+
+    m = MagicMock(spec=TTSMetrics)
+    m.ttfb = ttfb
+    m.duration = duration
+    m.audio_duration = audio_duration
+    m.cancelled = False
+    return m
+
+
+def _make_stt_metrics(duration: float = 0.25, audio_duration: float = 2.0) -> MagicMock:
+    from livekit.agents.metrics import STTMetrics
+
+    m = MagicMock(spec=STTMetrics)
+    m.duration = duration
+    m.audio_duration = audio_duration
+    return m
+
+
 @pytest.fixture
 def configured_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("LIVEKIT_URL", "ws://test")
@@ -282,6 +304,119 @@ async def test_interrupt_cancels_pending_reply_task(configured_settings: None) -
     mock_session.interrupt.assert_called_once()
     # generate_reply must NOT have been called — the task was cancelled first.
     mock_session.generate_reply.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_on_metrics_tts_observes_latency(configured_settings: None) -> None:
+    """TTSMetrics event must observe tts_ttfb_voice and tts_synthesis_voice stages."""
+    ctx, _ = _make_ctx()
+    mock_agent = MagicMock()
+    metrics_handler_ref: list = []
+
+    mock_session = AsyncMock()
+
+    def capture_on(event: str):
+        def decorator(fn):
+            if event == "metrics_collected":
+                metrics_handler_ref.append(fn)
+            return fn
+
+        return decorator
+
+    mock_session.on = MagicMock(side_effect=capture_on)
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+        patch("taskorbit.worker.get_metrics") as mock_get_metrics,
+    ):
+        mock_metrics = MagicMock()
+        mock_get_metrics.return_value = mock_metrics
+        await entrypoint(ctx)
+
+        assert metrics_handler_ref, "_on_metrics not registered"
+        ev = MagicMock()
+        ev.metrics = _make_tts_metrics(ttfb=0.12, duration=1.5)
+        metrics_handler_ref[0](ev)
+
+    mock_metrics.pipeline_latency_seconds.labels.assert_any_call(stage="tts_ttfb")
+    mock_metrics.pipeline_latency_seconds.labels.assert_any_call(stage="tts_synthesis")
+
+
+@pytest.mark.asyncio
+async def test_on_metrics_stt_observes_latency(configured_settings: None) -> None:
+    """STTMetrics with duration > 0 must observe the stt_processing stage."""
+    ctx, _ = _make_ctx()
+    mock_agent = MagicMock()
+    metrics_handler_ref: list = []
+
+    mock_session = AsyncMock()
+
+    def capture_on(event: str):
+        def decorator(fn):
+            if event == "metrics_collected":
+                metrics_handler_ref.append(fn)
+            return fn
+
+        return decorator
+
+    mock_session.on = MagicMock(side_effect=capture_on)
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+        patch("taskorbit.worker.get_metrics") as mock_get_metrics,
+    ):
+        mock_metrics = MagicMock()
+        mock_get_metrics.return_value = mock_metrics
+        await entrypoint(ctx)
+
+        ev = MagicMock()
+        ev.metrics = _make_stt_metrics(duration=0.25)
+        metrics_handler_ref[0](ev)
+
+    mock_metrics.pipeline_latency_seconds.labels.assert_any_call(stage="stt_processing")
+
+
+@pytest.mark.asyncio
+async def test_on_metrics_stt_zero_duration_not_observed(configured_settings: None) -> None:
+    """STTMetrics with duration == 0 must not call observe (avoids polluting histogram)."""
+    ctx, _ = _make_ctx()
+    mock_agent = MagicMock()
+    metrics_handler_ref: list = []
+
+    mock_session = AsyncMock()
+
+    def capture_on(event: str):
+        def decorator(fn):
+            if event == "metrics_collected":
+                metrics_handler_ref.append(fn)
+            return fn
+
+        return decorator
+
+    mock_session.on = MagicMock(side_effect=capture_on)
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+        patch("taskorbit.worker.get_metrics") as mock_get_metrics,
+    ):
+        mock_metrics = MagicMock()
+        mock_get_metrics.return_value = mock_metrics
+        await entrypoint(ctx)
+
+        ev = MagicMock()
+        ev.metrics = _make_stt_metrics(duration=0.0)
+        metrics_handler_ref[0](ev)
+
+    # pipeline_latency_seconds must not have been called with stt_processing
+    stt_calls = [
+        c
+        for c in mock_metrics.pipeline_latency_seconds.labels.call_args_list
+        if c == ((), {"stage": "stt_processing"})
+    ]
+    assert not stt_calls
 
 
 @pytest.mark.asyncio

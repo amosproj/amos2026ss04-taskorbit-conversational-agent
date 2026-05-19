@@ -15,16 +15,12 @@ import structlog
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
-from starlette.types import ASGIApp
 
 _TRACE_HEADER = "X-Trace-Id"
 
 
 class TraceIDMiddleware(BaseHTTPMiddleware):
     """Binds trace_id into structlog contextvars for every HTTP request."""
-
-    def __init__(self, app: ASGIApp) -> None:
-        super().__init__(app)
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         trace_id = request.headers.get(_TRACE_HEADER) or str(uuid.uuid4())

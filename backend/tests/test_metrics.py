@@ -145,6 +145,56 @@ def _read_counter(registry: object, metric_name: str, labels: dict[str, str]) ->
     return 0.0
 
 
+def test_configure_default_metrics_preinits_all_pipeline_stages() -> None:
+    """All expected pipeline stage labels must be seeded at startup so Grafana shows 0."""
+    from prometheus_client import REGISTRY
+
+    configure_default_metrics()
+
+    seeded_stages: set[str] = set()
+    for metric in REGISTRY.collect():
+        if metric.name in (
+            "taskorbit_pipeline_latency_seconds",
+            "taskorbit_pipeline_latency_seconds_bucket",
+        ):
+            for sample in metric.samples:
+                stage = sample.labels.get("stage")
+                if stage:
+                    seeded_stages.add(stage)
+
+    expected = {
+        "llm_call",
+        "llm_api_openai",
+        "llm_api_google",
+        "tts_synthesis",
+        "tts_ttfb",
+        "worker_turn",
+        "total",
+        "stt_processing",
+    }
+    missing = expected - seeded_stages
+    assert not missing, f"Pipeline stages not pre-initialized: {missing}"
+
+
+def test_configure_default_metrics_preinits_error_types() -> None:
+    """All expected error_type labels for conversation_errors_total must be seeded."""
+    from prometheus_client import REGISTRY
+
+    configure_default_metrics()
+
+    seeded: set[str] = set()
+    for metric in REGISTRY.collect():
+        if metric.name in ("taskorbit_conversation_errors_total", "taskorbit_conversation_errors"):
+            for sample in metric.samples:
+                et = sample.labels.get("error_type")
+                if et:
+                    seeded.add(et)
+
+    expected = {"llm_timeout", "encoding_error", "invalid_input", "runtime_error", "llm_config"}
+    missing = expected - seeded
+    assert not missing, f"Error types not pre-initialized: {missing}"
+
+
 def test_metrics_disabled_returns_404(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("METRICS_ENABLED", "false")
     get_settings.cache_clear()

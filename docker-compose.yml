@@ -152,6 +152,8 @@ services:
     ports:
       - "3000:3000"
     environment:
+      # WARNING: anonymous Grafana admin — local dev only, NOT for production.
+      # Remove or restrict GF_AUTH_ANONYMOUS_* before deploying to any shared environment.
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
       GF_SECURITY_ADMIN_PASSWORD: "admin"

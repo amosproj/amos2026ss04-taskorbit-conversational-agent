@@ -22,7 +22,7 @@ from prometheus_client import Counter, Histogram
 
 from taskorbit.logging.setup import get_logger
 
-_log = get_logger(__name__)
+logger = get_logger(__name__)
 
 
 def configure_default_metrics() -> None:
@@ -66,9 +66,9 @@ def configure_default_metrics() -> None:
             pass  # Already registered — default prometheus_client behaviour
 
     if registered:
-        _log.debug("default_metrics_registered", collectors=registered)
+        logger.debug("default_metrics_registered", collectors=registered)
     else:
-        _log.debug("default_metrics_already_registered")
+        logger.debug("default_metrics_already_registered")
 
     # Pre-initialize known label combinations so counters appear as 0 in /metrics
     # from startup rather than being absent until the first LLM call completes.
@@ -103,7 +103,7 @@ def configure_default_metrics() -> None:
     for handler in ("/v1/conversations/process", "/v1/tts/synthesize"):
         for status in ("success", "error"):
             m.voice_pipeline_requests_total.labels(handler=handler, status=status)
-    _log.debug("metrics_labels_initialized")
+    logger.debug("metrics_labels_initialized")
 
 
 @dataclass
