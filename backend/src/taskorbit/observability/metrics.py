@@ -26,7 +26,8 @@ _log = get_logger(__name__)
 
 
 def configure_default_metrics() -> None:
-    """Register default process, GC, and platform collectors.
+    """Register default process, GC, and platform collectors, and pre-initialize
+    LLM metric label combinations.
 
     Python equivalent of Node.js prom-client's collectDefaultMetrics({ timeout: 5000 }).
 
@@ -38,6 +39,12 @@ def configure_default_metrics() -> None:
 
     Safe to call multiple times — already-registered collectors are silently skipped.
     ProcessCollector metrics are only available on Linux (requires /proc/).
+
+    Label pre-initialization: prometheus_client only emits a labeled counter in
+    /metrics output after the first .labels(...).inc() call. Without this, Grafana
+    shows "No data" until the first successful LLM call. Calling .labels(...) here
+    (without .inc()) registers each child with value 0 so the series is visible from
+    the first Prometheus scrape.
     """
     from prometheus_client import (
         GC_COLLECTOR,
@@ -62,6 +69,30 @@ def configure_default_metrics() -> None:
         _log.debug("default_metrics_registered", collectors=registered)
     else:
         _log.debug("default_metrics_already_registered")
+
+    # Pre-initialize known label combinations so counters appear as 0 in /metrics
+    # from startup rather than being absent until the first LLM call completes.
+    m = get_metrics()
+    _providers = [("openai", "gpt-4o-mini"), ("google", "gemini-2.0-flash")]
+    _llm_statuses = ["success", "auth", "rate_limit", "timeout", "api", "empty_response", "client"]
+    for provider, model in _providers:
+        for token_type in ("prompt", "completion"):
+            m.tokens_used_total.labels(provider=provider, model=model, token_type=token_type)
+        for status in _llm_statuses:
+            m.llm_requests_total.labels(provider=provider, model=model, status=status)
+        m.llm_response_chars.labels(provider=provider, model=model)
+    for stage in (
+        "llm_call",
+        "llm_api_openai",
+        "llm_api_google",
+        "tts_synthesis",
+        "worker_turn",
+        "total",
+    ):
+        m.pipeline_latency_seconds.labels(stage=stage)
+    for error_type in ("llm_timeout", "encoding_error", "invalid_input", "runtime_error"):
+        m.conversation_errors_total.labels(error_type=error_type)
+    _log.debug("metrics_labels_initialized")
 
 
 @dataclass
