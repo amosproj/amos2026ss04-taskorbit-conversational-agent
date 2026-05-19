@@ -135,7 +135,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (handler) (increase(http_requests_total{job=~\"$application\"}[24h]))",
+          "expr": "sum by (handler) (  increase(http_requests_total{job=~\"$application\"}[24h])  or  increase(taskorbit_voice_pipeline_requests_total[24h]))",
           "legendFormat": "{{handler}}",
           "refId": "A",
           "instant": true

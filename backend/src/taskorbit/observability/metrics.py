@@ -100,6 +100,9 @@ def configure_default_metrics() -> None:
         "llm_config",
     ):
         m.conversation_errors_total.labels(error_type=error_type)
+    for handler in ("/v1/conversations/process", "/v1/tts/synthesize"):
+        for status in ("success", "error"):
+            m.voice_pipeline_requests_total.labels(handler=handler, status=status)
     _log.debug("metrics_labels_initialized")
 
 
@@ -147,6 +150,13 @@ class MetricsRegistry:
             "taskorbit_voice_turn_latency_seconds",
             "End-to-end voice turn latency from commit_turn received to reply text ready",
             buckets=[0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 15.0],
+        )
+    )
+    voice_pipeline_requests_total: Counter = field(
+        default_factory=lambda: Counter(
+            "taskorbit_voice_pipeline_requests_total",
+            "Requests processed through the voice pipeline (equivalent REST handler shown as label)",
+            ["handler", "status"],
         )
     )
 

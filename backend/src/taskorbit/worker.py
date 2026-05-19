@@ -65,6 +65,9 @@ async def entrypoint(ctx: JobContext) -> None:
         if isinstance(m, TTSMetrics):
             get_metrics().pipeline_latency_seconds.labels(stage="tts_ttfb").observe(m.ttfb)
             get_metrics().pipeline_latency_seconds.labels(stage="tts_synthesis").observe(m.duration)
+            get_metrics().voice_pipeline_requests_total.labels(
+                handler="/v1/tts/synthesize", status="success"
+            ).inc()
             logger.debug(
                 "tts_metrics_collected",
                 ttfb_ms=round(m.ttfb * 1000, 1),
