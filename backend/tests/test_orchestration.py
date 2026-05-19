@@ -103,9 +103,7 @@ async def test_timeout_increments_conversation_errors_total() -> None:
             response = await orch.process_message(_make_request())
 
     assert response.status == "error"
-    mock_metrics.conversation_errors_total.labels(
-        error_type="llm_timeout"
-    ).inc.assert_called_once()
+    mock_metrics.conversation_errors_total.labels(error_type="llm_timeout").inc.assert_called_once()
 
 
 @pytest.mark.asyncio

@@ -20,6 +20,8 @@ import time
 
 from livekit import rtc
 from livekit.agents import AutoSubscribe, JobContext, WorkerOptions, cli
+from livekit.agents.metrics import STTMetrics, TTSMetrics
+from livekit.agents.voice.events import AgentEvent
 
 from taskorbit.config import get_settings
 from taskorbit.livekit_agent import build_agent_session, build_default_agent
@@ -56,6 +58,30 @@ async def entrypoint(ctx: JobContext) -> None:
 
     session = build_agent_session(settings=cfg)
     agent = build_default_agent(settings=cfg)
+
+    @session.on("metrics_collected")
+    def _on_metrics(ev: AgentEvent) -> None:
+        m = getattr(ev, "metrics", None)
+        if isinstance(m, TTSMetrics):
+            get_metrics().pipeline_latency_seconds.labels(stage="tts_ttfb").observe(m.ttfb)
+            get_metrics().pipeline_latency_seconds.labels(stage="tts_synthesis").observe(m.duration)
+            logger.debug(
+                "tts_metrics_collected",
+                ttfb_ms=round(m.ttfb * 1000, 1),
+                duration_ms=round(m.duration * 1000, 1),
+                audio_duration_ms=round(m.audio_duration * 1000, 1),
+                cancelled=m.cancelled,
+            )
+        elif isinstance(m, STTMetrics):
+            if m.duration > 0:
+                get_metrics().pipeline_latency_seconds.labels(stage="stt_processing").observe(
+                    m.duration
+                )
+            logger.debug(
+                "stt_metrics_collected",
+                duration_ms=round(m.duration * 1000, 1),
+                audio_duration_ms=round(m.audio_duration * 1000, 1),
+            )
 
     # Holds the most-recent pending reply task so it can be cancelled on
     # interruption before the orchestrator finishes processing.
