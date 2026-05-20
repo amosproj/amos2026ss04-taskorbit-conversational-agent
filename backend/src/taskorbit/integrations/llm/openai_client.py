@@ -11,10 +11,13 @@ than by SDK internals.
 
 from __future__ import annotations
 
+import time
+
 import openai
 
 from taskorbit.config import Settings
 from taskorbit.logging.setup import get_logger
+from taskorbit.observability.metrics import get_metrics
 from taskorbit.types import LLMConfig, Message
 
 from .errors import (
@@ -75,6 +78,7 @@ class OpenAIClient:
             message_count=len(wire_messages),
         )
 
+        _api_start = time.perf_counter()
         try:
             response = await self._client.chat.completions.create(
                 model=llm_config.model,
@@ -82,28 +86,63 @@ class OpenAIClient:
             )
         except openai.AuthenticationError as exc:
             _log.error("llm_call_failed", provider="openai", error_type="auth", error=str(exc))
+            get_metrics().llm_requests_total.labels(
+                provider="openai", model=llm_config.model, status="auth"
+            ).inc()
             raise LLMAuthError(f"OpenAI authentication failed: {exc}") from exc
         except openai.RateLimitError as exc:
             _log.error(
                 "llm_call_failed", provider="openai", error_type="rate_limit", error=str(exc)
             )
+            get_metrics().llm_requests_total.labels(
+                provider="openai", model=llm_config.model, status="rate_limit"
+            ).inc()
             raise LLMRateLimitError(f"OpenAI rate-limited: {exc}") from exc
         except openai.APITimeoutError as exc:
             _log.error("llm_call_failed", provider="openai", error_type="timeout", error=str(exc))
+            get_metrics().llm_requests_total.labels(
+                provider="openai", model=llm_config.model, status="timeout"
+            ).inc()
             raise LLMTimeoutError(f"OpenAI request timed out: {exc}") from exc
         except openai.APIError as exc:
             _log.error("llm_call_failed", provider="openai", error_type="api", error=str(exc))
+            get_metrics().llm_requests_total.labels(
+                provider="openai", model=llm_config.model, status="api"
+            ).inc()
             raise LLMAPIError(f"OpenAI API error: {exc}") from exc
 
         text = response.choices[0].message.content if response.choices else None
         if not text:
             _log.error("llm_call_failed", provider="openai", error_type="empty_response")
+            get_metrics().llm_requests_total.labels(
+                provider="openai", model=llm_config.model, status="empty_response"
+            ).inc()
             raise LLMAPIError("OpenAI returned an empty response")
 
+        usage = response.usage
+        prompt_tokens = usage.prompt_tokens if usage else 0
+        completion_tokens = usage.completion_tokens if usage else 0
+
+        _api_elapsed = time.perf_counter() - _api_start
         _log.info(
             "llm_call_completed",
             provider="openai",
             model=llm_config.model,
             chars=len(text),
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            llm_api_latency_ms=round(_api_elapsed * 1000, 1),
         )
+        _m = get_metrics()
+        _m.llm_requests_total.labels(
+            provider="openai", model=llm_config.model, status="success"
+        ).inc()
+        _m.pipeline_latency_seconds.labels(stage="llm_api_openai").observe(_api_elapsed)
+        _m.llm_response_chars.labels(provider="openai", model=llm_config.model).observe(len(text))
+        _m.tokens_used_total.labels(
+            provider="openai", model=llm_config.model, token_type="prompt"
+        ).inc(prompt_tokens)
+        _m.tokens_used_total.labels(
+            provider="openai", model=llm_config.model, token_type="completion"
+        ).inc(completion_tokens)
         return text

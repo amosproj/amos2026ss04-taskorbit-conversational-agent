@@ -15,12 +15,14 @@ later only requires changing ``ConversationOrchestrator.process_message``
 
 from __future__ import annotations
 
+import time
 from collections.abc import AsyncIterable
 from typing import Any
 
 from livekit.agents import Agent, FunctionTool, ModelSettings, llm
 
 from taskorbit.logging.setup import get_logger
+from taskorbit.observability.metrics import get_metrics
 from taskorbit.orchestration import ConversationOrchestrator
 from taskorbit.types import (
     AgentConfig,
@@ -145,15 +147,21 @@ class OrchestratorAgent(Agent):
         self._agent_config = agent_config or _default_agent_config()
         self._conversation_id = conversation_id
         self._reply_requested: bool = False
+        self._t_commit: float | None = None
 
-    def request_reply(self) -> None:
+    def request_reply(self, t_commit: float | None = None) -> None:
         """Signal that the next ``llm_node`` call should actually produce a reply.
 
         Call this immediately before ``session.generate_reply()`` from the
         data channel handler. Without it, ``llm_node`` returns empty so that
         AgentSession's preemptive generation does not produce a spurious response.
+
+        ``t_commit`` should be ``time.perf_counter()`` captured at the moment
+        the commit_turn data channel message was received — used to measure
+        end-to-end voice turn latency.
         """
         self._reply_requested = True
+        self._t_commit = t_commit if t_commit is not None else time.perf_counter()
 
     async def llm_node(  # type: ignore[override]
         self,
@@ -173,6 +181,16 @@ class OrchestratorAgent(Agent):
             return
         self._reply_requested = False
 
+        # STT latency: time from commit_turn received to transcript available in llm_node.
+        # llm_node is only invoked after AgentSession has a final Deepgram transcript,
+        # so this measures how long STT processing took after the user committed their turn.
+        if self._t_commit is not None:
+            stt_elapsed = time.perf_counter() - self._t_commit
+            get_metrics().pipeline_latency_seconds.labels(stage="stt_processing").observe(
+                stt_elapsed
+            )
+            log.debug("stt_processing_complete", latency_ms=round(stt_elapsed * 1000, 1))
+
         messages = _convert_chat_ctx_to_messages(chat_ctx)
         last_user = next((m for m in reversed(messages) if m.role == MessageRole.USER), None)
         if last_user:
@@ -183,7 +201,18 @@ class OrchestratorAgent(Agent):
             messages=messages,
         )
         response = await self._orchestrator.process_message(request)
+        status = "success" if response.status == "success" else "error"
+        get_metrics().voice_pipeline_requests_total.labels(
+            handler="/v1/conversations/process", status=status
+        ).inc()
         text = response.reply.content or ""
+
+        if self._t_commit is not None:
+            elapsed = time.perf_counter() - self._t_commit
+            get_metrics().voice_turn_latency_seconds.observe(elapsed)
+            log.info("voice_turn_complete", latency_ms=round(elapsed * 1000, 1))
+            self._t_commit = None
+
         if not text:
             return
         yield text

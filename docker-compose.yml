@@ -11,7 +11,7 @@
 # Services:
 #   postgres  → :5435 (host) → :5432 in container; avoids clashing with a local Postgres on 5432.
 #   backend   → :8000  FastAPI HTTP API (token issuance, REST fallback)
-#   worker    → no port  LiveKit voice agent (STT → orchestrator → TTS)
+#   worker    → :8001  LiveKit voice agent (STT → orchestrator → TTS); /metrics for Prometheus
 #   frontend  → :5173  Vite dev server with HMR
 
 services:
@@ -48,6 +48,8 @@ services:
       PYTHONUNBUFFERED: "1"
       # Ensure Python can find the 'taskorbit' module inside the /app/src directory
       PYTHONPATH: /app/src
+      # Force JSON logs so Promtail/Loki can parse them even in dev mode.
+      LOG_JSON: "true"
     ports:
       - "8000:8000"
     volumes:
@@ -74,8 +76,13 @@ services:
       - ./backend/.env
     environment:
       PYTHONUNBUFFERED: "1"
+      LOG_JSON: "true"
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
+    ports:
+      - "8001:8001"
     volumes:
       - ./backend/src:/app/src
+      - taskorbit-worker-prometheus:/tmp/prometheus_multiproc
     command: poetry run taskorbit-worker dev
     depends_on:
       backend:
@@ -103,5 +110,62 @@ services:
       backend:
         condition: service_started
 
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    container_name: taskorbit-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - taskorbit-prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    depends_on:
+      - backend
+      - worker
+
+  loki:
+    image: grafana/loki:3.2.0
+    container_name: taskorbit-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+
+  promtail:
+    image: grafana/promtail:3.2.0
+    container_name: taskorbit-promtail
+    restart: unless-stopped
+    volumes:
+      - ./infra/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: taskorbit-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # WARNING: anonymous Grafana admin — local dev only, NOT for production.
+      # Remove or restrict GF_AUTH_ANONYMOUS_* before deploying to any shared environment.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_SECURITY_ADMIN_PASSWORD: "admin"
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - taskorbit-grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+
 volumes:
   taskorbit-postgres-data:
+  taskorbit-prometheus-data:
+  taskorbit-grafana-data:
+  taskorbit-worker-prometheus:

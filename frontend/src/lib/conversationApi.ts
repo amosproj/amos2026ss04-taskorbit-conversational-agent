@@ -52,6 +52,17 @@ type ConversationResponse = {
   confirmation_prompt: string;
 };
 
+type ConversationsResponse = {
+  conversations: Array<{
+    id: string;
+    agent_id: string;
+    agent_name: string;
+    started_at: string;
+    ended_at: string | null;
+  }>;
+  total: number;
+};
+
 // ---------------------------------------------------------------------------
 // Adapters: frontend schema → backend wire schema
 // ---------------------------------------------------------------------------
@@ -82,7 +93,7 @@ function adaptAgentConfig(agent: AgentConfig): BackendAgentConfig {
     stt: { provider: agent.stt.provider, language: "multi", model: agent.stt.model },
     llm: { provider: agent.llm.provider, model: agent.llm.model },
     tts: { provider: agent.tts.provider, voice_id: agent.tts.voice_id, model: agent.tts.model },
-    tools: agent.tools.map(adaptTool), //maps tools
+    tools: agent.tools.map(adaptTool),
   };
 }
 
@@ -105,21 +116,18 @@ export async function sendMessage(
   signal?: AbortSignal,
 ): Promise<string> {
   // STEP A: Map transcript -> backend Message[]
-  //Result: [{ role: "user", content: "Hello" }]
   const messages: BackendMessage[] = transcript.map((turn) => ({
     role: turn.role === "user" ? "user" : "assistant",
     content: turn.text,
   }));
 
-  //STEP B: adaptAgentConfig(agent) — maps frontend fields -> backend fields
-  // e.g. agent.agent_id -> id
+  // STEP B: adaptAgentConfig(agent) — maps frontend fields -> backend fields
   const body: ConversationRequest = {
     conversation_id: conversationId,
     agent_config: adaptAgentConfig(agent),
     messages,
   };
 
-  //Request body with backend api, sent to /api/v1/conversations/process through Vite proxy
   const res = await fetch("/api/v1/conversations/process", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -134,4 +142,18 @@ export async function sendMessage(
 
   const data: ConversationResponse = await res.json();
   return data.reply.content;
+}
+
+/**
+ * Get all conversations for the current user.
+ * Called on page load to restore previous conversations.
+ *
+ * @returns Promise with conversations list
+ */
+export async function getConversations(): Promise<ConversationsResponse> {
+  const response = await fetch("/api/v1/conversations");
+  if (!response.ok) {
+    throw new Error("Failed to fetch conversations");
+  }
+  return response.json();
 }

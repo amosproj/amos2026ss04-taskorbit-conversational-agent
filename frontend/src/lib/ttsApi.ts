@@ -5,6 +5,10 @@
  * fetches, plays via HTMLAudioElement, and revokes the URL — use it for
  * read-aloud of assistant replies on the text-input path (voice mode still
  * uses LiveKit / RoomAudioRenderer for agent TTS).
+ *
+ * `playWithWordSync` uses the /synthesize-with-timestamps endpoint to drive
+ * a callback at each word's exact audio timestamp, making static TTS (e.g.
+ * the greeting) word-synchronized the same way LiveKit streaming turns are.
  */
 
 export type SynthesizeOptions = {
@@ -50,6 +54,87 @@ export async function playSynthesizedSpeech(
   try {
     await playAudioUrl(url, options?.signal);
   } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+type WordTimestamp = { word: string; start_time: number; end_time: number };
+
+type WithTimestampsResponse = {
+  audio_base64: string;
+  word_timestamps: WordTimestamp[];
+};
+
+/**
+ * Fetch audio + word timestamps, play the audio, and call `onWord` at each
+ * word's exact start time. `onWord` receives the partial sentence built so
+ * far so the caller can update transcript state identically to how the
+ * LiveKit stream drives agent responses.
+ *
+ * Falls back to plain `playSynthesizedSpeech` if the timestamps endpoint
+ * fails, so the greeting is always spoken even without timing data.
+ */
+export async function playWithWordSync(
+  text: string,
+  options: SynthesizeOptions & { onWord: (partialText: string, isFinal: boolean) => void },
+): Promise<void> {
+  const { signal, voiceId, modelId, onWord } = options;
+  const trimmed = text.trim();
+  if (!trimmed) return;
+
+  const body: Record<string, unknown> = { text: trimmed };
+  if (voiceId) body.voice_id = voiceId;
+  if (modelId) body.model_id = modelId;
+
+  let data: WithTimestampsResponse;
+  try {
+    const res = await fetch("/api/v1/tts/synthesize-with-timestamps", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    data = (await res.json()) as WithTimestampsResponse;
+  } catch (err) {
+    if ((err as Error).name === "AbortError") throw err;
+    // Timestamps endpoint unavailable — fall back to plain TTS with no sync.
+    console.warn("[ttsApi] timestamps fetch failed, falling back", err);
+    await playSynthesizedSpeech(trimmed, { signal, voiceId, modelId });
+    onWord(trimmed, true);
+    return;
+  }
+
+  // Convert base64 audio to a playable blob URL.
+  const audioBytes = Uint8Array.from(atob(data.audio_base64), (c) => c.charCodeAt(0));
+  const blob = new Blob([audioBytes], { type: "audio/mpeg" });
+  const url = URL.createObjectURL(blob);
+
+  const timers: ReturnType<typeof setTimeout>[] = [];
+  const words = data.word_timestamps;
+
+  // Schedule each word reveal at its exact spoken timestamp.
+  words.forEach((w, i) => {
+    const isLast = i === words.length - 1;
+    const partial = words
+      .slice(0, i + 1)
+      .map((t) => t.word)
+      .join(" ");
+    timers.push(
+      setTimeout(() => {
+        onWord(partial, isLast);
+      }, w.start_time * 1000),
+    );
+  });
+
+  // Cancel pending word timers if the signal aborts mid-playback.
+  const onAbort = () => timers.forEach(clearTimeout);
+  signal?.addEventListener("abort", onAbort, { once: true });
+
+  try {
+    await playAudioUrl(url, signal);
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
     URL.revokeObjectURL(url);
   }
 }

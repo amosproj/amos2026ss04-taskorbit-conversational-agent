@@ -36,10 +36,10 @@ def configure_logging() -> None:
         level=level,
     )
 
-    # JSON renderer in production for log aggregation; pretty console
-    # output in development for human eyes.
+    # JSON renderer in production (or when LOG_JSON=true) for log aggregation;
+    # pretty console output in development for human eyes.
     renderer: structlog.types.Processor
-    if settings.is_development:
+    if settings.is_development and not settings.log_json:
         renderer = structlog.dev.ConsoleRenderer(colors=True)
     else:
         renderer = structlog.processors.JSONRenderer()

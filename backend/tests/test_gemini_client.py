@@ -5,7 +5,7 @@ Mocks the google-genai async client so tests never make real network calls.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from google.genai import errors as genai_errors
@@ -57,6 +57,8 @@ def llm_config() -> LLMConfig:
 async def test_generate_returns_assistant_text(client: GeminiClient, llm_config: LLMConfig) -> None:
     fake_response = MagicMock()
     fake_response.text = "4"
+    fake_response.usage_metadata.prompt_token_count = 10
+    fake_response.usage_metadata.candidates_token_count = 5
     with patch.object(
         client._client.aio.models, "generate_content", new=AsyncMock(return_value=fake_response)
     ) as mock_create:
@@ -171,3 +173,59 @@ async def test_none_text_raises_llm_api_error(client: GeminiClient, llm_config: 
     ):
         with pytest.raises(LLMAPIError, match="empty"):
             await client.generate("sys", [Message(role=MessageRole.USER, content="hi")], llm_config)
+
+
+# ---------------------------------------------------------------------------
+# Token usage metrics
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_generate_records_token_metrics(client: GeminiClient, llm_config: LLMConfig) -> None:
+    fake_response = MagicMock()
+    fake_response.text = "4"
+    fake_response.usage_metadata.prompt_token_count = 10
+    fake_response.usage_metadata.candidates_token_count = 5
+    mock_metrics = MagicMock()
+
+    with patch("taskorbit.integrations.llm.gemini_client.get_metrics", return_value=mock_metrics):
+        with patch.object(
+            client._client.aio.models, "generate_content", new=AsyncMock(return_value=fake_response)
+        ):
+            await client.generate("sys", [Message(role=MessageRole.USER, content="hi")], llm_config)
+
+    labels_calls = mock_metrics.tokens_used_total.labels.call_args_list
+    assert call(provider="google", model="gemini-2.0-flash", token_type="prompt") in labels_calls
+    assert (
+        call(provider="google", model="gemini-2.0-flash", token_type="completion") in labels_calls
+    )
+    inc_calls = mock_metrics.tokens_used_total.labels().inc.call_args_list
+    assert call(10) in inc_calls
+    assert call(5) in inc_calls
+
+
+@pytest.mark.asyncio
+async def test_generate_records_zero_tokens_when_usage_metadata_is_none(
+    client: GeminiClient, llm_config: LLMConfig
+) -> None:
+    fake_response = MagicMock(spec=["text"])  # no usage_metadata attribute
+    fake_response.text = "ok"
+    mock_metrics = MagicMock()
+
+    with patch("taskorbit.integrations.llm.gemini_client.get_metrics", return_value=mock_metrics):
+        with patch.object(
+            client._client.aio.models, "generate_content", new=AsyncMock(return_value=fake_response)
+        ):
+            result = await client.generate(
+                "sys", [Message(role=MessageRole.USER, content="hi")], llm_config
+            )
+
+    assert result == "ok"
+    labels_calls = mock_metrics.tokens_used_total.labels.call_args_list
+    assert call(provider="google", model="gemini-2.0-flash", token_type="prompt") in labels_calls
+    assert (
+        call(provider="google", model="gemini-2.0-flash", token_type="completion") in labels_calls
+    )
+    inc_calls = mock_metrics.tokens_used_total.labels().inc.call_args_list
+    assert call(0) in inc_calls
+    assert len([c for c in inc_calls if c == call(0)]) == 2

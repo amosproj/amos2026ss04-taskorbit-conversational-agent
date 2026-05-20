@@ -1,4 +1,4 @@
-import { Loader2, Mic, ShieldCheck, WifiOff } from "lucide-react";
+import { Loader2, MicOff, ShieldCheck, WifiOff } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -6,7 +6,6 @@ import type { CallStatus } from "@/types/callState";
 
 type Props = {
   status: CallStatus;
-  agentName: string;
   className?: string;
 };
 
@@ -15,7 +14,7 @@ type Visual =
   | { kind: "pulse"; label: string }
   | { kind: "speaking"; label: string };
 
-function visualFor(status: CallStatus, agentName: string): Visual | null {
+function visualFor(status: CallStatus): Visual | null {
   switch (status) {
     case "connecting":
       return { kind: "icon", Icon: Loader2, spin: true, label: "Connecting…" };
@@ -27,12 +26,7 @@ function visualFor(status: CallStatus, agentName: string): Visual | null {
         label: "Reconnecting…",
       };
     case "idle_in_call":
-      return {
-        kind: "icon",
-        Icon: Mic,
-        spin: false,
-        label: `Tap the mic to speak · ${agentName}`,
-      };
+      return { kind: "icon", Icon: MicOff, spin: false, label: "Muted" };
     case "recording":
     case "listening":
       return { kind: "pulse", label: "Listening…" };
@@ -44,7 +38,7 @@ function visualFor(status: CallStatus, agentName: string): Visual | null {
         label: "Processing…",
       };
     case "speaking":
-      return { kind: "speaking", label: "AI Responding…" };
+      return { kind: "speaking", label: "Speaking…" };
     case "awaiting_confirmation":
       return {
         kind: "icon",
@@ -65,8 +59,8 @@ function visualFor(status: CallStatus, agentName: string): Visual | null {
  * confirmation pause. Hidden in idle/ended states (the surrounding UI
  * already communicates those).
  */
-export function CallStatusIndicator({ status, agentName, className }: Props) {
-  const visual = visualFor(status, agentName);
+export function CallStatusIndicator({ status, className }: Props) {
+  const visual = visualFor(status);
   if (visual === null) return null;
 
   return (

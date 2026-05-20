@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: taskorbit-backend
+    static_configs:
+      - targets:
+          - backend:8000
+    metrics_path: /metrics
+
+  - job_name: taskorbit-worker
+    static_configs:
+      - targets:
+          - worker:8001
+    metrics_path: /metrics
