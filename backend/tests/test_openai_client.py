@@ -5,7 +5,7 @@ Mocks the openai AsyncOpenAI client so tests never make real network calls.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import openai
 import pytest
@@ -34,6 +34,8 @@ def _mock_completion_response(content: str | None) -> MagicMock:
     choice = MagicMock()
     choice.message.content = content
     response.choices = [choice] if content is not None or content == "" else []
+    response.usage.prompt_tokens = 10
+    response.usage.completion_tokens = 5
     return response
 
 
@@ -159,3 +161,55 @@ async def test_no_choices_raises_llm_api_error(client: OpenAIClient, llm_config:
     ):
         with pytest.raises(LLMAPIError, match="empty"):
             await client.generate("sys", [Message(role=MessageRole.USER, content="hi")], llm_config)
+
+
+# ---------------------------------------------------------------------------
+# Token usage metrics
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_generate_records_token_metrics(client: OpenAIClient, llm_config: LLMConfig) -> None:
+    fake_response = _mock_completion_response("4")  # usage.prompt_tokens=10, completion_tokens=5
+    mock_metrics = MagicMock()
+
+    with patch("taskorbit.integrations.llm.openai_client.get_metrics", return_value=mock_metrics):
+        with patch.object(
+            client._client.chat.completions, "create", new=AsyncMock(return_value=fake_response)
+        ):
+            await client.generate("sys", [Message(role=MessageRole.USER, content="hi")], llm_config)
+
+    labels_calls = mock_metrics.tokens_used_total.labels.call_args_list
+    assert call(provider="openai", model="gpt-4o-mini", token_type="prompt") in labels_calls
+    assert call(provider="openai", model="gpt-4o-mini", token_type="completion") in labels_calls
+    inc_calls = mock_metrics.tokens_used_total.labels().inc.call_args_list
+    assert call(10) in inc_calls
+    assert call(5) in inc_calls
+
+
+@pytest.mark.asyncio
+async def test_generate_records_zero_tokens_when_usage_is_none(
+    client: OpenAIClient, llm_config: LLMConfig
+) -> None:
+    fake_response = MagicMock()
+    choice = MagicMock()
+    choice.message.content = "ok"
+    fake_response.choices = [choice]
+    fake_response.usage = None
+    mock_metrics = MagicMock()
+
+    with patch("taskorbit.integrations.llm.openai_client.get_metrics", return_value=mock_metrics):
+        with patch.object(
+            client._client.chat.completions, "create", new=AsyncMock(return_value=fake_response)
+        ):
+            result = await client.generate(
+                "sys", [Message(role=MessageRole.USER, content="hi")], llm_config
+            )
+
+    assert result == "ok"
+    labels_calls = mock_metrics.tokens_used_total.labels.call_args_list
+    assert call(provider="openai", model="gpt-4o-mini", token_type="prompt") in labels_calls
+    assert call(provider="openai", model="gpt-4o-mini", token_type="completion") in labels_calls
+    inc_calls = mock_metrics.tokens_used_total.labels().inc.call_args_list
+    assert call(0) in inc_calls
+    assert len([c for c in inc_calls if c == call(0)]) == 2

@@ -46,7 +46,7 @@ You are the main orchestrator who guides customers through the service flow:
   },
   llm: {
     provider: "openai",
-    model: "gpt-4.1-mini",
+    model: "gpt-4o-mini",
   },
   tools: [
     {

@@ -122,7 +122,7 @@ export function PipelineSection({ value, onChange }: Props) {
                 onChange={(e) =>
                   onChange({ ...value, llm: { ...value.llm, model: e.target.value } })
                 }
-                placeholder="gpt-4.1-mini"
+                placeholder="gpt-4o-mini"
                 className="font-mono text-sm"
               />
             </Field>

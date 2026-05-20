@@ -13,12 +13,15 @@ google-genai uses a different shape than OpenAI:
 
 from __future__ import annotations
 
+import time
+
 from google import genai
 from google.genai import errors as genai_errors
 from google.genai.types import GenerateContentConfig, HttpOptions
 
 from taskorbit.config import Settings
 from taskorbit.logging.setup import get_logger
+from taskorbit.observability.metrics import get_metrics
 from taskorbit.types import LLMConfig, Message
 
 from .errors import (
@@ -72,6 +75,7 @@ class GeminiClient:
             message_count=len(contents),
         )
 
+        _api_start = time.perf_counter()
         try:
             response = await self._client.aio.models.generate_content(
                 model=llm_config.model,
@@ -83,32 +87,71 @@ class GeminiClient:
             code = getattr(exc, "code", None)
             if code in (401, 403):
                 _log.error("llm_call_failed", provider="google", error_type="auth", error=str(exc))
+                get_metrics().llm_requests_total.labels(
+                    provider="google", model=llm_config.model, status="auth"
+                ).inc()
                 raise LLMAuthError(f"Google API authentication failed: {exc}") from exc
             if code == 429:
                 _log.error(
                     "llm_call_failed", provider="google", error_type="rate_limit", error=str(exc)
                 )
+                get_metrics().llm_requests_total.labels(
+                    provider="google", model=llm_config.model, status="rate_limit"
+                ).inc()
                 raise LLMRateLimitError(f"Google API rate-limited: {exc}") from exc
             if code == 408:
                 _log.error(
                     "llm_call_failed", provider="google", error_type="timeout", error=str(exc)
                 )
+                get_metrics().llm_requests_total.labels(
+                    provider="google", model=llm_config.model, status="timeout"
+                ).inc()
                 raise LLMTimeoutError(f"Google API request timed out: {exc}") from exc
             _log.error("llm_call_failed", provider="google", error_type="client", error=str(exc))
+            get_metrics().llm_requests_total.labels(
+                provider="google", model=llm_config.model, status="client"
+            ).inc()
             raise LLMAPIError(f"Google API client error: {exc}") from exc
         except genai_errors.APIError as exc:
             _log.error("llm_call_failed", provider="google", error_type="api", error=str(exc))
+            get_metrics().llm_requests_total.labels(
+                provider="google", model=llm_config.model, status="api"
+            ).inc()
             raise LLMAPIError(f"Google API error: {exc}") from exc
 
         text = response.text
         if not text:
             _log.error("llm_call_failed", provider="google", error_type="empty_response")
+            get_metrics().llm_requests_total.labels(
+                provider="google", model=llm_config.model, status="empty_response"
+            ).inc()
             raise LLMAPIError("Google returned an empty response")
 
+        # google-genai places usage metadata on response.usage_metadata
+        usage = getattr(response, "usage_metadata", None)
+        prompt_tokens = getattr(usage, "prompt_token_count", 0) or 0
+        completion_tokens = getattr(usage, "candidates_token_count", 0) or 0
+
+        _api_elapsed = time.perf_counter() - _api_start
         _log.info(
             "llm_call_completed",
             provider="google",
             model=llm_config.model,
             chars=len(text),
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            llm_api_latency_ms=round(_api_elapsed * 1000, 1),
         )
+        _m = get_metrics()
+        _m.llm_requests_total.labels(
+            provider="google", model=llm_config.model, status="success"
+        ).inc()
+        _m.pipeline_latency_seconds.labels(stage="llm_api_google").observe(_api_elapsed)
+        _m.llm_response_chars.labels(provider="google", model=llm_config.model).observe(len(text))
+        _m.tokens_used_total.labels(
+            provider="google", model=llm_config.model, token_type="prompt"
+        ).inc(prompt_tokens)
+        _m.tokens_used_total.labels(
+            provider="google", model=llm_config.model, token_type="completion"
+        ).inc(completion_tokens)
         return text

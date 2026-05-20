@@ -5,7 +5,6 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,10 +16,11 @@ from taskorbit.database.crud import (
     get_messages_by_conversation,
 )
 from taskorbit.database.models import Conversation
+from taskorbit.logging.setup import get_logger
 from taskorbit.orchestration import ConversationOrchestrator
 from taskorbit.types import ConversationRequest, ConversationResponse, MessageRole
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/v1/conversations", tags=["conversations"])
 
@@ -37,7 +37,12 @@ async def process_conversation(
     orchestrator: ConversationOrchestrator = Depends(get_orchestrator),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ConversationResponse:
-    """Process one turn of a conversation and persist messages."""
+    """Process one turn of a conversation through the TaskOrbit orchestration engine and persist messages."""
+    logger.info(
+        "conversation_request_received",
+        conversation_id=request.conversation_id,
+        message_count=len(request.messages),
+    )
     try:
         response = await orchestrator.process_message(request)
 
@@ -46,7 +51,6 @@ async def process_conversation(
         last_user = last_msg if last_msg and last_msg.role == MessageRole.USER else None
 
         if last_user:
-            # Check if conversation exists
             result = await db.execute(
                 select(Conversation).where(Conversation.id == request.conversation_id)
             )
@@ -76,10 +80,19 @@ async def process_conversation(
                     "failed_to_save_assistant_message", conversation_id=request.conversation_id
                 )
 
-        logger.info("messages_persisted", conversation_id=request.conversation_id)
+        logger.info(
+            "conversation_request_completed",
+            conversation_id=request.conversation_id,
+            intent=response.selected_intent,
+            status=response.status,
+        )
         return response
 
     except NotImplementedError as exc:
+        logger.warning(
+            "orchestration_not_implemented",
+            conversation_id=request.conversation_id,
+        )
         raise HTTPException(
             status_code=501, detail="Orchestration engine not yet implemented."
         ) from exc
