@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Copy, FileDown, RotateCcw, Save } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Copy, FileDown, Loader2, RefreshCw, RotateCcw, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { AdvancedSection } from "@/components/agent-config/AdvancedSection";
@@ -10,8 +10,25 @@ import { PipelineSection } from "@/components/agent-config/PipelineSection";
 import { ToolsSection } from "@/components/agent-config/ToolsSection";
 import { VariablesSection } from "@/components/agent-config/VariablesSection";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
+import {
+  deleteAgentConfig,
+  listAgentConfigs,
+  loadAgentConfig,
+  saveAgentConfig,
+  updateAgentConfig,
+  type SavedAgentConfigSummary,
+} from "@/lib/agentConfigApi";
 import { EMPTY_AGENT, JOHN_DOE_AGENT } from "@/lib/mockAgents";
+import { cn } from "@/lib/utils";
 import { serializeAgent, type AgentConfig } from "@/types/agentConfig";
 
 function isComplete(agent: AgentConfig) {
@@ -25,17 +42,77 @@ function isComplete(agent: AgentConfig) {
 export function AgentConfigPage() {
   const [agent, setAgent] = useState<AgentConfig>(JOHN_DOE_AGENT);
   const [showErrors, setShowErrors] = useState(false);
+  const [savedConfigs, setSavedConfigs] = useState<SavedAgentConfigSummary[]>([]);
+  const [isListLoading, setIsListLoading] = useState(false);
+  const [loadedConfigId, setLoadedConfigId] = useState<string | null>(null);
+
+  // Fetch the saved-config list once on mount + expose a refresh helper.
+  // Used by the "Load preset" dropdown and re-called after a successful save
+  // so the newest entry appears immediately without a page reload.
+  const refreshList = useCallback(async (signal?: AbortSignal) => {
+    setIsListLoading(true);
+    try {
+      const items = await listAgentConfigs(signal);
+      setSavedConfigs(items);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      const msg = err instanceof Error ? err.message : "Unknown error.";
+      toast.error("Could not load saved configurations.", { description: msg });
+    } finally {
+      setIsListLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void refreshList(controller.signal);
+    return () => controller.abort();
+  }, [refreshList]);
 
   const reset = () => {
     setAgent(EMPTY_AGENT);
     setShowErrors(false);
+    setLoadedConfigId(null);
     toast("Reset to empty.");
   };
 
   const loadPreset = () => {
     setAgent(JOHN_DOE_AGENT);
     setShowErrors(false);
+    setLoadedConfigId(null);
     toast.success("Preset loaded.");
+  };
+
+  const loadById = async (id: string) => {
+    try {
+      const saved = await loadAgentConfig(id);
+      setAgent(saved.config as unknown as AgentConfig);
+      setLoadedConfigId(saved.id);
+      setShowErrors(false);
+      toast.success("Configuration loaded.", {
+        description: `Loaded "${saved.name}".`,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error.";
+      toast.error("Could not load configuration.", { description: msg });
+    }
+  };
+
+  const handleDelete = async (e: React.MouseEvent, id: string, name: string) => {
+    e.stopPropagation(); // Don't trigger the loadById parent
+    if (!window.confirm(`Are you sure you want to delete "${name}"?`)) return;
+
+    try {
+      await deleteAgentConfig(id);
+      toast.success("Configuration deleted.");
+      if (loadedConfigId === id) {
+        setLoadedConfigId(null);
+      }
+      void refreshList();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error.";
+      toast.error("Could not delete configuration.", { description: msg });
+    }
   };
 
   const copyJson = async () => {
@@ -47,7 +124,7 @@ export function AgentConfigPage() {
     }
   };
 
-  const save = () => {
+  const save = async () => {
     if (!isComplete(agent)) {
       setShowErrors(true);
       toast.error("Some required fields are empty.", {
@@ -55,11 +132,38 @@ export function AgentConfigPage() {
       });
       return;
     }
-    // No backend yet — surface the result in the console so the JSON shape
-    // can be verified end-to-end against the orchestrator contract.
+    try {
+      const saved = await saveAgentConfig(agent);
+      toast.success("Configuration saved.", {
+        description: `Saved as "${saved.name}".`,
+      });
+      // Refresh so the newly-saved row appears in the dropdown immediately.
+      // Note: deliberately NOT setting loadedConfigId = saved.id — Save always
+      // creates a new row (POST). Smart overwrite arrives with #52 PUT.
+      void refreshList();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error.";
+      toast.error("Could not save configuration.", { description: message });
+    }
+  };
 
-    console.info("[AgentConfig] save", serializeAgent(agent));
-    toast.success("Configuration saved.");
+  const update = async () => {
+    if (!loadedConfigId) return;
+    if (!isComplete(agent)) {
+      setShowErrors(true);
+      toast.error("Some required fields are empty.");
+      return;
+    }
+    try {
+      const saved = await updateAgentConfig(loadedConfigId, agent);
+      toast.success("Configuration updated.", {
+        description: `Updated "${saved.name}".`,
+      });
+      void refreshList();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error.";
+      toast.error("Could not update configuration.", { description: message });
+    }
   };
 
   return (
@@ -115,10 +219,63 @@ export function AgentConfigPage() {
 
         <div className="sticky bottom-4 z-10 mt-2 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background/90 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70">
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={loadPreset} type="button">
-              <FileDown data-icon="inline-start" />
-              Load preset
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" type="button">
+                  {isListLoading ? (
+                    <Loader2 className="animate-spin" data-icon="inline-start" />
+                  ) : (
+                    <FileDown data-icon="inline-start" />
+                  )}
+                  Load agent
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-64">
+                <DropdownMenuLabel className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                  Built-in
+                </DropdownMenuLabel>
+                <DropdownMenuItem onClick={loadPreset}>John Doe — TechStore demo</DropdownMenuItem>
+                {savedConfigs.length > 0 ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                      Saved agents
+                    </DropdownMenuLabel>
+                    {savedConfigs.map((c) => (
+                      <DropdownMenuItem
+                        key={c.id}
+                        onClick={() => loadById(c.id)}
+                        className={cn(
+                          "group flex items-center justify-between",
+                          loadedConfigId === c.id && "bg-muted",
+                        )}
+                      >
+                        <span className="truncate">{c.name}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 opacity-0 group-hover:opacity-100 hover:text-destructive"
+                          onClick={(e) => handleDelete(e, c.id, c.name)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          <span className="sr-only">Delete</span>
+                        </Button>
+                      </DropdownMenuItem>
+                    ))}
+                  </>
+                ) : null}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => {
+                    void refreshList();
+                  }}
+                  disabled={isListLoading}
+                >
+                  <RefreshCw data-icon="inline-start" />
+                  Refresh
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button variant="ghost" size="sm" onClick={reset} type="button">
               <RotateCcw data-icon="inline-start" />
               Reset
@@ -129,9 +286,20 @@ export function AgentConfigPage() {
               <Copy data-icon="inline-start" />
               Copy JSON
             </Button>
-            <Button size="sm" onClick={save} type="button">
+            {loadedConfigId ? (
+              <Button size="sm" onClick={update} type="button">
+                <Save data-icon="inline-start" />
+                Update
+              </Button>
+            ) : null}
+            <Button
+              size="sm"
+              onClick={save}
+              variant={loadedConfigId ? "outline" : "default"}
+              type="button"
+            >
               <Save data-icon="inline-start" />
-              Save
+              {loadedConfigId ? "Save as new" : "Save"}
             </Button>
           </div>
         </div>
