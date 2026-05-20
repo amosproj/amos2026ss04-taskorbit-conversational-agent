@@ -24,7 +24,7 @@ from taskorbit.types import (
     AgentConfigurationUpdate,
 )
 
-log = get_logger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/v1/agent-configs", tags=["agent-configs"])
 
@@ -71,9 +71,9 @@ def save_config(
     """Persist a new agent configuration and return its DB-assigned id."""
     result = create_agent_configuration(db, name=body.name, config=body.config)
     if result is None:
-        log.error("agent_config_create_failed", name=body.name)
+        logger.error("agent_config_create_failed", name=body.name)
         raise HTTPException(status_code=500, detail="Could not save configuration.")
-    log.info("agent_config_created", config_id=result.id, name=result.name)
+    logger.info("agent_config_created", config_id=result.id, name=result.name)
     return result
 
 
@@ -86,8 +86,9 @@ def update_config(
     """Update an existing agent configuration."""
     result = update_agent_configuration(db, config_id=config_id, name=body.name, config=body.config)
     if result is None:
+        logger.warning("agent_config_update_not_found", config_id=config_id)
         raise HTTPException(status_code=404, detail=f"Agent configuration '{config_id}' not found.")
-    log.info("agent_config_updated", config_id=config_id)
+    logger.info("agent_config_updated", config_id=config_id)
     return result
 
 
@@ -99,6 +100,7 @@ def delete_config(
     """Delete an agent configuration."""
     success = delete_agent_configuration(db, config_id=config_id)
     if not success:
+        logger.warning("agent_config_delete_not_found", config_id=config_id)
         raise HTTPException(status_code=404, detail=f"Agent configuration '{config_id}' not found.")
-    log.info("agent_config_deleted", config_id=config_id)
+    logger.info("agent_config_deleted", config_id=config_id)
     return Response(status_code=204)
