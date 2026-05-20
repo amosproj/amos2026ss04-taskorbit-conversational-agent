@@ -51,12 +51,24 @@ async def process_conversation(
         last_user = last_msg if last_msg and last_msg.role == MessageRole.USER else None
 
         if last_user:
+            # Auto-create conversation if it doesn't exist (FK safety)
             result = await db.execute(
                 select(Conversation).where(Conversation.id == request.conversation_id)
             )
             conversation = result.scalar_one_or_none()
             if not conversation:
-                logger.warning("conversation_not_found", conversation_id=request.conversation_id)
+                conversation = Conversation(
+                    id=request.conversation_id,
+                    agent_id=request.agent_config.id,
+                    agent_name=request.agent_config.name,
+                    started_at=datetime.now(UTC),
+                )
+                db.add(conversation)
+                await db.commit()
+                logger.info(
+                    "conversation_auto_created",
+                    conversation_id=request.conversation_id,
+                )
 
             saved = await create_conversation_message(
                 db=db,
@@ -65,7 +77,10 @@ async def process_conversation(
                 content=last_user.content,
             )
             if saved is None:
-                logger.error("failed_to_save_user_message", conversation_id=request.conversation_id)
+                logger.error(
+                    "failed_to_save_user_message",
+                    conversation_id=request.conversation_id,
+                )
 
         # Save assistant reply
         if response.reply:
@@ -77,7 +92,8 @@ async def process_conversation(
             )
             if saved is None:
                 logger.error(
-                    "failed_to_save_assistant_message", conversation_id=request.conversation_id
+                    "failed_to_save_assistant_message",
+                    conversation_id=request.conversation_id,
                 )
 
         logger.info(
