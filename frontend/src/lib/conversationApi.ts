@@ -168,3 +168,22 @@ export async function getConversations(): Promise<ConversationsResponse> {
   }
   return response.json();
 }
+
+/**
+ * Get all messages for a specific conversation.
+ */
+export async function getConversationMessages(conversationId: string): Promise<{
+  conversation_id: string;
+  messages: Array<{
+    id: number;
+    role: string;
+    content: string;
+    created_at: string;
+  }>;
+}> {
+  const response = await fetch(`/api/v1/conversations/${conversationId}/messages`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch conversation messages");
+  }
+  return response.json();
+}
