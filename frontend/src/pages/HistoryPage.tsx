@@ -125,7 +125,9 @@ export function HistoryPage() {
               <CardContent className="pt-6">
                 <ScrollArea className="h-[min(50vh,28rem)] pr-3">
                   {messages.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No messages in this conversation.</p>
+                    <p className="text-sm text-muted-foreground">
+                      No messages in this conversation.
+                    </p>
                   ) : (
                     <ul className="flex flex-col gap-4" aria-label="Transcript">
                       {messages.map((msg) => (
