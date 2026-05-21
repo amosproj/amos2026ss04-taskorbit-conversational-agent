@@ -64,12 +64,12 @@ async def process_conversation(
                     started_at=datetime.now(UTC),
                 )
                 db.add(conversation)
-                await db.commit()
                 logger.info(
                     "conversation_auto_created",
                     conversation_id=request.conversation_id,
                 )
 
+            # Save user message
             saved = await create_conversation_message(
                 db=db,
                 conversation_id=request.conversation_id,
@@ -82,19 +82,22 @@ async def process_conversation(
                     conversation_id=request.conversation_id,
                 )
 
-        # Save assistant reply
-        if response.reply:
-            saved = await create_conversation_message(
-                db=db,
-                conversation_id=request.conversation_id,
-                role=response.reply.role.value,
-                content=response.reply.content,
-            )
-            if saved is None:
-                logger.error(
-                    "failed_to_save_assistant_message",
+            # Save assistant reply (only if there was a user message)
+            if response.reply:
+                saved = await create_conversation_message(
+                    db=db,
                     conversation_id=request.conversation_id,
+                    role=response.reply.role.value,
+                    content=response.reply.content,
                 )
+                if saved is None:
+                    logger.error(
+                        "failed_to_save_assistant_message",
+                        conversation_id=request.conversation_id,
+                    )
+
+            # Commit all changes together
+            await db.commit()
 
         logger.info(
             "conversation_request_completed",

@@ -171,15 +171,13 @@ export async function getConversations(): Promise<ConversationsResponse> {
 
 /**
  * Get all messages for a specific conversation.
+ *
+ * @param conversationId - The ID of the conversation
+ * @returns Promise with conversation messages
  */
 export async function getConversationMessages(conversationId: string): Promise<{
   conversation_id: string;
-  messages: Array<{
-    id: number;
-    role: string;
-    content: string;
-    created_at: string;
-  }>;
+  messages: ConversationMessage[];
 }> {
   const response = await fetch(`/api/v1/conversations/${conversationId}/messages`);
   if (!response.ok) {
@@ -187,3 +185,18 @@ export async function getConversationMessages(conversationId: string): Promise<{
   }
   return response.json();
 }
+
+// ---------------------------------------------------------------------------
+// Exported Types
+// ---------------------------------------------------------------------------
+
+/**
+ * Represents a single message in a conversation.
+ * Exported for use in HistoryPage and other components.
+ */
+export type ConversationMessage = {
+  id: number;
+  role: string;
+  content: string;
+  created_at: string;
+};

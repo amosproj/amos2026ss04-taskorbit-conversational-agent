@@ -16,6 +16,7 @@ later only requires changing ``ConversationOrchestrator.process_message``
 from __future__ import annotations
 
 import time
+import uuid
 from collections.abc import AsyncIterable
 from typing import Any
 
@@ -160,14 +161,16 @@ class OrchestratorAgent(Agent):
         *,
         instructions: str | None = None,
         agent_config: AgentConfig | None = None,
-        conversation_id: str = "livekit-session",
+        conversation_id: str | None = None,
+        db: Any = None,
     ) -> None:
         super().__init__(
             instructions=instructions or "You are TaskOrbit, a helpful voice assistant.",
         )
         self._orchestrator = orchestrator
         self._agent_config = agent_config or _default_agent_config()
-        self._conversation_id = conversation_id
+        self._conversation_id = conversation_id or str(uuid.uuid4())
+        self._db = db
         self._reply_requested: bool = False
         self._t_commit: float | None = None
 
@@ -222,7 +225,8 @@ class OrchestratorAgent(Agent):
             agent_config=self._agent_config,
             messages=messages,
         )
-        response = await self._orchestrator.process_message(request)
+        # Pass the database session to the orchestrator for persistence
+        response = await self._orchestrator.process_message(request, db=self._db)
         status = "success" if response.status == "success" else "error"
         get_metrics().voice_pipeline_requests_total.labels(
             handler="/v1/conversations/process", status=status

@@ -11,9 +11,9 @@ Flow per message:
   3. Determine which tool (if any) should be in scope right now.
   3b. Extract slots from conversation history using SlotExtractor.
   4. Build a system prompt augmented with slot collection progress.
-  5. Call the LLM provider with a timeout (configurable via settings).
   5b. Execute DataExtractionTool when all required slots are filled.
   6. Return a ConversationResponse with intent, agent, slot, and status fields.
+  7. Persist conversation and messages to DB if a session is provided.
 """
 
 from __future__ import annotations
@@ -50,8 +50,20 @@ class ConversationOrchestrator:
         self._settings = settings or get_settings()
         self._intent_detector = MockIntentDetector()
 
-    async def process_message(self, request: ConversationRequest) -> ConversationResponse:
-        """Main entry point called by the API layer and agent workers."""
+    async def process_message(
+        self,
+        request: ConversationRequest,
+        db: Any | None = None,
+    ) -> ConversationResponse:
+        """Main entry point called by the API layer and agent workers.
+
+        Args:
+            request: The conversation request containing messages and agent config.
+            db: Optional AsyncSession for persisting conversation and messages.
+                When provided, auto-creates the conversation row if missing and
+                saves both user and assistant messages. Used by both the REST
+                route and the LiveKit voice worker.
+        """
         _pipeline_start = time.perf_counter()
         try:
             last_user = next(
@@ -129,7 +141,7 @@ class ConversationOrchestrator:
                 total_latency_ms=round(_total_elapsed * 1000, 1),
             )
 
-            return ConversationResponse(
+            response = ConversationResponse(
                 conversation_id=request.conversation_id,
                 reply=self._make_assistant_message(llm_text),
                 selected_intent=intent.name,
@@ -138,6 +150,12 @@ class ConversationOrchestrator:
                 extracted_slots=slot_result.to_dict() if slot_result.is_complete else {},
                 missing_slots=slot_result.missing,
             )
+
+            # 6. Persist messages if db session provided (REST route + voice worker)
+            if db is not None:
+                await self._persist_messages(db, request, response)
+
+            return response
 
         except LLMConfigError as exc:
             get_metrics().conversation_errors_total.labels(error_type="llm_config").inc()
@@ -204,6 +222,86 @@ class ConversationOrchestrator:
                 reply=self._make_assistant_message("An unexpected error occurred."),
                 status="error",
                 error=str(exc),
+            )
+
+    async def _persist_messages(
+        self,
+        db: Any,
+        request: ConversationRequest,
+        response: ConversationResponse,
+    ) -> None:
+        """Persist conversation and messages to the database.
+
+        Auto-creates the Conversation row if it doesn't exist, then saves
+        the last user message and the assistant reply in a single transaction.
+        Used by both the REST route and the LiveKit voice worker.
+        """
+        from datetime import UTC, datetime
+
+        from sqlalchemy import select
+
+        from taskorbit.database.crud import create_conversation_message
+        from taskorbit.database.models import Conversation
+
+        try:
+            # Start transaction
+            async with db.begin():
+                # Auto-create conversation if it doesn't exist (FK safety)
+                result = await db.execute(
+                    select(Conversation).where(Conversation.id == request.conversation_id)
+                )
+                conversation = result.scalar_one_or_none()
+                if not conversation:
+                    conversation = Conversation(
+                        id=request.conversation_id,
+                        agent_id=request.agent_config.id,
+                        agent_name=request.agent_config.name,
+                        started_at=datetime.now(UTC),
+                    )
+                    db.add(conversation)
+                    logger.info(
+                        "conversation_auto_created",
+                        conversation_id=request.conversation_id,
+                    )
+
+                # Save last user message only
+                last_msg = request.messages[-1] if request.messages else None
+                last_user = last_msg if last_msg and last_msg.role == MessageRole.USER else None
+                if last_user:
+                    saved = await create_conversation_message(
+                        db=db,
+                        conversation_id=request.conversation_id,
+                        role=last_user.role.value,
+                        content=last_user.content,
+                    )
+                    if saved is None:
+                        logger.error(
+                            "failed_to_save_user_message",
+                            conversation_id=request.conversation_id,
+                        )
+
+                    # Save assistant reply (only if there was a user message)
+                    if response.reply:
+                        saved = await create_conversation_message(
+                            db=db,
+                            conversation_id=request.conversation_id,
+                            role=response.reply.role.value,
+                            content=response.reply.content,
+                        )
+                        if saved is None:
+                            logger.error(
+                                "failed_to_save_assistant_message",
+                                conversation_id=request.conversation_id,
+                            )
+
+            # Transaction commits automatically here
+            logger.info("messages_persisted", conversation_id=request.conversation_id)
+
+        except Exception as exc:
+            logger.error(
+                "persistence_failed",
+                error=str(exc),
+                conversation_id=request.conversation_id,
             )
 
     def _build_system_prompt(
