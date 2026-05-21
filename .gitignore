@@ -84,6 +84,3 @@ frontend/tsconfig.*.tsbuildinfo
 #DB
 *.db
 
-# Large binary video files — link to external host instead
-*.mkv
-*.zip
