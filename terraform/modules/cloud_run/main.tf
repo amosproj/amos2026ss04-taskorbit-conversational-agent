@@ -90,11 +90,6 @@ resource "google_cloud_run_v2_service" "backend" {
         value = "1"
       }
 
-      env {
-        name  = "PYTHONPATH"
-        value = "/app/src"
-      }
-
       # Secrets from Secret Manager
       dynamic "env" {
         for_each = {
@@ -199,7 +194,8 @@ resource "google_cloud_run_v2_service" "worker" {
     containers {
       image   = var.backend_image
       name    = "worker"
-      command = ["poetry", "run", "taskorbit-worker", "dev"]
+      # prod image has no poetry; taskorbit-worker is a venv entry-point on PATH
+      command = ["taskorbit-worker", "dev"]
 
       ports {
         name           = "http1"

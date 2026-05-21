@@ -15,6 +15,7 @@ locals {
     "vpcaccess.googleapis.com",
     "pubsub.googleapis.com",
     "logging.googleapis.com",
+    "cloudscheduler.googleapis.com",
   ]
 }
 
@@ -128,6 +129,21 @@ module "cloud_run" {
   cors_allow_origins = var.cors_allow_origins
 
   depends_on = [module.iam, module.secrets, module.database, module.network]
+}
+
+# ── Auto-shutdown scheduler (idle cost savings) ───────────────────────────────
+
+module "scheduler" {
+  source = "./modules/scheduler"
+
+  project_id       = var.project_id
+  region           = var.region
+  db_instance_name = module.database.instance_name
+
+  enable_auto_shutdown   = var.enable_auto_shutdown
+  scale_worker_overnight = var.scale_worker_overnight
+
+  depends_on = [module.database, google_project_service.apis]
 }
 
 # ── Observability (Prometheus + Loki + Grafana) ───────────────────────────────

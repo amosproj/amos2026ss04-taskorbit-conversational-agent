@@ -1,0 +1,138 @@
+name: Deploy to GCP
+
+# Deploys backend, worker, and frontend to Cloud Run on every push to main.
+# Authentication uses Workload Identity Federation (OIDC) — no long-lived
+# service-account keys are stored in GitHub secrets.
+#
+# Required GitHub Actions secrets:
+#   GCP_PROJECT_ID                  — GCP project ID
+#   GCP_WORKLOAD_IDENTITY_PROVIDER  — output of `terraform output workload_identity_provider`
+#   GCP_SA_EMAIL                    — output of `terraform output cicd_service_account_email`
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GCP_REGION: europe-west1
+  REGISTRY: europe-west1-docker.pkg.dev
+  REPOSITORY: taskorbit
+
+jobs:
+  # ── Build & push images ──────────────────────────────────────────────────────
+  build:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # required for Workload Identity OIDC token
+
+    outputs:
+      backend-image: ${{ steps.backend-tag.outputs.image }}
+      frontend-image: ${{ steps.frontend-tag.outputs.image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compute image tags
+        id: backend-tag
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/backend"
+          echo "image=${IMAGE}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "BACKEND_IMAGE=${IMAGE}" >> "$GITHUB_ENV"
+
+      - name: Compute frontend tag
+        id: frontend-tag
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/frontend"
+          echo "image=${IMAGE}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "FRONTEND_IMAGE=${IMAGE}" >> "$GITHUB_ENV"
+
+      - name: Build & push backend (prod target)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          target: prod
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+            ${{ env.BACKEND_IMAGE }}:latest
+
+      - name: Build & push frontend (prod target)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          target: prod
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: |
+            ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+            ${{ env.FRONTEND_IMAGE }}:latest
+
+  # ── Deploy to Cloud Run ───────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Cloud Run
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      - name: Deploy backend
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: taskorbit-backend
+          region: ${{ env.GCP_REGION }}
+          image: ${{ needs.build.outputs.backend-image }}
+
+      - name: Deploy worker
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: taskorbit-worker
+          region: ${{ env.GCP_REGION }}
+          image: ${{ needs.build.outputs.backend-image }}
+
+      - name: Deploy frontend
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: taskorbit-frontend
+          region: ${{ env.GCP_REGION }}
+          image: ${{ needs.build.outputs.frontend-image }}
+
+      - name: Print deployed URLs
+        run: |
+          echo "### Deployed services" >> "$GITHUB_STEP_SUMMARY"
+          gcloud run services list \
+            --region=${{ env.GCP_REGION }} \
+            --filter="metadata.name ~ taskorbit" \
+            --format="table(metadata.name, status.url)" \
+            >> "$GITHUB_STEP_SUMMARY"

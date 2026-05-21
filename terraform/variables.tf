@@ -150,6 +150,18 @@ variable "grafana_admin_password" {
 
 # ── Observability ─────────────────────────────────────────────────────────────
 
+variable "enable_auto_shutdown" {
+  description = "Enable Cloud Scheduler jobs to stop Cloud SQL and (optionally) scale down the worker outside business hours."
+  type        = bool
+  default     = true
+}
+
+variable "scale_worker_overnight" {
+  description = "Scale the LiveKit worker to 0 overnight. Saves cost but drops active voice rooms. Only enable when 24/7 availability is not required."
+  type        = bool
+  default     = false
+}
+
 variable "cors_allow_origins" {
   description = "Comma-separated list of origins allowed by the FastAPI CORS middleware."
   type        = string
