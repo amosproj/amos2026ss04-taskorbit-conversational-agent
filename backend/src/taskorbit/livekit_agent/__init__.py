@@ -41,7 +41,7 @@ def _get_orchestrator() -> ConversationOrchestrator:
 def _create_agent_config_from_metadata(metadata: dict[str, Any]) -> AgentConfig:
     """Extract agent configuration from LiveKit participant metadata."""
     from taskorbit.types import LLMConfig, STTConfig, TTSConfig
-    
+
     return AgentConfig(
         id=metadata.get("agent_id", "livekit-default"),
         name=metadata.get("agent_name", "TaskOrbit"),
@@ -83,10 +83,10 @@ async def build_agent_session(
     """Build an AgentSession for testing or worker use with database persistence."""
     if conversation_id is None:
         conversation_id = str(uuid.uuid4())
-    
+
     if agent_config is None:
         agent_config = _create_agent_config_from_metadata({})
-    
+
     # Get database session for persistence
     async for db in get_session():
         orchestrator = _get_orchestrator()
@@ -98,5 +98,5 @@ async def build_agent_session(
         )
         session = AgentSession(agent=agent)
         return session
-    
+
     raise RuntimeError("Could not create database session")

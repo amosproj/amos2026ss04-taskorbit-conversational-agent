@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from taskorbit.api.main import create_app
@@ -115,16 +115,17 @@ def test_create_conversation_returns_201() -> None:
 
 # ============ MOCK-BASED TESTS FOR AUTO-CREATE CONVERSATION BEHAVIOR ============
 
+
 def test_auto_create_conversation_logic_when_not_exists():
     """Test that auto-create logic creates conversation when it doesn't exist."""
     from taskorbit.database.models import Conversation
-    
+
     # Simulate conversation doesn't exist
     conversation_exists = False
     conversation_id = "test-conv-123"
     agent_id = "test-agent"
     agent_name = "Test Agent"
-    
+
     if not conversation_exists:
         conversation = Conversation(
             id=conversation_id,
@@ -137,25 +138,25 @@ def test_auto_create_conversation_logic_when_not_exists():
         assert conversation.id is not None
     else:
         pytest.fail("Should have created conversation")
-    
+
     assert True
 
 
 def test_auto_create_logic_reuses_existing_conversation():
     """Test that auto-create logic reuses existing conversation without duplicate."""
     from taskorbit.database.models import Conversation
-    
+
     # Simulate conversation already exists
     conversation_exists = True
     conversation_id = "existing-conv-456"
     existing_agent_name = "Existing Agent"
-    
+
     existing_conversation = Conversation(
         id=conversation_id,
         agent_id="existing-agent",
         agent_name=existing_agent_name,
     )
-    
+
     if conversation_exists:
         # Should reuse, not create new
         conversation = existing_conversation
@@ -165,22 +166,22 @@ def test_auto_create_logic_reuses_existing_conversation():
         assert conversation.id == existing_conversation.id
     else:
         pytest.fail("Should have reused existing conversation")
-    
+
     assert True
 
 
 def test_auto_create_logic_copies_agent_config_from_request():
     """Test that auto-created conversation uses agent_id and agent_name from request."""
     from taskorbit.database.models import Conversation
-    
+
     # Simulate request agent config
     request_agent_id = "custom-agent-789"
     request_agent_name = "Custom Named Agent"
     conversation_id = "test-conv-789"
-    
+
     # Simulate conversation doesn't exist
     conversation_exists = False
-    
+
     if not conversation_exists:
         conversation = Conversation(
             id=conversation_id,
@@ -191,7 +192,7 @@ def test_auto_create_logic_copies_agent_config_from_request():
         assert conversation.agent_name == request_agent_name
     else:
         pytest.fail("Should have created conversation with custom agent config")
-    
+
     assert True
 
 
@@ -200,13 +201,13 @@ def test_assistant_message_not_saved_without_user_message():
     # Simulate no user message
     has_user_message = False
     has_assistant_reply = True
-    
+
     saved_assistant = False
-    
+
     if has_user_message and has_assistant_reply:
         saved_assistant = True
     elif not has_user_message:
         # Assistant should NOT be saved
         saved_assistant = False
-    
+
     assert saved_assistant is False, "Assistant message should not be saved without a user message"

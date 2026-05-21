@@ -2,7 +2,11 @@ import { useEffect, useState } from "react";
 import { MessageSquare, Clock } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { getConversations, getConversationMessages, type ConversationMessage } from "@/lib/conversationApi";
+import {
+  getConversations,
+  getConversationMessages,
+  type ConversationMessage,
+} from "@/lib/conversationApi";
 
 type Conversation = {
   id: string;
@@ -58,11 +62,11 @@ export function HistoryPage() {
     yesterday.setDate(yesterday.getDate() - 1);
 
     if (date >= today) {
-      return `Today, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      return `Today, ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
     } else if (date >= yesterday) {
-      return `Yesterday, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      return `Yesterday, ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
     } else {
-      return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+      return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
     }
   };
 
@@ -117,11 +121,7 @@ export function HistoryPage() {
                         </div>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           <Clock className="h-3 w-3" />
-                          <span>
-                            {conv.ended_at
-                              ? formatDate(conv.ended_at)
-                              : "In progress"}
-                          </span>
+                          <span>{conv.ended_at ? formatDate(conv.ended_at) : "In progress"}</span>
                         </div>
                       </div>
                     ))}
@@ -172,9 +172,7 @@ export function HistoryPage() {
                       >
                         <div
                           className={`max-w-[80%] rounded-lg px-4 py-2 ${
-                            msg.role === "user"
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-muted"
+                            msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
                           }`}
                         >
                           <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
