@@ -1,0 +1,54 @@
+# Copy this file to terraform.tfvars and fill in real values.
+# terraform.tfvars is git-ignored — NEVER commit it.
+
+# ── GCP project ───────────────────────────────────────────────────────────────
+project_id = "your-gcp-project-id"
+region     = "europe-west1"
+
+# ── Domain ────────────────────────────────────────────────────────────────────
+# Point DNS A records for this domain AND api.<domain> AND grafana.<domain>
+# to the load_balancer_ip output after the first apply.
+domain = "taskorbit.example.com"
+
+# ── Container images ──────────────────────────────────────────────────────────
+# Build and push images to Artifact Registry first, then reference the digest.
+backend_image  = "europe-west1-docker.pkg.dev/your-gcp-project-id/taskorbit/backend:latest"
+frontend_image = "europe-west1-docker.pkg.dev/your-gcp-project-id/taskorbit/frontend:latest"
+
+# ── LiveKit ───────────────────────────────────────────────────────────────────
+livekit_url        = "wss://your-project.livekit.cloud"
+livekit_api_key    = ""
+livekit_api_secret = ""
+
+# ── Deepgram ──────────────────────────────────────────────────────────────────
+deepgram_api_key  = ""
+deepgram_model    = "nova-3"
+deepgram_language = "multi"
+
+# ── ElevenLabs ────────────────────────────────────────────────────────────────
+elevenlabs_api_key  = ""
+elevenlabs_voice_id = "21m00Tcm4TlvDq8ikWAM"
+elevenlabs_model    = "eleven_multilingual_v2"
+
+# ── LLM ───────────────────────────────────────────────────────────────────────
+openai_api_key = ""
+openai_model   = "gpt-4o-mini"
+google_api_key = ""
+google_model   = "gemini-2.5-flash"
+
+# ── Grafana ───────────────────────────────────────────────────────────────────
+grafana_admin_password = "change-me-strong-password"
+
+# ── CORS ──────────────────────────────────────────────────────────────────────
+cors_allow_origins = "https://taskorbit.example.com"
+
+# ── GitHub (Workload Identity) ────────────────────────────────────────────────
+github_repository = "amosproj/amos2026ss04-taskorbit-conversational-agent"
+
+# ── Cloud Run scaling ─────────────────────────────────────────────────────────
+backend_min_instances  = 1
+backend_max_instances  = 10
+worker_min_instances   = 1
+worker_max_instances   = 5
+frontend_min_instances = 1
+frontend_max_instances = 5
