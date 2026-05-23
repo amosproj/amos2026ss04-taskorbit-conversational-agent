@@ -18,6 +18,9 @@ on:
     types: [completed]
     branches:
       - main
+  push:
+    # Testing only — remove before merging to main
+    branches:
       - feature/integrate-cloud-environment-with-iac
   workflow_dispatch:
 
@@ -36,7 +39,7 @@ jobs:
   build:
     name: Build & Push Images
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: read
       id-token: write
