@@ -55,7 +55,10 @@ services:
     volumes:
       - ./backend/src:/app/src
       - ./backend/tests:/app/tests
-    command: poetry run taskorbit-api --host 0.0.0.0 --port 8000 --reload
+      - ./backend/migrations:/app/migrations
+      - ./backend/alembic.ini:/app/alembic.ini
+      - ./backend/start.sh:/app/start.sh
+    command: bash start.sh
     depends_on:
       postgres:
         condition: service_healthy
