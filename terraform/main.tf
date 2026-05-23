@@ -71,21 +71,21 @@ module "registry" {
   depends_on = [google_project_service.apis]
 }
 
-# ── STEP 5 (COMMENTED): Cloud SQL (PostgreSQL 16) ────────────────────────────
+# ── STEP 5 (ACTIVE): Cloud SQL (PostgreSQL 16) ───────────────────────────────
 # Regional HA database, private IP only, automated backups + PITR.
 # Depends on: Step 2 (network — private service access must exist first)
 # WARNING: takes 5–10 min to provision — do NOT cancel mid-apply.
 # Run: terraform apply -target=module.database
-#
-# module "database" {
-#   source = "./modules/database"
-#
-#   project_id = var.project_id
-#   region     = var.region
-#   network_id = module.network.vpc_id
-#
-#   depends_on = [module.network, google_project_service.apis]
-# }
+
+module "database" {
+  source = "./modules/database"
+
+  project_id = var.project_id
+  region     = var.region
+  network_id = module.network.vpc_id
+
+  depends_on = [module.network, google_project_service.apis]
+}
 
 # ── STEP 6 (COMMENTED): Secret Manager ───────────────────────────────────────
 # All API keys and the DB connection string stored as secrets.

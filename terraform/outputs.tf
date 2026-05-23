@@ -7,11 +7,11 @@ output "artifact_registry_url" {
   value       = module.registry.repository_url
 }
 
-# ── STEP 5 (COMMENTED): Database ─────────────────────────────────────────────
-# output "database_instance_name" {
-#   description = "Cloud SQL instance name (for connecting via Cloud SQL proxy)."
-#   value       = module.database.instance_name
-# }
+# ── STEP 5 (ACTIVE): Database ────────────────────────────────────────────────
+output "database_instance_name" {
+  description = "Cloud SQL instance name (for connecting via Cloud SQL proxy)."
+  value       = module.database.instance_name
+}
 
 # ── STEP 3 (ACTIVE): IAM ─────────────────────────────────────────────────────
 output "cicd_service_account_email" {

@@ -113,6 +113,21 @@ resource "google_project_iam_member" "cicd_secret_accessor" {
   member  = "serviceAccount:${google_service_account.cicd.email}"
 }
 
+# terraform-deployer SA also needs Artifact Registry write access
+# so it can push images during the transitional period before switching
+# GitHub Actions to the taskorbit-cicd SA key.
+resource "google_project_iam_member" "deployer_artifact_registry_writer" {
+  project = var.project_id
+  role    = "roles/artifactregistry.writer"
+  member  = "serviceAccount:terraform-deployer@${var.project_id}.iam.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "deployer_run_admin" {
+  project = var.project_id
+  role    = "roles/run.admin"
+  member  = "serviceAccount:terraform-deployer@${var.project_id}.iam.gserviceaccount.com"
+}
+
 # ── Workload Identity (GitHub Actions OIDC — no long-lived key) ───────────────
 
 resource "google_iam_workload_identity_pool" "github" {

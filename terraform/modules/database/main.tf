@@ -13,15 +13,16 @@ resource "google_sql_database_instance" "main" {
   deletion_protection = true
 
   settings {
-    # 2 vCPU / 7.5 GB RAM — scale up by bumping the tier
-    tier              = "db-custom-2-7680"
-    availability_type = "REGIONAL" # multi-zone HA with automatic failover
+    # Shared-core tier — cheapest option, suitable for dev/free tier
+    tier              = "db-f1-micro"
+    edition           = "ENTERPRISE"
+    availability_type = "ZONAL" # single zone — no HA on shared-core
 
     ip_configuration {
       ipv4_enabled                                  = false # no public IP
       private_network                               = var.network_id
       enable_private_path_for_google_cloud_services = true
-      require_ssl                                   = true
+      ssl_mode                                      = "ENCRYPTED_ONLY"
     }
 
     backup_configuration {

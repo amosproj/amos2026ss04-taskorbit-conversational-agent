@@ -3,7 +3,7 @@
 
 # ── GCP project ───────────────────────────────────────────────────────────────
 project_id = "your-gcp-project-id"
-region     = "europe-west1"
+region     = "europe-west3"
 
 # ── Domain ────────────────────────────────────────────────────────────────────
 # Point DNS A records for this domain AND api.<domain> AND grafana.<domain>
