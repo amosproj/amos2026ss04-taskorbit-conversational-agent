@@ -29,19 +29,19 @@ resource "google_project_service" "apis" {
   disable_on_destroy = false
 }
 
-# ── STEP 2 (COMMENTED): Networking ───────────────────────────────────────────
+# ── STEP 2 (ACTIVE): Networking ──────────────────────────────────────────────
 # VPC, subnet, Cloud NAT, Serverless VPC connector, private service access.
 # Depends on: Step 1 (APIs)
 # Run: terraform apply -target=module.network
-#
-# module "network" {
-#   source = "./modules/network"
-#
-#   project_id = var.project_id
-#   region     = var.region
-#
-#   depends_on = [google_project_service.apis]
-# }
+
+module "network" {
+  source = "./modules/network"
+
+  project_id = var.project_id
+  region     = var.region
+
+  depends_on = [google_project_service.apis]
+}
 
 # ── STEP 3 (COMMENTED): IAM / Service Accounts ───────────────────────────────
 # Service accounts, IAM bindings, GitHub Actions Workload Identity (OIDC).
