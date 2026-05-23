@@ -1,22 +1,24 @@
 name: Deploy to GCP
 
 # Deploys backend, worker, and frontend to Cloud Run after all quality gates
-# pass on main. Triggered by workflow_run so a broken lint or smoke-test run
-# on main never reaches production.
+# pass. Triggered by workflow_run so a broken lint or smoke-test run never
+# reaches production.
 #
-# Authentication uses Workload Identity Federation (OIDC) — no long-lived
-# service-account keys are stored in GitHub secrets.
+# Authentication uses a GCP service account key stored as a GitHub secret.
 #
 # Required GitHub Actions secrets:
-#   GCP_PROJECT_ID                  — GCP project ID
-#   GCP_WORKLOAD_IDENTITY_PROVIDER  — output of `terraform output workload_identity_provider`
-#   GCP_SA_EMAIL                    — output of `terraform output cicd_service_account_email`
+#   GCP_SA_KEY  — base64-encoded JSON key for terraform-deployer SA
+#
+# TODO: switch GCP_SA_KEY to Workload Identity (OIDC) after Step 3 IAM is applied.
+# Remove feature/integrate-cloud-environment-with-iac from branches before merging to main.
 
 on:
   workflow_run:
     workflows: ["Backend Linting", "Frontend Linting", "Start Web Service"]
     types: [completed]
-    branches: [main]
+    branches:
+      - main
+      # - feature/integrate-cloud-environment-with-iac
   workflow_dispatch:
 
 concurrency:
@@ -24,6 +26,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  GCP_PROJECT_ID: amos-taskorbit
   GCP_REGION: europe-west1
   REGISTRY: europe-west1-docker.pkg.dev
   REPOSITORY: taskorbit
@@ -33,11 +36,10 @@ jobs:
   build:
     name: Build & Push Images
     runs-on: ubuntu-latest
-    # Skip if triggered by a failed workflow_run; always run on workflow_dispatch.
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: read
-      id-token: write   # required for Workload Identity OIDC token
+      id-token: write
 
     outputs:
       backend-image: ${{ steps.backend-tag.outputs.image }}
@@ -47,16 +49,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # workflow_run sets github.sha to the workflow file ref, not the pushed
-          # commit — use head_sha from the triggering run instead.
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Authenticate to GCP
-        id: auth
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SA_EMAIL }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
@@ -64,17 +62,17 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Compute image tags
+      - name: Compute backend image tag
         id: backend-tag
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/backend"
+          IMAGE="${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/backend"
           echo "image=${IMAGE}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
           echo "BACKEND_IMAGE=${IMAGE}" >> "$GITHUB_ENV"
 
-      - name: Compute frontend tag
+      - name: Compute frontend image tag
         id: frontend-tag
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/frontend"
+          IMAGE="${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/frontend"
           echo "image=${IMAGE}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
           echo "FRONTEND_IMAGE=${IMAGE}" >> "$GITHUB_ENV"
 
@@ -115,8 +113,7 @@ jobs:
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SA_EMAIL }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Deploy backend
         uses: google-github-actions/deploy-cloudrun@v2
@@ -143,6 +140,7 @@ jobs:
         run: |
           echo "### Deployed services" >> "$GITHUB_STEP_SUMMARY"
           gcloud run services list \
+            --project=${{ env.GCP_PROJECT_ID }} \
             --region=${{ env.GCP_REGION }} \
             --filter="metadata.name ~ taskorbit" \
             --format="table(metadata.name, status.url)" \
