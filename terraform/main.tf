@@ -43,19 +43,19 @@ module "network" {
   depends_on = [google_project_service.apis]
 }
 
-# ── STEP 3 (COMMENTED): IAM / Service Accounts ───────────────────────────────
+# ── STEP 3 (ACTIVE): IAM / Service Accounts ──────────────────────────────────
 # Service accounts, IAM bindings, GitHub Actions Workload Identity (OIDC).
 # Depends on: Step 1 (APIs) — no dependency on network
 # Run: terraform apply -target=module.iam
-#
-# module "iam" {
-#   source = "./modules/iam"
-#
-#   project_id        = var.project_id
-#   github_repository = var.github_repository
-#
-#   depends_on = [google_project_service.apis]
-# }
+
+module "iam" {
+  source = "./modules/iam"
+
+  project_id        = var.project_id
+  github_repository = var.github_repository
+
+  depends_on = [google_project_service.apis]
+}
 
 # ── STEP 4 (COMMENTED): Artifact Registry ────────────────────────────────────
 # Docker repository for backend and frontend container images.

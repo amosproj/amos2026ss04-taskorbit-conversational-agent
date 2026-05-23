@@ -13,16 +13,16 @@
 #   value       = module.database.instance_name
 # }
 
-# ── STEP 3 (COMMENTED): IAM ──────────────────────────────────────────────────
-# output "cicd_service_account_email" {
-#   description = "CI/CD service account email — configure as GitHub Actions secret GCP_SA_EMAIL."
-#   value       = module.iam.cicd_sa_email
-# }
-#
-# output "workload_identity_provider" {
-#   description = "Workload Identity provider resource name — configure as GitHub Actions secret GCP_WORKLOAD_IDENTITY_PROVIDER."
-#   value       = module.iam.workload_identity_provider
-# }
+# ── STEP 3 (ACTIVE): IAM ─────────────────────────────────────────────────────
+output "cicd_service_account_email" {
+  description = "CI/CD service account email — configure as GitHub Actions secret GCP_SA_EMAIL."
+  value       = module.iam.cicd_sa_email
+}
+
+output "workload_identity_provider" {
+  description = "Workload Identity provider resource name — configure as GitHub Actions secret GCP_WORKLOAD_IDENTITY_PROVIDER."
+  value       = module.iam.workload_identity_provider
+}
 
 # ── STEP 7 (COMMENTED): Cloud Run + Load Balancer ────────────────────────────
 # output "frontend_url" {
