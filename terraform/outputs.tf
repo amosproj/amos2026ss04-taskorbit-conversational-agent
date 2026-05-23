@@ -1,11 +1,11 @@
 # Outputs are commented out to match the incremental apply strategy in main.tf.
 # Uncomment each output when the corresponding module is enabled.
 
-# ── STEP 4 (COMMENTED): Artifact Registry ────────────────────────────────────
-# output "artifact_registry_url" {
-#   description = "Artifact Registry Docker repository URL."
-#   value       = module.registry.repository_url
-# }
+# ── STEP 4 (ACTIVE): Artifact Registry ───────────────────────────────────────
+output "artifact_registry_url" {
+  description = "Artifact Registry Docker repository URL."
+  value       = module.registry.repository_url
+}
 
 # ── STEP 5 (COMMENTED): Database ─────────────────────────────────────────────
 # output "database_instance_name" {

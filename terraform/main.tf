@@ -57,19 +57,19 @@ module "iam" {
   depends_on = [google_project_service.apis]
 }
 
-# ── STEP 4 (COMMENTED): Artifact Registry ────────────────────────────────────
+# ── STEP 4 (ACTIVE): Artifact Registry ───────────────────────────────────────
 # Docker repository for backend and frontend container images.
 # Depends on: Step 1 (APIs)
 # Run: terraform apply -target=module.registry
-#
-# module "registry" {
-#   source = "./modules/registry"
-#
-#   project_id = var.project_id
-#   region     = var.region
-#
-#   depends_on = [google_project_service.apis]
-# }
+
+module "registry" {
+  source = "./modules/registry"
+
+  project_id = var.project_id
+  region     = var.region
+
+  depends_on = [google_project_service.apis]
+}
 
 # ── STEP 5 (COMMENTED): Cloud SQL (PostgreSQL 16) ────────────────────────────
 # Regional HA database, private IP only, automated backups + PITR.
