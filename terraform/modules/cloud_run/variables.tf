@@ -17,11 +17,37 @@ variable "secret_ids" {
   type        = map(string)
 }
 
-variable "backend_min_instances" { type = number; default = 1 }
-variable "backend_max_instances" { type = number; default = 10 }
-variable "worker_min_instances" { type = number; default = 1 }
-variable "worker_max_instances" { type = number; default = 5 }
-variable "frontend_min_instances" { type = number; default = 1 }
-variable "frontend_max_instances" { type = number; default = 5 }
+variable "backend_min_instances" {
+  type    = number
+  default = 1
+}
 
-variable "cors_allow_origins" { type = string; default = "" }
+variable "backend_max_instances" {
+  type    = number
+  default = 10
+}
+
+variable "worker_min_instances" {
+  type    = number
+  default = 1
+}
+
+variable "worker_max_instances" {
+  type    = number
+  default = 5
+}
+
+variable "frontend_min_instances" {
+  type    = number
+  default = 1
+}
+
+variable "frontend_max_instances" {
+  type    = number
+  default = 5
+}
+
+variable "cors_allow_origins" {
+  type    = string
+  default = ""
+}

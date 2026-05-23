@@ -24,26 +24,26 @@ output "workload_identity_provider" {
   value       = module.iam.workload_identity_provider
 }
 
-# ── STEP 7 (COMMENTED): Cloud Run + Load Balancer ────────────────────────────
-# output "frontend_url" {
-#   description = "Public URL of the React frontend."
-#   value       = module.cloud_run.frontend_url
-# }
-#
-# output "backend_url" {
-#   description = "Public URL of the FastAPI backend (api.<domain>)."
-#   value       = module.cloud_run.backend_url
-# }
-#
-# output "worker_url" {
-#   description = "Internal Cloud Run URL of the LiveKit worker (metrics at /metrics)."
-#   value       = module.cloud_run.worker_url
-# }
-#
-# output "load_balancer_ip" {
-#   description = "Global external IP — point your DNS A records here."
-#   value       = module.cloud_run.load_balancer_ip
-# }
+# ── STEP 7 (ACTIVE): Cloud Run + Load Balancer ───────────────────────────────
+output "frontend_url" {
+  description = "Public URL of the React frontend."
+  value       = module.cloud_run.frontend_url
+}
+
+output "backend_url" {
+  description = "Public URL of the FastAPI backend (api.<domain>)."
+  value       = module.cloud_run.backend_url
+}
+
+output "worker_url" {
+  description = "Internal Cloud Run URL of the LiveKit worker (metrics at /metrics)."
+  value       = module.cloud_run.worker_url
+}
+
+output "load_balancer_ip" {
+  description = "Global external IP — point your DNS A records here."
+  value       = module.cloud_run.load_balancer_ip
+}
 
 # ── STEP 9 (COMMENTED): Observability ────────────────────────────────────────
 # output "grafana_url" {

@@ -9,9 +9,10 @@ locals {
 # ── Backend (FastAPI API) ─────────────────────────────────────────────────────
 
 resource "google_cloud_run_v2_service" "backend" {
-  name     = "taskorbit-backend"
-  location = var.region
-  project  = var.project_id
+  name                = "taskorbit-backend"
+  location            = var.region
+  project             = var.project_id
+  deletion_protection = false
 
   # Reachable from the load balancer and from within the VPC (Prometheus scrape)
   ingress = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
@@ -136,10 +137,10 @@ resource "google_cloud_run_v2_service" "backend" {
           path = "/health"
           port = 8000
         }
-        initial_delay_seconds = 15
-        period_seconds        = 5
-        failure_threshold     = 6
-        timeout_seconds       = 3
+        initial_delay_seconds = 30
+        period_seconds        = 10
+        failure_threshold     = 12
+        timeout_seconds       = 5
       }
 
       liveness_probe {
@@ -161,9 +162,10 @@ resource "google_cloud_run_v2_service" "backend" {
 # ── Worker (LiveKit agent) ────────────────────────────────────────────────────
 
 resource "google_cloud_run_v2_service" "worker" {
-  name     = "taskorbit-worker"
-  location = var.region
-  project  = var.project_id
+  name                = "taskorbit-worker"
+  location            = var.region
+  project             = var.project_id
+  deletion_protection = false
 
   # Internal only — the worker connects OUT to LiveKit Cloud (no inbound public traffic).
   # Prometheus scrapes /metrics via the VPC connector.
@@ -302,9 +304,10 @@ resource "google_cloud_run_v2_service" "worker" {
 # ── Frontend (React/Vite served via nginx) ────────────────────────────────────
 
 resource "google_cloud_run_v2_service" "frontend" {
-  name     = "taskorbit-frontend"
-  location = var.region
-  project  = var.project_id
+  name                = "taskorbit-frontend"
+  location            = var.region
+  project             = var.project_id
+  deletion_protection = false
 
   ingress = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
 

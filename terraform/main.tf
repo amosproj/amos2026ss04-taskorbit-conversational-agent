@@ -116,44 +116,44 @@ module "secrets" {
   depends_on = [module.database, google_project_service.apis]
 }
 
-# ── STEP 7 (COMMENTED): Cloud Run Services + Load Balancer ───────────────────
+# ── STEP 7 (ACTIVE): Cloud Run Services + Load Balancer ──────────────────────
 # Backend, worker, frontend Cloud Run services; global HTTPS load balancer.
 # Depends on: Steps 2 (network), 3 (iam), 5 (database), 6 (secrets)
 # AFTER APPLY: note load_balancer_ip output and create DNS A records:
 #   your-domain.com       → load_balancer_ip
 #   api.your-domain.com   → load_balancer_ip
 # Run: terraform apply -target=module.cloud_run
-#
-# module "cloud_run" {
-#   source = "./modules/cloud_run"
-#
-#   project_id = var.project_id
-#   region     = var.region
-#   domain     = var.domain
-#
-#   backend_image  = var.backend_image
-#   frontend_image = var.frontend_image
-#
-#   backend_sa_email  = module.iam.backend_sa_email
-#   worker_sa_email   = module.iam.worker_sa_email
-#   frontend_sa_email = module.iam.frontend_sa_email
-#
-#   vpc_connector_id          = module.network.vpc_connector_id
-#   cloud_sql_connection_name = module.database.instance_connection_name
-#
-#   secret_ids = module.secrets.secret_ids
-#
-#   backend_min_instances  = var.backend_min_instances
-#   backend_max_instances  = var.backend_max_instances
-#   worker_min_instances   = var.worker_min_instances
-#   worker_max_instances   = var.worker_max_instances
-#   frontend_min_instances = var.frontend_min_instances
-#   frontend_max_instances = var.frontend_max_instances
-#
-#   cors_allow_origins = var.cors_allow_origins
-#
-#   depends_on = [module.iam, module.secrets, module.database, module.network]
-# }
+
+module "cloud_run" {
+  source = "./modules/cloud_run"
+
+  project_id = var.project_id
+  region     = var.region
+  domain     = var.domain
+
+  backend_image  = var.backend_image
+  frontend_image = var.frontend_image
+
+  backend_sa_email  = module.iam.backend_sa_email
+  worker_sa_email   = module.iam.worker_sa_email
+  frontend_sa_email = module.iam.frontend_sa_email
+
+  vpc_connector_id          = module.network.vpc_connector_id
+  cloud_sql_connection_name = module.database.instance_connection_name
+
+  secret_ids = module.secrets.secret_ids
+
+  backend_min_instances  = var.backend_min_instances
+  backend_max_instances  = var.backend_max_instances
+  worker_min_instances   = var.worker_min_instances
+  worker_max_instances   = var.worker_max_instances
+  frontend_min_instances = var.frontend_min_instances
+  frontend_max_instances = var.frontend_max_instances
+
+  cors_allow_origins = var.cors_allow_origins
+
+  depends_on = [module.iam, module.secrets, module.database, module.network]
+}
 
 # ── STEP 8 (COMMENTED): Auto-shutdown Scheduler ───────────────────────────────
 # Cloud Scheduler stops Cloud SQL at 22:00 Mon–Fri and restarts at 07:00 (CET).

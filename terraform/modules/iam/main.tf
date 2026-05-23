@@ -113,9 +113,8 @@ resource "google_project_iam_member" "cicd_secret_accessor" {
   member  = "serviceAccount:${google_service_account.cicd.email}"
 }
 
-# terraform-deployer SA also needs Artifact Registry write access
-# so it can push images during the transitional period before switching
-# GitHub Actions to the taskorbit-cicd SA key.
+# terraform-deployer SA transitional bindings — remove after switching
+# GitHub Actions to taskorbit-cicd SA key (see CLAUDE.md).
 resource "google_project_iam_member" "deployer_artifact_registry_writer" {
   project = var.project_id
   role    = "roles/artifactregistry.writer"
@@ -126,6 +125,26 @@ resource "google_project_iam_member" "deployer_run_admin" {
   project = var.project_id
   role    = "roles/run.admin"
   member  = "serviceAccount:terraform-deployer@${var.project_id}.iam.gserviceaccount.com"
+}
+
+# terraform-deployer must be able to actAs each Cloud Run service account
+# when deploying services (iam.serviceaccounts.actAs required by Cloud Run).
+resource "google_service_account_iam_member" "deployer_actAs_backend" {
+  service_account_id = google_service_account.backend.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:terraform-deployer@${var.project_id}.iam.gserviceaccount.com"
+}
+
+resource "google_service_account_iam_member" "deployer_actAs_worker" {
+  service_account_id = google_service_account.worker.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:terraform-deployer@${var.project_id}.iam.gserviceaccount.com"
+}
+
+resource "google_service_account_iam_member" "deployer_actAs_frontend" {
+  service_account_id = google_service_account.frontend.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:terraform-deployer@${var.project_id}.iam.gserviceaccount.com"
 }
 
 # ── Workload Identity (GitHub Actions OIDC — no long-lived key) ───────────────
