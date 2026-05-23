@@ -87,34 +87,34 @@ module "database" {
   depends_on = [module.network, google_project_service.apis]
 }
 
-# ── STEP 6 (COMMENTED): Secret Manager ───────────────────────────────────────
+# ── STEP 6 (ACTIVE): Secret Manager ──────────────────────────────────────────
 # All API keys and the DB connection string stored as secrets.
 # Depends on: Step 5 (database — DB connection string is a secret value)
 # Run: terraform apply -target=module.secrets
-#
-# module "secrets" {
-#   source = "./modules/secrets"
-#
-#   project_id = var.project_id
-#
-#   livekit_url            = var.livekit_url
-#   livekit_api_key        = var.livekit_api_key
-#   livekit_api_secret     = var.livekit_api_secret
-#   deepgram_api_key       = var.deepgram_api_key
-#   deepgram_model         = var.deepgram_model
-#   deepgram_language      = var.deepgram_language
-#   elevenlabs_api_key     = var.elevenlabs_api_key
-#   elevenlabs_voice_id    = var.elevenlabs_voice_id
-#   elevenlabs_model       = var.elevenlabs_model
-#   openai_api_key         = var.openai_api_key
-#   openai_model           = var.openai_model
-#   google_api_key         = var.google_api_key
-#   google_model           = var.google_model
-#   database_url           = module.database.connection_string
-#   grafana_admin_password = var.grafana_admin_password
-#
-#   depends_on = [module.database, google_project_service.apis]
-# }
+
+module "secrets" {
+  source = "./modules/secrets"
+
+  project_id = var.project_id
+
+  livekit_url            = var.livekit_url
+  livekit_api_key        = var.livekit_api_key
+  livekit_api_secret     = var.livekit_api_secret
+  deepgram_api_key       = var.deepgram_api_key
+  deepgram_model         = var.deepgram_model
+  deepgram_language      = var.deepgram_language
+  elevenlabs_api_key     = var.elevenlabs_api_key
+  elevenlabs_voice_id    = var.elevenlabs_voice_id
+  elevenlabs_model       = var.elevenlabs_model
+  openai_api_key         = var.openai_api_key
+  openai_model           = var.openai_model
+  google_api_key         = var.google_api_key
+  google_model           = var.google_model
+  database_url           = module.database.connection_string
+  grafana_admin_password = var.grafana_admin_password
+
+  depends_on = [module.database, google_project_service.apis]
+}
 
 # ── STEP 7 (COMMENTED): Cloud Run Services + Load Balancer ───────────────────
 # Backend, worker, frontend Cloud Run services; global HTTPS load balancer.
