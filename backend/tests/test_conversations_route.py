@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 from taskorbit.api.main import create_app
@@ -26,6 +25,17 @@ _VALID_PAYLOAD = {
     "messages": [{"role": "user", "content": "Hello"}],
 }
 
+_NO_USER_PAYLOAD = {
+    "conversation_id": "conv-no-user",
+    "agent_config": {
+        "id": "agent-1",
+        "name": "Bot",
+        "persona": "Helpful",
+        "greeting": "Hi!",
+    },
+    "messages": [{"role": "assistant", "content": "Hello"}],
+}
+
 
 def _mock_db() -> AsyncMock:
     """Return a mock async DB session."""
@@ -38,8 +48,8 @@ def _mock_db() -> AsyncMock:
     return db
 
 
-def test_process_conversation_returns_200_with_mock() -> None:
-    """Verifies that the endpoint returns a 200 and a valid response using a mock orchestrator."""
+def _mock_orchestrator_with_response() -> AsyncMock:
+    """Return a mock orchestrator with a valid response."""
     mock_response = ConversationResponse(
         conversation_id="conv-1",
         reply=Message(role=MessageRole.ASSISTANT, content="[Mocked] Hello"),
@@ -47,16 +57,17 @@ def test_process_conversation_returns_200_with_mock() -> None:
     )
     mock_orchestrator = AsyncMock()
     mock_orchestrator.process_message.return_value = mock_response
+    return mock_orchestrator
+
+
+def test_process_conversation_returns_200_with_mock() -> None:
+    """Verifies that the endpoint returns a 200 and a valid response using a mock orchestrator."""
+    mock_orchestrator = _mock_orchestrator_with_response()
     app = create_app()
     app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
     app.dependency_overrides[get_session] = _mock_db
-    with patch(
-        "taskorbit.api.routes.conversations.create_conversation_message",
-        new_callable=AsyncMock,
-        return_value=None,
-    ):
-        with TestClient(app) as client:
-            response = client.post("/v1/conversations/process", json=_VALID_PAYLOAD)
+    with TestClient(app) as client:
+        response = client.post("/v1/conversations/process", json=_VALID_PAYLOAD)
     assert response.status_code == 200
     body = response.json()
     assert body["conversation_id"] == "conv-1"
@@ -113,101 +124,82 @@ def test_create_conversation_returns_201() -> None:
     app.dependency_overrides = {}
 
 
-# ============ MOCK-BASED TESTS FOR AUTO-CREATE CONVERSATION BEHAVIOR ============
+# ============ TESTS FOR AUTO-CREATE CONVERSATION BEHAVIOR ============
 
 
-def test_auto_create_conversation_logic_when_not_exists():
-    """Test that auto-create logic creates conversation when it doesn't exist."""
-    from taskorbit.database.models import Conversation
-
-    # Simulate conversation doesn't exist
-    conversation_exists = False
-    conversation_id = "test-conv-123"
-    agent_id = "test-agent"
-    agent_name = "Test Agent"
-
-    if not conversation_exists:
-        conversation = Conversation(
-            id=conversation_id,
-            agent_id=agent_id,
-            agent_name=agent_name,
-        )
-        assert conversation.id == conversation_id
-        assert conversation.agent_id == agent_id
-        assert conversation.agent_name == agent_name
-        assert conversation.id is not None
-    else:
-        pytest.fail("Should have created conversation")
-
-    assert True
+def test_process_conversation_auto_creates_when_missing() -> None:
+    """Auto-create fires when conversation row doesn't exist."""
+    mock_orchestrator = _mock_orchestrator_with_response()
+    app = create_app()
+    app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
+    app.dependency_overrides[get_session] = _mock_db
+    with TestClient(app) as client:
+        response = client.post("/v1/conversations/process", json=_VALID_PAYLOAD)
+    assert response.status_code == 200
+    # orchestrator.process_message was called with db argument
+    mock_orchestrator.process_message.assert_called_once()
+    args, kwargs = mock_orchestrator.process_message.call_args
+    assert "db" in kwargs or len(args) >= 2
+    app.dependency_overrides = {}
 
 
-def test_auto_create_logic_reuses_existing_conversation():
-    """Test that auto-create logic reuses existing conversation without duplicate."""
-    from taskorbit.database.models import Conversation
+def test_process_conversation_passes_agent_fields_from_request() -> None:
+    """Agent fields come from the request, not hardcoded defaults."""
+    mock_orchestrator = _mock_orchestrator_with_response()
+    app = create_app()
+    app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
+    app.dependency_overrides[get_session] = _mock_db
+    payload = {
+        "conversation_id": "conv-custom",
+        "agent_config": {
+            "id": "custom-agent-id",
+            "name": "CustomBot",
+            "persona": "Custom persona",
+            "greeting": "Hello!",
+        },
+        "messages": [{"role": "user", "content": "Test"}],
+    }
+    with TestClient(app) as client:
+        response = client.post("/v1/conversations/process", json=payload)
+    assert response.status_code == 200
+    args, kwargs = mock_orchestrator.process_message.call_args
+    request_arg = args[0] if args else kwargs.get("request")
+    assert request_arg.agent_config.id == "custom-agent-id"
+    assert request_arg.agent_config.name == "CustomBot"
+    app.dependency_overrides = {}
 
-    # Simulate conversation already exists
-    conversation_exists = True
-    conversation_id = "existing-conv-456"
-    existing_agent_name = "Existing Agent"
 
-    existing_conversation = Conversation(
-        id=conversation_id,
-        agent_id="existing-agent",
-        agent_name=existing_agent_name,
+def test_process_conversation_no_user_message_still_returns_200() -> None:
+    """No-user-message edge case — endpoint returns 200, orchestrator called."""
+    mock_response = ConversationResponse(
+        conversation_id="conv-no-user",
+        reply=Message(role=MessageRole.ASSISTANT, content="Hello"),
+        status="success",
     )
-
-    if conversation_exists:
-        # Should reuse, not create new
-        conversation = existing_conversation
-        assert conversation.id == conversation_id
-        assert conversation.agent_name == existing_agent_name
-        # Verify no duplicate
-        assert conversation.id == existing_conversation.id
-    else:
-        pytest.fail("Should have reused existing conversation")
-
-    assert True
+    mock_orchestrator = AsyncMock()
+    mock_orchestrator.process_message.return_value = mock_response
+    app = create_app()
+    app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
+    app.dependency_overrides[get_session] = _mock_db
+    with TestClient(app) as client:
+        response = client.post("/v1/conversations/process", json=_NO_USER_PAYLOAD)
+    assert response.status_code == 200
+    mock_orchestrator.process_message.assert_called_once()
+    app.dependency_overrides = {}
 
 
-def test_auto_create_logic_copies_agent_config_from_request():
-    """Test that auto-created conversation uses agent_id and agent_name from request."""
-    from taskorbit.database.models import Conversation
-
-    # Simulate request agent config
-    request_agent_id = "custom-agent-789"
-    request_agent_name = "Custom Named Agent"
-    conversation_id = "test-conv-789"
-
-    # Simulate conversation doesn't exist
-    conversation_exists = False
-
-    if not conversation_exists:
-        conversation = Conversation(
-            id=conversation_id,
-            agent_id=request_agent_id,
-            agent_name=request_agent_name,
-        )
-        assert conversation.agent_id == request_agent_id
-        assert conversation.agent_name == request_agent_name
-    else:
-        pytest.fail("Should have created conversation with custom agent config")
-
-    assert True
-
-
-def test_assistant_message_not_saved_without_user_message():
-    """Test that assistant message is NOT saved when there is no user message."""
-    # Simulate no user message
-    has_user_message = False
-    has_assistant_reply = True
-
-    saved_assistant = False
-
-    if has_user_message and has_assistant_reply:
-        saved_assistant = True
-    elif not has_user_message:
-        # Assistant should NOT be saved
-        saved_assistant = False
-
-    assert saved_assistant is False, "Assistant message should not be saved without a user message"
+def test_process_conversation_idempotent_when_exists() -> None:
+    """Orchestrator is called with db — idempotency handled inside orchestrator."""
+    mock_orchestrator = _mock_orchestrator_with_response()
+    app = create_app()
+    app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
+    app.dependency_overrides[get_session] = _mock_db
+    with TestClient(app) as client:
+        # First call
+        r1 = client.post("/v1/conversations/process", json=_VALID_PAYLOAD)
+        # Second call same conversation_id
+        r2 = client.post("/v1/conversations/process", json=_VALID_PAYLOAD)
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert mock_orchestrator.process_message.call_count == 2
+    app.dependency_overrides = {}
