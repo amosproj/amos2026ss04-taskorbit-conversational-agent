@@ -14,8 +14,8 @@ resource "google_cloud_run_v2_service" "backend" {
   project             = var.project_id
   deletion_protection = false
 
-  # Reachable from the load balancer and from within the VPC (Prometheus scrape)
-  ingress = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+  # TODO: switch back to INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER after domain + LB is configured
+  ingress = "INGRESS_TRAFFIC_ALL"
 
   template {
     service_account = var.backend_sa_email
@@ -309,7 +309,8 @@ resource "google_cloud_run_v2_service" "frontend" {
   project             = var.project_id
   deletion_protection = false
 
-  ingress = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+  # TODO: switch back to INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER after domain + LB is configured
+  ingress = "INGRESS_TRAFFIC_ALL"
 
   template {
     service_account = var.frontend_sa_email
@@ -329,8 +330,8 @@ resource "google_cloud_run_v2_service" "frontend" {
       }
 
       env {
-        name  = "VITE_API_URL"
-        value = "https://api.${var.domain}"
+        name  = "BACKEND_URL"
+        value = google_cloud_run_v2_service.backend.uri
       }
 
       resources {

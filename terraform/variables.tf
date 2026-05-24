@@ -287,3 +287,9 @@ variable "cors_allow_origins" {
   type        = string
   default     = ""
 }
+
+variable "api_url_override" {
+  description = "Override VITE_API_URL for the frontend — set to the backend Cloud Run URL when no domain/LB is configured. Leave empty to use https://api.<domain>."
+  type        = string
+  default     = ""
+}

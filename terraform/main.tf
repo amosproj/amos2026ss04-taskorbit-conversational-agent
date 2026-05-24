@@ -151,6 +151,7 @@ module "cloud_run" {
   frontend_max_instances = var.frontend_max_instances
 
   cors_allow_origins = var.cors_allow_origins
+  api_url_override   = var.api_url_override
 
   depends_on = [module.iam, module.secrets, module.database, module.network]
 }
