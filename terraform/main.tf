@@ -156,23 +156,23 @@ module "cloud_run" {
   depends_on = [module.iam, module.secrets, module.database, module.network]
 }
 
-# ── STEP 8 (COMMENTED): Auto-shutdown Scheduler ───────────────────────────────
+# ── STEP 8 (ACTIVE): Auto-shutdown Scheduler ─────────────────────────────────
 # Cloud Scheduler stops Cloud SQL at 22:00 Mon–Fri and restarts at 07:00 (CET).
 # Depends on: Step 5 (database — needs instance name)
 # Run: terraform apply -target=module.scheduler
-#
-# module "scheduler" {
-#   source = "./modules/scheduler"
-#
-#   project_id       = var.project_id
-#   region           = var.region
-#   db_instance_name = module.database.instance_name
-#
-#   enable_auto_shutdown   = var.enable_auto_shutdown
-#   scale_worker_overnight = var.scale_worker_overnight
-#
-#   depends_on = [module.database, google_project_service.apis]
-# }
+
+module "scheduler" {
+  source = "./modules/scheduler"
+
+  project_id       = var.project_id
+  region           = var.region
+  db_instance_name = module.database.instance_name
+
+  enable_auto_shutdown   = var.enable_auto_shutdown
+  scale_worker_overnight = var.scale_worker_overnight
+
+  depends_on = [module.database, google_project_service.apis]
+}
 
 # ── STEP 9 (COMMENTED): Observability (Prometheus + Loki + Grafana) ───────────
 # Scrapes backend/worker metrics, aggregates logs, Grafana dashboards.
