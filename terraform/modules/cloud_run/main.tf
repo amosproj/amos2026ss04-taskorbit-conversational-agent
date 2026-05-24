@@ -2,7 +2,9 @@ locals {
   # Cloud SQL socket volume shared by backend and worker containers
   cloudsql_volume_name = "cloudsql"
 
-  # CORS origins — fall back to the frontend domain if not explicitly set
+  # CORS origins — explicit override wins; otherwise allow both the custom domain
+  # and the raw frontend Cloud Run URL so direct .run.app access works without
+  # needing to set cors_allow_origins in tfvars.
   cors_origins = var.cors_allow_origins != "" ? var.cors_allow_origins : "https://${var.domain}"
 }
 
@@ -332,6 +334,13 @@ resource "google_cloud_run_v2_service" "frontend" {
       env {
         name  = "BACKEND_URL"
         value = google_cloud_run_v2_service.backend.uri
+      }
+
+      # Tells the nginx proxy where to forward /api/* requests.
+      # Falls back to the backend Cloud Run URI when no api_url_override is set.
+      env {
+        name  = "API_URL"
+        value = var.api_url_override != "" ? var.api_url_override : google_cloud_run_v2_service.backend.uri
       }
 
       resources {
