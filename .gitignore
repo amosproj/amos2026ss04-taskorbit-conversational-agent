@@ -95,3 +95,9 @@ terraform/*.tfstate.backup
 terraform/*.tfvars
 !terraform/terraform.tfvars.example
 # .terraform.lock.hcl is intentionally committed (pins provider versions)
+
+# GCP service account key files — never commit credentials
+terraform/*.json
+*.json.key
+*-credentials.json
+gha-creds-*.json

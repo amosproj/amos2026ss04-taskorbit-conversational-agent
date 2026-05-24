@@ -12,11 +12,7 @@ locals {
       - job_name: taskorbit-backend
         metrics_path: /metrics
         scheme: https
-        # Cloud Run requires a valid OIDC token; Prometheus uses the SA attached
-        # to its Cloud Run instance via the metadata server.
-        authorization:
-          type: Bearer
-          credentials_file: /var/run/secrets/google/token
+        # Backend has allUsers run.invoker — no auth needed
         static_configs:
           - targets:
               - ${local.backend_host}
@@ -24,18 +20,14 @@ locals {
           - target_label: job
             replacement: taskorbit-backend
 
-      - job_name: taskorbit-worker
-        metrics_path: /metrics
-        scheme: https
-        authorization:
-          type: Bearer
-          credentials_file: /var/run/secrets/google/token
-        static_configs:
-          - targets:
-              - ${local.worker_host}
-        relabel_configs:
-          - target_label: job
-            replacement: taskorbit-worker
+      # TODO: re-enable worker scrape once Prometheus has a VPC connector so it
+      # can reach taskorbit-worker which has INGRESS_TRAFFIC_INTERNAL_ONLY.
+      # - job_name: taskorbit-worker
+      #   metrics_path: /metrics
+      #   scheme: https
+      #   static_configs:
+      #     - targets:
+      #         - ${local.worker_host}
   YAML
 
   loki_config = <<-YAML
@@ -207,7 +199,7 @@ resource "google_cloud_run_v2_service" "loki" {
   location = var.region
   project  = var.project_id
 
-  ingress = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+  ingress = "INGRESS_TRAFFIC_ALL"
 
   template {
     service_account = var.observability_sa_email
@@ -288,7 +280,7 @@ resource "google_cloud_run_v2_service" "prometheus" {
   location = var.region
   project  = var.project_id
 
-  ingress = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+  ingress = "INGRESS_TRAFFIC_ALL"
 
   template {
     service_account = var.observability_sa_email
@@ -482,6 +474,24 @@ resource "google_cloud_run_v2_service" "grafana" {
   }
 }
 
+# Allow public access to Loki so Pub/Sub push and Grafana can reach it
+resource "google_cloud_run_v2_service_iam_member" "loki_public" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.loki.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
+# Allow Grafana to query Prometheus without auth (Prometheus UI handles no sensitive data)
+resource "google_cloud_run_v2_service_iam_member" "prometheus_public" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.prometheus.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
 # Allow unauthenticated access to Grafana (login form handles auth)
 resource "google_cloud_run_v2_service_iam_member" "grafana_public" {
   project  = var.project_id
@@ -591,6 +601,11 @@ resource "google_pubsub_subscription" "loki_push" {
 
   push_config {
     push_endpoint = "${google_cloud_run_v2_service.loki.uri}/loki/api/v1/push"
+
+    oidc_token {
+      service_account_email = var.observability_sa_email
+      audience              = google_cloud_run_v2_service.loki.uri
+    }
   }
 
   message_retention_duration = "3600s"
