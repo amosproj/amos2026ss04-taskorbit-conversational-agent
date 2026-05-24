@@ -42,6 +42,11 @@ grafana_admin_password = "change-me-strong-password"
 # ── CORS ──────────────────────────────────────────────────────────────────────
 cors_allow_origins = "https://taskorbit.example.com"
 
+# ── API URL override (no-domain testing) ──────────────────────────────────────
+# Set to the backend Cloud Run URL when testing without a domain/load balancer.
+# Leave empty when using a real domain (uses https://api.<domain> instead).
+# api_url_override = "https://taskorbit-backend-<hash>-ew.a.run.app"
+
 # ── GitHub (Workload Identity) ────────────────────────────────────────────────
 github_repository = "amosproj/amos2026ss04-taskorbit-conversational-agent"
 
