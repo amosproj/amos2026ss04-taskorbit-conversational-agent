@@ -48,13 +48,16 @@
     COPY pyproject.toml poetry.lock* README.md ./
     COPY src ./src
     COPY tests ./tests
+    COPY alembic.ini ./
+    COPY migrations ./migrations
+    COPY start.sh ./start.sh
 
-    RUN poetry install --no-ansi
+    RUN poetry install --no-ansi && chmod +x start.sh
 
     ENV PATH="/app/.venv/bin:${PATH}"
 
     EXPOSE 8000
-    CMD ["poetry", "run", "taskorbit-api", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    CMD ["bash", "start.sh"]
 
     # ---------- Prod image ----------
     FROM python:3.11-slim AS prod
