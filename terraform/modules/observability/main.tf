@@ -365,7 +365,10 @@ resource "google_cloud_run_v2_service" "grafana" {
   location = var.region
   project  = var.project_id
 
-  ingress = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+  # Use INGRESS_TRAFFIC_ALL so Grafana is reachable via its Cloud Run URL
+  # without needing a custom domain or load balancer.
+  # Switch to INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER once a domain is configured.
+  ingress = "INGRESS_TRAFFIC_ALL"
 
   template {
     service_account = var.observability_sa_email
@@ -386,7 +389,7 @@ resource "google_cloud_run_v2_service" "grafana" {
 
       env {
         name  = "GF_SERVER_ROOT_URL"
-        value = "https://grafana.${var.domain}"
+        value = "%(protocol)s://%(domain)s:%(http_port)s/"
       }
 
       # Production: anonymous admin disabled — use admin credentials

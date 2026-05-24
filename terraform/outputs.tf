@@ -47,11 +47,11 @@ output "load_balancer_ip" {
 
 # ── STEP 9 (ACTIVE): Observability ───────────────────────────────────────────
 output "grafana_url" {
-  description = "Grafana dashboard URL (grafana.<domain>)."
+  description = "Grafana dashboard Cloud Run URL — open this in your browser to access Grafana."
   value       = module.observability.grafana_url
 }
 
 output "grafana_lb_ip" {
-  description = "Grafana load balancer IP — point grafana.<domain> DNS A record here."
+  description = "Grafana load balancer IP — only needed when a custom domain is configured."
   value       = module.observability.grafana_lb_ip
 }

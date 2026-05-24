@@ -9,8 +9,8 @@ output "prometheus_url" {
 }
 
 output "grafana_url" {
-  description = "Public Grafana URL (grafana.<domain>)."
-  value       = "https://grafana.${var.domain}"
+  description = "Public Grafana Cloud Run URL — use this to access the dashboard when no custom domain is configured."
+  value       = google_cloud_run_v2_service.grafana.uri
 }
 
 output "grafana_lb_ip" {
