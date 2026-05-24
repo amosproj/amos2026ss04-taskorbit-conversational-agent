@@ -101,6 +101,18 @@ You are the main orchestrator who guides customers through the service flow:
     },
   ],
   engine: {},
+  persona_constraints: {
+    scope:
+      "TechStore customer service: account setup, order tracking, returns, and product questions.",
+    out_of_scope: [
+      "medical advice",
+      "therapy or emotional counseling",
+      "legal advice",
+      "financial advice",
+    ],
+    refusal_template:
+      "I'm here to help with TechStore questions — for that I'd recommend reaching out to a qualified professional. Is there anything TechStore-related I can help with?",
+  },
 };
 
 /**

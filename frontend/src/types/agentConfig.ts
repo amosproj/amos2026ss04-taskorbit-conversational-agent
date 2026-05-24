@@ -97,6 +97,17 @@ export type VadConfig = {
   silence_threshold_ms: number;
 };
 
+/**
+ * PersonaConstraints — optional scope/refusal guardrails keeping the agent
+ * in role on off-topic input (ticket #69). Aligned with
+ * `agentMetadata.persona_constraints` in schemas/agent-task.schema.json.
+ */
+export type PersonaConstraints = {
+  scope?: string;
+  out_of_scope?: string[];
+  refusal_template?: string;
+};
+
 export type AgentConfig = {
   agent_id: string;
   name: string;
@@ -114,6 +125,7 @@ export type AgentConfig = {
   confirmations?: ConfirmationsConfig;
   language?: LanguageConfig;
   vad?: VadConfig;
+  persona_constraints?: PersonaConstraints;
 };
 
 /** Strip `undefined` optional sections so JSON output stays Preet-faithful. */
@@ -133,6 +145,7 @@ export function serializeAgent(agent: AgentConfig): Record<string, unknown> {
   if (agent.confirmations) out.confirmations = agent.confirmations;
   if (agent.language) out.language = agent.language;
   if (agent.vad) out.vad = agent.vad;
+  if (agent.persona_constraints) out.persona_constraints = agent.persona_constraints;
   return out;
 }
 

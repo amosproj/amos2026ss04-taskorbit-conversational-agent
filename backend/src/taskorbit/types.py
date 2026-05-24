@@ -90,6 +90,19 @@ class TTSConfig(BaseModel):
     model: str = "eleven_multilingual_v2"
 
 
+class PersonaConstraints(BaseModel):
+    """Optional persona scope, out-of-scope domains, and refusal template.
+
+    Augments the system prompt so the LLM stays in role on off-topic input
+    (ticket #69). All fields are optional — a constraints object with no
+    fields populated is treated as a no-op by ``with_persona_guardrails``.
+    """
+
+    scope: str | None = None
+    out_of_scope: list[str] = Field(default_factory=list)
+    refusal_template: str | None = None
+
+
 class AgentConfig(BaseModel):
     id: str
     name: str
@@ -99,6 +112,7 @@ class AgentConfig(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     tts: TTSConfig = Field(default_factory=TTSConfig)
     tools: list[ToolDefinition] = Field(default_factory=list)
+    persona_constraints: PersonaConstraints | None = None
 
 
 # ---------------------------------------------------------------------------

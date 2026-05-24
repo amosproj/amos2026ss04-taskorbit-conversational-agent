@@ -212,3 +212,60 @@ async def test_llm_node_skips_latency_when_no_commit_time() -> None:
         [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
 
     mock_metrics.voice_turn_latency_seconds.observe.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Voice-path persona guardrails (ticket #69)
+# ---------------------------------------------------------------------------
+
+
+def test_default_agent_config_has_persona_guardrails() -> None:
+    """The voice worker's fallback AgentConfig must carry persona_constraints,
+    so the voice path receives the same guardrail injection as the text path
+    until token-metadata wiring lands (separate ticket)."""
+    from taskorbit.livekit_agent.llm import _default_agent_config
+
+    config = _default_agent_config()
+    assert config.persona_constraints is not None
+    assert config.persona_constraints.scope is not None
+    assert len(config.persona_constraints.out_of_scope) > 0
+    assert config.persona_constraints.refusal_template is not None
+
+
+@pytest.mark.asyncio
+async def test_voice_path_propagates_persona_guardrails_into_prompt() -> None:
+    """End-to-end voice path: the guardrail text reaches the LLM client.
+
+    Mirrors test_persona_guardrails_flow_through_to_llm_prompt for the
+    text path. Uses a real ConversationOrchestrator so _build_system_prompt
+    fires, and asserts the augmented prompt includes the refusal_template
+    line from _default_agent_config.
+    """
+    from taskorbit.config import Settings
+    from taskorbit.livekit_agent.llm import _default_agent_config
+    from taskorbit.orchestration import ConversationOrchestrator
+
+    orchestrator = ConversationOrchestrator(
+        settings=Settings(openai_api_key="sk-test", google_api_key="AIza-test")
+    )
+    voice_agent_config = _default_agent_config()
+    refusal = voice_agent_config.persona_constraints.refusal_template
+
+    mock_client = MagicMock()
+    mock_client.generate = AsyncMock(return_value="Sorry, only TechStore.")
+
+    agent = OrchestratorAgent(
+        orchestrator=orchestrator,
+        agent_config=voice_agent_config,
+        conversation_id="voice-conv",
+    )
+    chat_ctx = _make_chat_ctx([("user", "I'm just very sad.")])
+    agent.request_reply()
+
+    with patch("taskorbit.integrations.llm.factory.get_llm_client", return_value=mock_client):
+        [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
+
+    augmented_prompt = mock_client.generate.call_args.args[0]
+    assert "Scope: " in augmented_prompt
+    assert "Out of scope (politely redirect):" in augmented_prompt
+    assert f'"{refusal}"' in augmented_prompt

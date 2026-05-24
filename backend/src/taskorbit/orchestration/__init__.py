@@ -184,6 +184,8 @@ class ConversationOrchestrator:
         active_tool: ToolDefinition | None,
     ) -> str:
         """Construct a system prompt (LLM context) for the current task."""
+        from taskorbit.integrations.llm.prompts import with_persona_guardrails
+
         lines = [
             f"You are {agent_config.name}.",
             f"Persona: {agent_config.persona}",
@@ -192,7 +194,16 @@ class ConversationOrchestrator:
             lines.append(f"Current task: {active_tool.name} - {active_tool.description}")
             if active_tool.parameters:
                 lines.append(f"Available parameters: {active_tool.parameters}")
-        return "\n".join(lines)
+        prompt = "\n".join(lines)
+        prompt = with_persona_guardrails(prompt, agent_config.persona_constraints)
+        if agent_config.persona_constraints is not None:
+            logger.info(
+                "persona_guardrails_applied",
+                scope_set=bool(agent_config.persona_constraints.scope),
+                out_of_scope_count=len(agent_config.persona_constraints.out_of_scope),
+                refusal_template_set=bool(agent_config.persona_constraints.refusal_template),
+            )
+        return prompt
 
     def _select_active_tool(
         self,
