@@ -109,6 +109,30 @@ run "rejects_livekit_url_without_scheme" {
   expect_failures = [var.livekit_url]
 }
 
+# ── deepgram_api_key ──────────────────────────────────────────────────────────
+
+run "rejects_empty_deepgram_api_key" {
+  command = plan
+
+  variables {
+    deepgram_api_key = ""
+  }
+
+  expect_failures = [var.deepgram_api_key]
+}
+
+# ── elevenlabs_api_key ────────────────────────────────────────────────────────
+
+run "rejects_empty_elevenlabs_api_key" {
+  command = plan
+
+  variables {
+    elevenlabs_api_key = ""
+  }
+
+  expect_failures = [var.elevenlabs_api_key]
+}
+
 # ── livekit_api_key / livekit_api_secret ──────────────────────────────────────
 
 run "rejects_empty_livekit_api_key" {
