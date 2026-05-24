@@ -22,11 +22,12 @@ variables {
   google_model           = "gemini-2.5-flash"
   database_url           = "postgresql://taskorbit:pass@/taskorbit"
   grafana_admin_password = "test-grafana-password"
+  grafana_admin_user     = "test-admin"
 }
 
-# ── All 15 secrets are created ────────────────────────────────────────────────
+# ── All 16 secrets are created ────────────────────────────────────────────────
 
-run "creates_all_15_secrets" {
+run "creates_all_16_secrets" {
   command = plan
 
   module {
@@ -34,8 +35,8 @@ run "creates_all_15_secrets" {
   }
 
   assert {
-    condition     = length(google_secret_manager_secret.secrets) == 15
-    error_message = "Expected exactly 15 Secret Manager secrets."
+    condition     = length(google_secret_manager_secret.secrets) == 16
+    error_message = "Expected exactly 16 Secret Manager secrets."
   }
 }
 
@@ -83,6 +84,11 @@ run "secret_ids_output_contains_expected_keys" {
   assert {
     condition     = contains(keys(module.secret_ids), "grafana-admin-password")
     error_message = "secret_ids output must contain 'grafana-admin-password'."
+  }
+
+  assert {
+    condition     = contains(keys(module.secret_ids), "grafana-admin-user")
+    error_message = "secret_ids output must contain 'grafana-admin-user'."
   }
 }
 

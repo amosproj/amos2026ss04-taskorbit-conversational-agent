@@ -19,6 +19,7 @@ variables {
 
   secret_ids = {
     "grafana-admin-password" = "taskorbit-grafana-admin-password"
+    "grafana-admin-user"     = "taskorbit-grafana-admin-user"
   }
 }
 
@@ -112,6 +113,32 @@ run "pubsub_subscription_exists_for_loki" {
   assert {
     condition     = google_pubsub_subscription.loki_push.topic == google_pubsub_topic.loki_logs.id
     error_message = "Push subscription must be attached to the taskorbit-loki-logs topic."
+  }
+}
+
+# ── Grafana admin credentials ─────────────────────────────────────────────────
+
+run "grafana_admin_credentials_wired_from_secrets" {
+  command = plan
+
+  module {
+    source = "./modules/observability"
+  }
+
+  assert {
+    condition = anytrue([
+      for e in google_cloud_run_v2_service.grafana.template[0].containers[0].env :
+      e.name == "GF_SECURITY_ADMIN_USER"
+    ])
+    error_message = "Grafana container must have GF_SECURITY_ADMIN_USER set from Secret Manager."
+  }
+
+  assert {
+    condition = anytrue([
+      for e in google_cloud_run_v2_service.grafana.template[0].containers[0].env :
+      e.name == "GF_SECURITY_ADMIN_PASSWORD"
+    ])
+    error_message = "Grafana container must have GF_SECURITY_ADMIN_PASSWORD set from Secret Manager."
   }
 }
 

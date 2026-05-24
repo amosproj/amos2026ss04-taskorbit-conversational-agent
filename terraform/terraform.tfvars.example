@@ -38,6 +38,7 @@ google_model   = "gemini-2.5-flash"
 
 # ── Grafana ───────────────────────────────────────────────────────────────────
 grafana_admin_password = "change-me-strong-password"
+grafana_admin_user = "change-the-admin-user"
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
 cors_allow_origins = "https://taskorbit.example.com"
