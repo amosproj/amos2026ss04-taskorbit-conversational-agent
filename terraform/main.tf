@@ -174,31 +174,31 @@ module "scheduler" {
   depends_on = [module.database, google_project_service.apis]
 }
 
-# ── STEP 9 (COMMENTED): Observability (Prometheus + Loki + Grafana) ───────────
+# ── STEP 9 (ACTIVE): Observability (Prometheus + Loki + Grafana) ──────────────
 # Scrapes backend/worker metrics, aggregates logs, Grafana dashboards.
 # Depends on: Step 7 (cloud_run — needs service URLs for Prometheus scrape config)
-# NOTE: DNS for grafana.your-domain.com → grafana_lb_ip must be set before this
-#       so the managed SSL certificate can provision successfully.
+# NOTE: After apply, run: terraform output grafana_lb_ip
+#       Then point grafana.<domain> DNS A record to that IP (separate from app LB).
 # Run: terraform apply -target=module.observability
-#
-# module "observability" {
-#   source = "./modules/observability"
-#
-#   project_id = var.project_id
-#   region     = var.region
-#   domain     = var.domain
-#
-#   backend_sa_email       = module.iam.backend_sa_email
-#   worker_sa_email        = module.iam.worker_sa_email
-#   observability_sa_email = module.iam.observability_sa_email
-#
-#   secret_ids = module.secrets.secret_ids
-#
-#   backend_url = module.cloud_run.backend_url
-#   worker_url  = module.cloud_run.worker_url
-#
-#   depends_on = [module.cloud_run, module.iam, google_project_service.apis]
-# }
+
+module "observability" {
+  source = "./modules/observability"
+
+  project_id = var.project_id
+  region     = var.region
+  domain     = var.domain
+
+  backend_sa_email       = module.iam.backend_sa_email
+  worker_sa_email        = module.iam.worker_sa_email
+  observability_sa_email = module.iam.observability_sa_email
+
+  secret_ids = module.secrets.secret_ids
+
+  backend_url = module.cloud_run.backend_url
+  worker_url  = module.cloud_run.worker_url
+
+  depends_on = [module.cloud_run, module.iam, google_project_service.apis]
+}
 
 # ── STEP 10 (FINAL): Full apply ───────────────────────────────────────────────
 # After all steps above are done and DNS is verified, run a bare apply

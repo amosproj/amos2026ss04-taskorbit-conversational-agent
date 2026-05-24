@@ -550,3 +550,20 @@ resource "google_pubsub_topic_iam_member" "sink_publisher" {
   role    = "roles/pubsub.publisher"
   member  = google_logging_project_sink.loki.writer_identity
 }
+
+# Push subscription: delivers messages from the Pub/Sub topic to Loki's HTTP
+# push endpoint. Without this the sink publishes logs but nothing consumes them.
+resource "google_pubsub_subscription" "loki_push" {
+  name    = "taskorbit-loki-push"
+  project = var.project_id
+  topic   = google_pubsub_topic.loki_logs.name
+
+  push_config {
+    push_endpoint = "${google_cloud_run_v2_service.loki.uri}/loki/api/v1/push"
+  }
+
+  message_retention_duration = "3600s"
+  ack_deadline_seconds       = 60
+
+  depends_on = [google_cloud_run_v2_service.loki]
+}
