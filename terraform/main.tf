@@ -195,8 +195,9 @@ module "observability" {
 
   secret_ids = module.secrets.secret_ids
 
-  backend_url = module.cloud_run.backend_url
-  worker_url  = module.cloud_run.worker_url
+  backend_url   = module.cloud_run.backend_url
+  worker_url    = module.cloud_run.worker_url
+  grafana_image = var.grafana_image
 
   depends_on = [module.cloud_run, module.iam, google_project_service.apis]
 }

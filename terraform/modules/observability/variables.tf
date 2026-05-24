@@ -20,3 +20,8 @@ variable "worker_url" {
   description = "Cloud Run service URL for the LiveKit worker — used in Prometheus scrape config."
   type        = string
 }
+
+variable "grafana_image" {
+  description = "Custom Grafana image with provisioning files baked in (e.g. europe-west3-docker.pkg.dev/PROJECT/taskorbit/grafana:latest)."
+  type        = string
+}

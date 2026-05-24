@@ -160,6 +160,8 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
       GF_SECURITY_ADMIN_PASSWORD: "admin"
+      PROMETHEUS_URL: "http://prometheus:9090"
+      LOKI_URL: "http://loki:3100"
     volumes:
       - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
       - taskorbit-grafana-data:/var/lib/grafana

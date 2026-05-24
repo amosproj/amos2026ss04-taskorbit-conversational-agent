@@ -5,8 +5,8 @@ locals {
 
   prometheus_config = <<-YAML
     global:
-      scrape_interval: 5s
-      evaluation_interval: 5s
+      scrape_interval: 15s
+      evaluation_interval: 15s
 
     scrape_configs:
       - job_name: taskorbit-backend
@@ -386,7 +386,7 @@ resource "google_cloud_run_v2_service" "grafana" {
     }
 
     containers {
-      image = "grafana/grafana:11.3.0"
+      image = var.grafana_image
       name  = "grafana"
 
       ports {
@@ -408,6 +408,17 @@ resource "google_cloud_run_v2_service" "grafana" {
       env {
         name  = "GF_AUTH_DISABLE_LOGIN_FORM"
         value = "false"
+      }
+
+      # Datasource URLs injected into provisioning YAML via Grafana env var substitution
+      env {
+        name  = "PROMETHEUS_URL"
+        value = google_cloud_run_v2_service.prometheus.uri
+      }
+
+      env {
+        name  = "LOKI_URL"
+        value = google_cloud_run_v2_service.loki.uri
       }
 
       env {

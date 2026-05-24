@@ -12,8 +12,9 @@ domain = "taskorbit.example.com"
 
 # ── Container images ──────────────────────────────────────────────────────────
 # Build and push images to Artifact Registry first, then reference the digest.
-backend_image  = "europe-west1-docker.pkg.dev/your-gcp-project-id/taskorbit/backend:latest"
-frontend_image = "europe-west1-docker.pkg.dev/your-gcp-project-id/taskorbit/frontend:latest"
+backend_image  = "europe-west3-docker.pkg.dev/your-gcp-project-id/taskorbit/backend:latest"
+frontend_image = "europe-west3-docker.pkg.dev/your-gcp-project-id/taskorbit/frontend:latest"
+grafana_image  = "europe-west3-docker.pkg.dev/your-gcp-project-id/taskorbit/grafana:latest"
 
 # ── LiveKit ───────────────────────────────────────────────────────────────────
 livekit_url        = "wss://your-project.livekit.cloud"

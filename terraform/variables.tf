@@ -68,6 +68,16 @@ variable "frontend_image" {
   }
 }
 
+variable "grafana_image" {
+  description = "Custom Grafana image with provisioning files baked in (built from infra/grafana/Dockerfile)."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9.-]+/.+:.+$", var.grafana_image))
+    error_message = "grafana_image must be a fully qualified image URL with a tag."
+  }
+}
+
 # ── Cloud Run scaling ─────────────────────────────────────────────────────────
 
 variable "backend_min_instances" {

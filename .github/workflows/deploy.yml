@@ -47,6 +47,7 @@ jobs:
     outputs:
       backend-image: ${{ steps.backend-tag.outputs.image }}
       frontend-image: ${{ steps.frontend-tag.outputs.image }}
+      grafana-image: ${{ steps.grafana-tag.outputs.image }}
 
     steps:
       - name: Checkout
@@ -79,6 +80,13 @@ jobs:
           echo "image=${IMAGE}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
           echo "FRONTEND_IMAGE=${IMAGE}" >> "$GITHUB_ENV"
 
+      - name: Compute grafana image tag
+        id: grafana-tag
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/grafana"
+          echo "image=${IMAGE}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "GRAFANA_IMAGE=${IMAGE}" >> "$GITHUB_ENV"
+
       - name: Build & push backend (prod target)
         uses: docker/build-push-action@v6
         with:
@@ -102,6 +110,17 @@ jobs:
           tags: |
             ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
             ${{ env.FRONTEND_IMAGE }}:latest
+
+      - name: Build & push grafana (with provisioning)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./infra/grafana
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: |
+            ${{ env.GRAFANA_IMAGE }}:${{ github.sha }}
+            ${{ env.GRAFANA_IMAGE }}:latest
 
   # ── Deploy to Cloud Run ───────────────────────────────────────────────────────
   deploy:
@@ -138,6 +157,13 @@ jobs:
           service: taskorbit-frontend
           region: ${{ env.GCP_REGION }}
           image: ${{ needs.build.outputs.frontend-image }}
+
+      - name: Deploy grafana
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: taskorbit-grafana
+          region: ${{ env.GCP_REGION }}
+          image: ${{ needs.build.outputs.grafana-image }}
 
       - name: Print deployed URLs
         run: |
