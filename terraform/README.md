@@ -18,6 +18,8 @@ terraform/
 ├── backend.tf               # Remote state — GCS bucket (fill placeholder before init)
 ├── terraform.tfvars.example # Template — copy to terraform.tfvars and fill in secrets
 ├── tests/                   # Native Terraform tests (terraform test)
+│   ├── cloud_run.tftest.hcl
+│   ├── observability.tftest.hcl
 │   ├── scheduler.tftest.hcl
 │   ├── secrets.tftest.hcl
 │   └── variables.tftest.hcl
@@ -162,7 +164,16 @@ credentials or live project required.
 
 ```bash
 cd terraform
+
+# Run all tests
 terraform test
+
+# Run a single test file
+terraform test -filter=tests/scheduler.tftest.hcl
+terraform test -filter=tests/secrets.tftest.hcl
+terraform test -filter=tests/variables.tftest.hcl
+terraform test -filter=tests/cloud_run.tftest.hcl
+terraform test -filter=tests/observability.tftest.hcl
 ```
 
 | Test file | What it covers |
@@ -170,6 +181,8 @@ terraform test
 | `tests/scheduler.tftest.hcl` | `count` logic for the boolean flags (`enable_auto_shutdown`, `scale_worker_overnight`) and default cron schedule values |
 | `tests/secrets.tftest.hcl` | All 15 secrets are created, `taskorbit-` prefix enforced, correct labels applied |
 | `tests/variables.tftest.hcl` | Validation blocks reject bad inputs (wrong scheme, empty required fields, weak password, impossible scaling range) |
+| `tests/cloud_run.tftest.hcl` | Ingress settings per service, CORS origin fallback and override, SSL cert domain coverage, frontend `BACKEND_URL` env |
+| `tests/observability.tftest.hcl` | Loki/Prometheus internal-only ingress, GCS bucket naming and retention, Pub/Sub push subscription wiring, Grafana SSL cert domain |
 
 ---
 
