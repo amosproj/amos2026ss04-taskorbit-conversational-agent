@@ -112,6 +112,7 @@ module "secrets" {
   google_model           = var.google_model
   database_url           = module.database.connection_string
   grafana_admin_password = var.grafana_admin_password
+  grafana_admin_user     = var.grafana_admin_user
 
   depends_on = [module.database, google_project_service.apis]
 }

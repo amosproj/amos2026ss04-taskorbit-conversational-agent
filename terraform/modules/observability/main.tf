@@ -193,6 +193,13 @@ resource "google_secret_manager_secret_iam_member" "grafana_password_accessor" {
   member    = "serviceAccount:${var.observability_sa_email}"
 }
 
+resource "google_secret_manager_secret_iam_member" "grafana_user_accessor" {
+  project   = var.project_id
+  secret_id = var.secret_ids["grafana-admin-user"]
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.observability_sa_email}"
+}
+
 # ── Loki Cloud Run service ─────────────────────────────────────────────────────
 
 resource "google_cloud_run_v2_service" "loki" {
@@ -401,6 +408,16 @@ resource "google_cloud_run_v2_service" "grafana" {
       env {
         name  = "GF_AUTH_DISABLE_LOGIN_FORM"
         value = "false"
+      }
+
+      env {
+        name = "GF_SECURITY_ADMIN_USER"
+        value_source {
+          secret_key_ref {
+            secret  = var.secret_ids["grafana-admin-user"]
+            version = "latest"
+          }
+        }
       }
 
       env {

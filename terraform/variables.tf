@@ -268,6 +268,18 @@ variable "grafana_admin_password" {
   }
 }
 
+variable "grafana_admin_user" {
+  description = "Grafana admin username stored in Secret Manager."
+  type        = string
+  sensitive   = true
+  default     = "admin"
+
+  validation {
+    condition     = length(var.grafana_admin_user) > 0
+    error_message = "grafana_admin_user must not be empty."
+  }
+}
+
 # ── Observability ─────────────────────────────────────────────────────────────
 
 variable "enable_auto_shutdown" {
