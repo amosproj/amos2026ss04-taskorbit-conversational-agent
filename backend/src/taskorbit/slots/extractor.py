@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from taskorbit.slots.models import SlotExtractionResult, SlotValue
 from taskorbit.types import LLMConfig, Message
+
+# Minimum format checks per slot type — rejects clearly malformed values so the
+# agent asks the user to repeat them rather than silently storing garbage.
+_SLOT_VALIDATORS: dict[str, Callable[[Any], bool]] = {
+    "email": lambda v: isinstance(v, str) and bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v)),
+    "phone": lambda v: isinstance(v, str) and len(re.sub(r"[^\d]", "", v)) >= 7,
+    "date": lambda v: isinstance(v, str) and bool(re.match(r"^\d{4}-\d{2}-\d{2}$", v)),
+}
 
 
 class SlotExtractor:
@@ -57,7 +66,9 @@ class SlotExtractor:
             f"{field_lines}\n\n"
             "Return ONLY valid JSON with exactly these keys: "
             f"{{{field_names}}}. "
-            "Use null for any field not yet mentioned by the user. "
+            "Use null for any field not explicitly and completely stated by the user. "
+            "Do NOT infer, guess, or assume values — if the user gave only partial information "
+            "(e.g. a year but no full date, a city but no street), return null for that field. "
             "Do not add any explanation or markdown."
         )
 
@@ -85,8 +96,13 @@ class SlotExtractor:
         for f in required_inputs:
             name = f["name"]
             value = data.get(name)
-            if value is not None:
-                filled[name] = SlotValue(name=name, value=value, slot_type=type_map[name])
+            if value is None:
+                continue
+            slot_type = type_map[name]
+            validator = _SLOT_VALIDATORS.get(slot_type)
+            if validator is not None and not validator(value):
+                continue
+            filled[name] = SlotValue(name=name, value=value, slot_type=slot_type)
 
         missing = sorted(name for name in required_names if name not in filled)
         return SlotExtractionResult(filled=filled, missing=missing)
