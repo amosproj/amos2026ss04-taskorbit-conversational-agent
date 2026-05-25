@@ -29,15 +29,24 @@ def with_persona_guardrails(
     if constraints is None:
         return system_prompt
     lines: list[str] = []
+
+    # Imperative, high-authority headers like "CORE CONSTRAINT" are used
+    # to ensure the LLM prioritizes these guardrails over general conversational drift.
+
     if constraints.scope:
-        lines.append(f"Scope: {constraints.scope}")
+        lines.append(f"CORE CONSTRAINT - Authorized Scope: {constraints.scope}")
+
     if constraints.out_of_scope:
         joined = ", ".join(constraints.out_of_scope)
-        lines.append(f"Out of scope (politely redirect): {joined}")
+        lines.append(
+            f"CORE CONSTRAINT - Forbidden Topics (you MUST politely refuse and redirect): {joined}"
+        )
+
     if constraints.refusal_template:
         lines.append(
-            f'When asked something out of scope, respond: "{constraints.refusal_template}"'
+            f'REQUIRED REFUSAL PHRASE (use this for redirection): "{constraints.refusal_template}"'
         )
+
     if not lines:
         return system_prompt
     return system_prompt + "\n\n" + "\n".join(lines)
