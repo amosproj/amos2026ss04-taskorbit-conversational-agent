@@ -572,7 +572,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "rate(http_requests_total{job=~\"$application\"}[5m])",
+          "expr": "sum by (handler, status_code) (rate(http_requests_total{job=~\"$application\"}[5m]))",
           "legendFormat": "{{handler}} {{status_code}}",
           "refId": "A"
         }
@@ -618,7 +618,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=~\"$application\"}[5m]))",
+          "expr": "histogram_quantile(0.95, sum by (le, handler) (rate(http_request_duration_seconds_bucket{job=~\"$application\"}[5m])))",
           "legendFormat": "p95 {{handler}}",
           "refId": "A"
         }
