@@ -1,39 +1,49 @@
 """Unit tests for slot extraction functionality."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime
+from unittest.mock import AsyncMock, patch
 
+import pytest
+
+from taskorbit.config import get_settings
+from taskorbit.intent import MockIntentDetector
+from taskorbit.orchestration import ConversationOrchestrator
 from taskorbit.slots.extractor import SlotExtractor
 from taskorbit.slots.models import SlotExtractionResult, SlotValue
-from taskorbit.intent import MockIntentDetector, IntentResult
-from taskorbit.orchestration import ConversationOrchestrator
 from taskorbit.tools.data_extraction import DataExtractionTool
 from taskorbit.types import (
-    LLMConfig, Message, MessageRole, AgentConfig, STTConfig, TTSConfig,
-    ConversationRequest
+    AgentConfig,
+    ConversationRequest,
+    LLMConfig,
+    Message,
+    MessageRole,
+    STTConfig,
+    TTSConfig,
 )
-from taskorbit.config import get_settings
-
 
 # ============ MOCK LLM FUNCTION ============
+
 
 async def mock_llm_fn(system_prompt: str, messages: list[Message], llm_config: LLMConfig) -> str:
     """Mock LLM that returns predefined JSON for testing."""
     return '{"caller_name": "John Doe", "email_address": "john@example.com", "phone_number": "+49123456789", "preferred_date": "2026-06-01"}'
 
 
-async def mock_llm_fn_missing(system_prompt: str, messages: list[Message], llm_config: LLMConfig) -> str:
+async def mock_llm_fn_missing(
+    system_prompt: str, messages: list[Message], llm_config: LLMConfig
+) -> str:
     """Mock LLM that returns partial data."""
     return '{"caller_name": "John Doe", "email_address": null, "phone_number": null, "preferred_date": null}'
 
 
-async def mock_llm_fn_invalid_json(system_prompt: str, messages: list[Message], llm_config: LLMConfig) -> str:
+async def mock_llm_fn_invalid_json(
+    system_prompt: str, messages: list[Message], llm_config: LLMConfig
+) -> str:
     """Mock LLM that returns invalid JSON."""
     return "This is not valid JSON"
 
 
 # ============ TESTS FOR SLOT EXTRACTION RESULT ============
+
 
 class TestSlotExtractionResult:
     """Tests for SlotExtractionResult dataclass."""
@@ -52,7 +62,9 @@ class TestSlotExtractionResult:
         """Should convert filled slots to dictionary."""
         filled = {
             "caller_name": SlotValue(name="caller_name", value="John Doe", slot_type="string"),
-            "email_address": SlotValue(name="email_address", value="john@example.com", slot_type="email"),
+            "email_address": SlotValue(
+                name="email_address", value="john@example.com", slot_type="email"
+            ),
         }
         result = SlotExtractionResult(filled=filled, missing=[])
         assert result.to_dict() == {"caller_name": "John Doe", "email_address": "john@example.com"}
@@ -64,6 +76,7 @@ class TestSlotExtractionResult:
 
 
 # ============ TESTS FOR SLOT EXTRACTOR ============
+
 
 class TestSlotExtractor:
     """Tests for SlotExtractor class."""
@@ -77,12 +90,17 @@ class TestSlotExtractor:
             {"name": "phone_number", "type": "phone", "required": True},
             {"name": "preferred_date", "type": "date", "required": True},
         ]
-        messages = [Message(role=MessageRole.USER, content="My name is John, email john@example.com, phone +49123456789, date June 1st")]
+        messages = [
+            Message(
+                role=MessageRole.USER,
+                content="My name is John, email john@example.com, phone +49123456789, date June 1st",
+            )
+        ]
         llm_config = LLMConfig(provider="openai", model="gpt-4o-mini")
-        
+
         extractor = SlotExtractor(llm_fn=mock_llm_fn, llm_config=llm_config)
         result = await extractor.extract(messages, required_inputs)
-        
+
         assert "caller_name" in result.filled
         assert result.filled["caller_name"].value == "John Doe"
         assert result.filled["email_address"].value == "john@example.com"
@@ -101,10 +119,10 @@ class TestSlotExtractor:
         ]
         messages = [Message(role=MessageRole.USER, content="My name is John")]
         llm_config = LLMConfig(provider="openai", model="gpt-4o-mini")
-        
+
         extractor = SlotExtractor(llm_fn=mock_llm_fn_missing, llm_config=llm_config)
         result = await extractor.extract(messages, required_inputs)
-        
+
         assert "caller_name" in result.filled
         assert len(result.missing) == 3
         assert "email_address" in result.missing
@@ -120,10 +138,10 @@ class TestSlotExtractor:
         ]
         messages = [Message(role=MessageRole.USER, content="Hello")]
         llm_config = LLMConfig(provider="openai", model="gpt-4o-mini")
-        
+
         extractor = SlotExtractor(llm_fn=mock_llm_fn_invalid_json, llm_config=llm_config)
         result = await extractor.extract(messages, required_inputs)
-        
+
         assert len(result.missing) == 2
         assert "caller_name" in result.missing
         assert "email_address" in result.missing
@@ -132,21 +150,23 @@ class TestSlotExtractor:
     @pytest.mark.asyncio
     async def test_extract_handles_json_with_code_fences(self):
         """Should strip markdown code fences from LLM response."""
+
         async def mock_llm_with_fences(system_prompt, messages, llm_config):
             return '```json\n{"caller_name": "Jane Doe"}\n```'
-        
+
         required_inputs = [{"name": "caller_name", "type": "string", "required": True}]
         messages = [Message(role=MessageRole.USER, content="I'm Jane")]
         llm_config = LLMConfig(provider="openai", model="gpt-4o-mini")
-        
+
         extractor = SlotExtractor(llm_fn=mock_llm_with_fences, llm_config=llm_config)
         result = await extractor.extract(messages, required_inputs)
-        
+
         assert result.filled["caller_name"].value == "Jane Doe"
         assert result.missing == []
 
 
 # ============ TESTS FOR INTENT DETECTION ============
+
 
 class TestMockIntentDetector:
     """Tests for keyword-based intent detection."""
@@ -168,13 +188,29 @@ class TestMockIntentDetector:
     def test_detects_dissatisfaction_with_keywords(self):
         """Should detect dissatisfaction from various keywords."""
         detector = MockIntentDetector()
-        keywords = ["unhappy", "frustrated", "disappointed", "problem", "issue", "broken", "wrong", "bad", "terrible", "awful", "refund", "cancel"]
+        keywords = [
+            "unhappy",
+            "frustrated",
+            "disappointed",
+            "problem",
+            "issue",
+            "broken",
+            "wrong",
+            "bad",
+            "terrible",
+            "awful",
+            "refund",
+            "cancel",
+        ]
         for keyword in keywords:
             result = detector.detect(f"I am very {keyword}")
-            assert result.name == "customer_dissatisfaction_inquiry", f"Failed for keyword: {keyword}"
+            assert (
+                result.name == "customer_dissatisfaction_inquiry"
+            ), f"Failed for keyword: {keyword}"
 
 
 # ============ TESTS FOR DATA EXTRACTION TOOL ============
+
 
 class TestDataExtractionTool:
     """Tests for DataExtractionTool."""
@@ -192,7 +228,6 @@ class TestDataExtractionTool:
         result = await tool.execute(parameters)
         assert result.success is True
         assert result.data == parameters
-        # DataExtractionTool returns empty string for error on success
         assert result.error == "" or result.error is None
 
     @pytest.mark.asyncio
@@ -225,6 +260,7 @@ class TestDataExtractionTool:
 
 # ============ TESTS FOR ORCHESTRATOR SLOT INTEGRATION ============
 
+
 class TestOrchestratorSlotIntegration:
     """Tests for orchestrator's slot extraction integration."""
 
@@ -234,16 +270,23 @@ class TestOrchestratorSlotIntegration:
         settings = get_settings()
         orchestrator = ConversationOrchestrator(settings=settings)
 
-        with patch.object(orchestrator, '_call_llm', new_callable=AsyncMock) as mock_llm:
+        with patch.object(orchestrator, "_call_llm", new_callable=AsyncMock) as mock_llm:
             mock_llm.return_value = "Thank you for providing your information."
 
-            with patch.object(orchestrator, '_extract_slots', new_callable=AsyncMock) as mock_extract:
-                from taskorbit.slots.models import SlotExtractionResult, SlotValue
+            with patch.object(
+                orchestrator, "_extract_slots", new_callable=AsyncMock
+            ) as mock_extract:
                 filled = {
-                    "caller_name": SlotValue(name="caller_name", value="John Doe", slot_type="string"),
-                    "email_address": SlotValue(name="email_address", value="john@example.com", slot_type="email"),
+                    "caller_name": SlotValue(
+                        name="caller_name", value="John Doe", slot_type="string"
+                    ),
+                    "email_address": SlotValue(
+                        name="email_address", value="john@example.com", slot_type="email"
+                    ),
                 }
-                slot_result = SlotExtractionResult(filled=filled, missing=["phone_number", "preferred_date"])
+                slot_result = SlotExtractionResult(
+                    filled=filled, missing=["phone_number", "preferred_date"]
+                )
                 mock_extract.return_value = slot_result
 
                 agent_config = AgentConfig(
@@ -260,14 +303,14 @@ class TestOrchestratorSlotIntegration:
                 request = ConversationRequest(
                     conversation_id="test-123",
                     agent_config=agent_config,
-                    messages=[Message(role=MessageRole.USER, content="I need to book an appointment")],
+                    messages=[
+                        Message(role=MessageRole.USER, content="I need to book an appointment")
+                    ],
                 )
 
                 response = await orchestrator.process_message(request)
 
-                # When slots are incomplete, extracted_slots should be empty
                 assert response.extracted_slots == {}
-                # But missing_slots should list what's still needed
                 assert len(response.missing_slots) == 2
                 assert "phone_number" in response.missing_slots
                 assert "preferred_date" in response.missing_slots
@@ -278,16 +321,25 @@ class TestOrchestratorSlotIntegration:
         settings = get_settings()
         orchestrator = ConversationOrchestrator(settings=settings)
 
-        with patch.object(orchestrator, '_call_llm', new_callable=AsyncMock) as mock_llm:
+        with patch.object(orchestrator, "_call_llm", new_callable=AsyncMock) as mock_llm:
             mock_llm.return_value = "Thank you for providing your information."
 
-            with patch.object(orchestrator, '_extract_slots', new_callable=AsyncMock) as mock_extract:
-                from taskorbit.slots.models import SlotExtractionResult, SlotValue
+            with patch.object(
+                orchestrator, "_extract_slots", new_callable=AsyncMock
+            ) as mock_extract:
                 filled = {
-                    "caller_name": SlotValue(name="caller_name", value="John Doe", slot_type="string"),
-                    "email_address": SlotValue(name="email_address", value="john@example.com", slot_type="email"),
-                    "phone_number": SlotValue(name="phone_number", value="+49123456789", slot_type="phone"),
-                    "preferred_date": SlotValue(name="preferred_date", value="2026-06-01", slot_type="date"),
+                    "caller_name": SlotValue(
+                        name="caller_name", value="John Doe", slot_type="string"
+                    ),
+                    "email_address": SlotValue(
+                        name="email_address", value="john@example.com", slot_type="email"
+                    ),
+                    "phone_number": SlotValue(
+                        name="phone_number", value="+49123456789", slot_type="phone"
+                    ),
+                    "preferred_date": SlotValue(
+                        name="preferred_date", value="2026-06-01", slot_type="date"
+                    ),
                 }
                 slot_result = SlotExtractionResult(filled=filled, missing=[])
                 mock_extract.return_value = slot_result
@@ -306,12 +358,16 @@ class TestOrchestratorSlotIntegration:
                 request = ConversationRequest(
                     conversation_id="test-123",
                     agent_config=agent_config,
-                    messages=[Message(role=MessageRole.USER, content="My name is John, email john@example.com, phone +49123456789, date June 1st")],
+                    messages=[
+                        Message(
+                            role=MessageRole.USER,
+                            content="My name is John, email john@example.com, phone +49123456789, date June 1st",
+                        )
+                    ],
                 )
 
                 response = await orchestrator.process_message(request)
 
-                # When slots are complete, extracted_slots should contain all values
                 assert "caller_name" in response.extracted_slots
                 assert response.extracted_slots["caller_name"] == "John Doe"
                 assert response.extracted_slots["email_address"] == "john@example.com"
@@ -320,10 +376,8 @@ class TestOrchestratorSlotIntegration:
     @pytest.mark.asyncio
     async def test_orchestrator_builds_prompt_with_slots(self):
         """Should include extracted slots in system prompt."""
-        from taskorbit.slots.models import SlotExtractionResult, SlotValue
-        
         orchestrator = ConversationOrchestrator()
-        
+
         agent_config = AgentConfig(
             id="agent-1",
             name="Test Agent",
@@ -334,14 +388,14 @@ class TestOrchestratorSlotIntegration:
             tts=TTSConfig(),
             tools=[],
         )
-        
+
         filled = {
             "caller_name": SlotValue(name="caller_name", value="John Doe", slot_type="string"),
         }
         slot_result = SlotExtractionResult(filled=filled, missing=["email_address", "phone_number"])
-        
+
         prompt = orchestrator._build_system_prompt(agent_config, None, slot_result)
-        
+
         assert "Test Agent" in prompt
         assert "caller_name=John Doe" in prompt
         assert "Still need from user: email_address, phone_number" in prompt
