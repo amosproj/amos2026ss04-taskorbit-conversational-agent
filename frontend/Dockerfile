@@ -34,5 +34,10 @@ RUN npm run build
 # ---------- Prod image: nginx ----------
 FROM nginx:1.27-alpine AS prod
 COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.conf.template /etc/nginx/conf.d/default.conf.template
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+# Default — overridden by BACKEND_URL env var at Cloud Run deploy time
+ENV BACKEND_URL=http://localhost:8000
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+ENTRYPOINT ["/docker-entrypoint.sh"]

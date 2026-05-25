@@ -64,7 +64,8 @@
 
     ENV PYTHONUNBUFFERED=1 \
         PYTHONDONTWRITEBYTECODE=1 \
-        PATH="/app/.venv/bin:${PATH}"
+        PATH="/app/.venv/bin:${PATH}" \
+        PYTHONPATH="/app/src"
 
     WORKDIR /app
 
@@ -74,6 +75,9 @@
 
     COPY --from=builder /app/.venv /app/.venv
     COPY src ./src
+    COPY alembic.ini ./
+    COPY migrations ./migrations
 
     EXPOSE 8000
-    CMD ["uvicorn", "taskorbit.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    # Run migrations then start the API server
+    CMD ["sh", "-c", "alembic upgrade head && taskorbit-api --host 0.0.0.0 --port 8000"]

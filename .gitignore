@@ -84,3 +84,20 @@ frontend/tsconfig.*.tsbuildinfo
 #DB
 *.db
 
+# Large binary video files — link to external host instead
+*.mkv
+*.zip
+
+# Terraform — never commit state or var files containing secrets
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/*.tfvars
+!terraform/terraform.tfvars.example
+# .terraform.lock.hcl is intentionally committed (pins provider versions)
+
+# GCP service account key files — never commit credentials
+terraform/*.json
+*.json.key
+*-credentials.json
+gha-creds-*.json

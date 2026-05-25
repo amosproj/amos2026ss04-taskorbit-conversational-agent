@@ -3,6 +3,7 @@
 [![Start Web Service](https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/actions/workflows/start-web-service.yml/badge.svg)](https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/actions/workflows/start-web-service.yml)
 [![Frontend Linting](https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/actions/workflows/frontend-lint.yml/badge.svg)](https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/actions/workflows/frontend-lint.yml)
 [![Backend Linting](https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/actions/workflows/backend-lint.yml/badge.svg)](https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/actions/workflows/backend-lint.yml)
+[![Deploy to GCP](https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/actions/workflows/deploy.yml/badge.svg)](https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/actions/workflows/deploy.yml)
 
 ---
 
@@ -42,6 +43,7 @@ The frontend ships a ChatGPT-style mic button: tap to record, **Stop** mutes wit
 | `backend/`       | Python / FastAPI orchestration layer (Poetry-managed)             |
 | `frontend/`      | React 19 + Vite + TypeScript client                               |
 | `schemas/`       | Shared JSON schemas used by both backend and frontend             |
+| `terraform/`     | GCP Infrastructure as Code — Cloud Run, Cloud SQL, Secret Manager, IAM, and more |
 | `Documentation/` | Architecture documents, runtime diagrams, team-facing guides      |
 | `.github/`       | Issue templates, workflows, and shared CI actions (`actions/*`)   |
 
@@ -107,15 +109,16 @@ See [`backend/README.md`](backend/README.md) and [`frontend/README.md`](frontend
 
 ## CI / CD
 
-Three independent GitHub Actions workflows run on every push and pull request, each publishing its own pass/fail badge:
+Three quality-gate workflows run on every push and pull request. A fourth deploys to GCP automatically once all three pass on `main`:
 
 | Badge                 | Workflow file                                                                          | What it verifies                                                                           |
 | --------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | **Start Web Service** | [`start-web-service.yml`](.github/workflows/start-web-service.yml)                    | Boots the FastAPI service and curls `/health`; runs `npm run build` for the frontend       |
 | **Frontend Linting**  | [`frontend-lint.yml`](.github/workflows/frontend-lint.yml)                            | `npm ci` → ESLint → Prettier `--check`                                                     |
 | **Backend Linting**   | [`backend-lint.yml`](.github/workflows/backend-lint.yml)                              | `poetry install` → `ruff check` → `ruff format --check` → `pytest`                        |
+| **Deploy to GCP**     | [`deploy.yml`](.github/workflows/deploy.yml)                                          | Builds Docker images, pushes to Artifact Registry, deploys to Cloud Run (runs after all three above pass) |
 
-Each workflow is split into named stages chained with `needs:`, so a single failing stage shows up clearly in the GitHub Checks UI. The full team-facing guide — local commands, troubleshooting, and how to extend the pipeline — lives in [`Documentation/ci-cd.md`](Documentation/ci-cd.md).
+Each workflow is split into named stages chained with `needs:`, so a single failing stage shows up clearly in the GitHub Checks UI. The full team-facing guide — local commands, troubleshooting, and how to extend the pipeline — lives in [`Documentation/ci-cd.md`](Documentation/ci-cd.md). 
 
 ### Pre-commit Hooks
 

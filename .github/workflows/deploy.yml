@@ -1,0 +1,174 @@
+name: Deploy to GCP
+
+# Deploys backend, worker, and frontend to Cloud Run after all quality gates
+# pass. Triggered by workflow_run so a broken lint or smoke-test run never
+# reaches production.
+#
+# Authentication uses a GCP service account key stored as a GitHub secret.
+#
+# Required GitHub Actions secrets:
+#   GCP_SA_KEY  — base64-encoded JSON key for terraform-deployer SA
+#
+# TODO: switch GCP_SA_KEY to Workload Identity (OIDC) after Step 3 IAM is applied.
+
+on:
+  workflow_run:
+    workflows: ["Backend Linting", "Frontend Linting", "Start Web Service"]
+    types: [completed]
+    branches:
+      - prod
+  push:
+    branches:
+      - prod
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: true
+
+env:
+  GCP_PROJECT_ID: amos-taskorbit
+  GCP_REGION: europe-west3
+  REGISTRY: europe-west3-docker.pkg.dev
+  REPOSITORY: taskorbit
+
+jobs:
+  # ── Build & push images ──────────────────────────────────────────────────────
+  build:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: read
+      id-token: write
+
+    outputs:
+      backend-image: ${{ steps.backend-tag.outputs.image }}
+      frontend-image: ${{ steps.frontend-tag.outputs.image }}
+      grafana-image: ${{ steps.grafana-tag.outputs.image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compute backend image tag
+        id: backend-tag
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/backend"
+          echo "image=${IMAGE}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "BACKEND_IMAGE=${IMAGE}" >> "$GITHUB_ENV"
+
+      - name: Compute frontend image tag
+        id: frontend-tag
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/frontend"
+          echo "image=${IMAGE}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "FRONTEND_IMAGE=${IMAGE}" >> "$GITHUB_ENV"
+
+      - name: Compute grafana image tag
+        id: grafana-tag
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/grafana"
+          echo "image=${IMAGE}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "GRAFANA_IMAGE=${IMAGE}" >> "$GITHUB_ENV"
+
+      - name: Build & push backend (prod target)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          target: prod
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+            ${{ env.BACKEND_IMAGE }}:latest
+
+      - name: Build & push frontend (prod target)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          target: prod
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: |
+            ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+            ${{ env.FRONTEND_IMAGE }}:latest
+
+      - name: Build & push grafana (with provisioning)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./infra/grafana
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: |
+            ${{ env.GRAFANA_IMAGE }}:${{ github.sha }}
+            ${{ env.GRAFANA_IMAGE }}:latest
+
+  # ── Deploy to Cloud Run ───────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Cloud Run
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Deploy backend
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: taskorbit-backend
+          region: ${{ env.GCP_REGION }}
+          image: ${{ needs.build.outputs.backend-image }}
+
+      - name: Deploy worker
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: taskorbit-worker
+          region: ${{ env.GCP_REGION }}
+          image: ${{ needs.build.outputs.backend-image }}
+
+      - name: Deploy frontend
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: taskorbit-frontend
+          region: ${{ env.GCP_REGION }}
+          image: ${{ needs.build.outputs.frontend-image }}
+
+      - name: Deploy grafana
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: taskorbit-grafana
+          region: ${{ env.GCP_REGION }}
+          image: ${{ needs.build.outputs.grafana-image }}
+
+      - name: Print deployed URLs
+        run: |
+          echo "### Deployed services" >> "$GITHUB_STEP_SUMMARY"
+          gcloud run services list \
+            --project=${{ env.GCP_PROJECT_ID }} \
+            --region=${{ env.GCP_REGION }} \
+            --filter="metadata.name ~ taskorbit" \
+            --format="table(metadata.name, status.url)" \
+            >> "$GITHUB_STEP_SUMMARY"
