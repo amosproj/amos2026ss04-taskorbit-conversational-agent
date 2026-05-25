@@ -31,6 +31,9 @@ def test_separates_with_blank_line():
 # with_persona_guardrails
 # ---------------------------------------------------------------------------
 
+# The tests below have been updated to assert against the
+# new imperative headers (CORE CONSTRAINT, REQUIRED REFUSAL PHRASE)
+# which ensure better model compliance.
 
 BASE_PROMPT = "You are John.\nPersona: TechStore customer support."
 
@@ -51,23 +54,32 @@ def test_guardrails_scope_only_appended():
     constraints = PersonaConstraints(scope="TechStore customer service.")
     result = with_persona_guardrails(BASE_PROMPT, constraints)
     assert result.startswith(BASE_PROMPT)
-    assert "Scope: TechStore customer service." in result
-    assert "Out of scope" not in result
-    assert "When asked something out of scope" not in result
+    # Asserting against the new imperative header
+    assert "CORE CONSTRAINT - Authorized Scope: TechStore customer service." in result
+    assert "Forbidden Topics" not in result
+    assert "REQUIRED REFUSAL PHRASE" not in result
 
 
 def test_guardrails_out_of_scope_joined_with_commas():
     """``out_of_scope`` list is rendered as a comma-joined string."""
     constraints = PersonaConstraints(out_of_scope=["therapy", "medical advice", "legal advice"])
     result = with_persona_guardrails(BASE_PROMPT, constraints)
-    assert "Out of scope (politely redirect): therapy, medical advice, legal advice" in result
+    # Asserting against the new imperative header
+    assert (
+        "CORE CONSTRAINT - Forbidden Topics (you MUST politely refuse and redirect): therapy, medical advice, legal advice"
+        in result
+    )
 
 
 def test_guardrails_refusal_template_quoted():
     """``refusal_template`` is rendered inside double quotes."""
     constraints = PersonaConstraints(refusal_template="I can only help with TechStore.")
     result = with_persona_guardrails(BASE_PROMPT, constraints)
-    assert '"I can only help with TechStore."' in result
+    # Asserting against the new imperative header and redirection context
+    assert (
+        'REQUIRED REFUSAL PHRASE (use this for redirection): "I can only help with TechStore."'
+        in result
+    )
 
 
 def test_guardrails_all_three_fields_appear_in_order():
@@ -78,9 +90,9 @@ def test_guardrails_all_three_fields_appear_in_order():
         refusal_template="I can only help with TechStore.",
     )
     result = with_persona_guardrails(BASE_PROMPT, constraints)
-    scope_idx = result.index("Scope:")
-    out_of_scope_idx = result.index("Out of scope")
-    refusal_idx = result.index("When asked something out of scope")
+    scope_idx = result.index("CORE CONSTRAINT - Authorized Scope:")
+    out_of_scope_idx = result.index("CORE CONSTRAINT - Forbidden Topics")
+    refusal_idx = result.index("REQUIRED REFUSAL PHRASE")
     assert scope_idx < out_of_scope_idx < refusal_idx
 
 
