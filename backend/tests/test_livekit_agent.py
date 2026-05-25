@@ -215,8 +215,11 @@ async def test_llm_node_skips_latency_when_no_commit_time() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Voice-path persona guardrails (ticket #69)
+# Voice-path persona guardrails
 # ---------------------------------------------------------------------------
+
+# Verification of the end-to-end voice path prompt generation.
+# Assertions updated to match new imperative guardrail headers.
 
 
 def test_default_agent_config_has_persona_guardrails() -> None:
@@ -266,6 +269,7 @@ async def test_voice_path_propagates_persona_guardrails_into_prompt() -> None:
         [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
 
     augmented_prompt = mock_client.generate.call_args.args[0]
-    assert "Scope: " in augmented_prompt
-    assert "Out of scope (politely redirect):" in augmented_prompt
+    # Asserting against the new imperative headers
+    assert "Authorized Scope:" in augmented_prompt
+    assert "CORE CONSTRAINT - Forbidden Topics" in augmented_prompt
     assert f'"{refusal}"' in augmented_prompt
