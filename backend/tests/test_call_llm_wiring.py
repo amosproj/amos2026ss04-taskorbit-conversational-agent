@@ -115,8 +115,12 @@ async def test_call_llm_propagates_client_errors(
 
 
 # ---------------------------------------------------------------------------
-# Persona guardrails flow end-to-end into the LLM prompt (ticket #69)
+# Persona guardrails flow end-to-end into the LLM prompt
 # ---------------------------------------------------------------------------
+
+# Integration test verifying that the full guardrail chain
+# (orchestrator -> helper -> LLM client) correctly propagates the new
+# imperative headers to the model's system prompt.
 
 
 @pytest.mark.asyncio
@@ -156,8 +160,12 @@ async def test_persona_guardrails_flow_through_to_llm_prompt(
 
     assert response.status == "success"
     augmented_prompt = mock_client.generate.call_args.args[0]
-    assert "Scope: TechStore customer service." in augmented_prompt
-    assert "Out of scope (politely redirect): therapy, legal advice" in augmented_prompt
+    # Asserting against the new imperative headers
+    assert "CORE CONSTRAINT - Authorized Scope: TechStore customer service." in augmented_prompt
+    assert (
+        "CORE CONSTRAINT - Forbidden Topics (you MUST politely refuse and redirect): therapy, legal advice"
+        in augmented_prompt
+    )
     assert f'"{refusal}"' in augmented_prompt
     # Same-language directive still lands last, after guardrails.
     assert "Respond in the same language" in augmented_prompt
@@ -189,6 +197,5 @@ async def test_no_persona_guardrails_means_no_guardrail_text_in_prompt(
         await orchestrator.process_message(request)
 
     augmented_prompt = mock_client.generate.call_args.args[0]
-    assert "Scope:" not in augmented_prompt
-    assert "Out of scope" not in augmented_prompt
-    assert "When asked something out of scope" not in augmented_prompt
+    assert "CORE CONSTRAINT" not in augmented_prompt
+    assert "REQUIRED REFUSAL PHRASE" not in augmented_prompt
