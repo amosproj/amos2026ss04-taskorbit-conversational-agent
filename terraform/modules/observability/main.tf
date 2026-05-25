@@ -20,14 +20,16 @@ locals {
           - target_label: job
             replacement: taskorbit-backend
 
-      # TODO: re-enable worker scrape once Prometheus has a VPC connector so it
-      # can reach taskorbit-worker which has INGRESS_TRAFFIC_INTERNAL_ONLY.
-      # - job_name: taskorbit-worker
-      #   metrics_path: /metrics
-      #   scheme: https
-      #   static_configs:
-      #     - targets:
-      #         - ${local.worker_host}
+      - job_name: taskorbit-worker
+        metrics_path: /metrics
+        scheme: https
+        # Worker has allUsers run.invoker — no auth needed
+        static_configs:
+          - targets:
+              - ${local.worker_host}
+        relabel_configs:
+          - target_label: job
+            replacement: taskorbit-worker
   YAML
 
   loki_config = <<-YAML

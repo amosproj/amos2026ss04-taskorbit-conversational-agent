@@ -169,9 +169,9 @@ resource "google_cloud_run_v2_service" "worker" {
   project             = var.project_id
   deletion_protection = false
 
-  # Internal only — the worker connects OUT to LiveKit Cloud (no inbound public traffic).
-  # Prometheus scrapes /metrics via the VPC connector.
-  ingress = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+  # TODO: switch back to INGRESS_TRAFFIC_INTERNAL_ONLY once Prometheus has a VPC connector
+  # and can reach the worker privately. Currently INGRESS_TRAFFIC_ALL so Prometheus can scrape /metrics.
+  ingress = "INGRESS_TRAFFIC_ALL"
 
   template {
     service_account = var.worker_sa_email
@@ -379,6 +379,15 @@ resource "google_cloud_run_v2_service_iam_member" "frontend_public" {
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_service.frontend.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
+# Allow Prometheus to scrape /metrics without auth (metrics contain no sensitive data)
+resource "google_cloud_run_v2_service_iam_member" "worker_public" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.worker.name
   role     = "roles/run.invoker"
   member   = "allUsers"
 }

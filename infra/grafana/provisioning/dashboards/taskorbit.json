@@ -675,7 +675,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "rate(taskorbit_llm_requests_total[5m])",
+          "expr": "sum by (provider, model, status) (rate(taskorbit_llm_requests_total[5m]))",
           "legendFormat": "{{provider}} {{model}} {{status}}",
           "refId": "A"
         }
@@ -720,7 +720,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, rate(taskorbit_llm_response_chars_bucket[5m]))",
+          "expr": "histogram_quantile(0.95, sum by (le, provider, model) (rate(taskorbit_llm_response_chars_bucket[5m])))",
           "legendFormat": "p95 {{provider}} {{model}}",
           "refId": "A"
         }
@@ -843,7 +843,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "rate(taskorbit_tokens_used_total{token_type=\"prompt\"}[5m])",
+          "expr": "sum by (provider, model) (rate(taskorbit_tokens_used_total{token_type=\"prompt\"}[5m]))",
           "legendFormat": "prompt \u2014 {{provider}} {{model}}",
           "refId": "A"
         },
@@ -852,7 +852,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "rate(taskorbit_tokens_used_total{token_type=\"completion\"}[5m])",
+          "expr": "sum by (provider, model) (rate(taskorbit_tokens_used_total{token_type=\"completion\"}[5m]))",
           "legendFormat": "completion \u2014 {{provider}} {{model}}",
           "refId": "B"
         }
@@ -898,7 +898,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "increase(taskorbit_tokens_used_total[1d])",
+          "expr": "sum by (provider, model, token_type) (increase(taskorbit_tokens_used_total[1d]))",
           "legendFormat": "{{token_type}} \u2014 {{provider}} {{model}}",
           "refId": "A"
         }
@@ -944,7 +944,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.50, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"llm_call\"}[5m]))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"llm_call\"}[5m])))",
           "legendFormat": "p50 LLM",
           "refId": "A"
         },
@@ -953,7 +953,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"llm_call\"}[5m]))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"llm_call\"}[5m])))",
           "legendFormat": "p95 LLM",
           "refId": "B"
         },
@@ -962,7 +962,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.99, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"llm_call\"}[5m]))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"llm_call\"}[5m])))",
           "legendFormat": "p99 LLM",
           "refId": "C"
         }
@@ -1008,7 +1008,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"total\"}[5m]))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"total\"}[5m])))",
           "legendFormat": "p95 total",
           "refId": "A"
         },
@@ -1017,7 +1017,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.50, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"total\"}[5m]))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"total\"}[5m])))",
           "legendFormat": "p50 total",
           "refId": "B"
         }
@@ -1062,7 +1062,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "rate(taskorbit_conversation_errors_total[5m])",
+          "expr": "sum by (error_type) (rate(taskorbit_conversation_errors_total[5m]))",
           "legendFormat": "{{error_type}}",
           "refId": "A"
         }
@@ -1127,7 +1127,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.50, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"stt_processing\"}[5m]))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"stt_processing\"}[5m])))",
           "legendFormat": "p50 STT",
           "refId": "A"
         },
@@ -1136,7 +1136,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"stt_processing\"}[5m]))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"stt_processing\"}[5m])))",
           "legendFormat": "p95 STT",
           "refId": "B"
         },
@@ -1145,7 +1145,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.99, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"stt_processing\"}[5m]))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"stt_processing\"}[5m])))",
           "legendFormat": "p99 STT",
           "refId": "C"
         }
@@ -1198,7 +1198,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.50, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"tts_ttfb\"}[5m]))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"tts_ttfb\"}[5m])))",
           "legendFormat": "p50 TTS TTFB",
           "refId": "A"
         },
@@ -1207,7 +1207,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"tts_ttfb\"}[5m]))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"tts_ttfb\"}[5m])))",
           "legendFormat": "p95 TTS TTFB",
           "refId": "B"
         },
@@ -1216,7 +1216,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.99, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"tts_ttfb\"}[5m]))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"tts_ttfb\"}[5m])))",
           "legendFormat": "p99 TTS TTFB",
           "refId": "C"
         }
@@ -1269,7 +1269,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.50, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"tts_synthesis\"}[5m]))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"tts_synthesis\"}[5m])))",
           "legendFormat": "p50 TTS duration",
           "refId": "A"
         },
@@ -1278,7 +1278,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"tts_synthesis\"}[5m]))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"tts_synthesis\"}[5m])))",
           "legendFormat": "p95 TTS duration",
           "refId": "B"
         },
@@ -1287,7 +1287,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.99, rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"tts_synthesis\"}[5m]))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(taskorbit_pipeline_latency_seconds_bucket{stage=\"tts_synthesis\"}[5m])))",
           "legendFormat": "p99 TTS duration",
           "refId": "C"
         }
