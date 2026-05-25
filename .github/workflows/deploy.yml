@@ -10,18 +10,16 @@ name: Deploy to GCP
 #   GCP_SA_KEY  — base64-encoded JSON key for terraform-deployer SA
 #
 # TODO: switch GCP_SA_KEY to Workload Identity (OIDC) after Step 3 IAM is applied.
-# Remove feature/integrate-cloud-environment-with-iac from branches before merging to main.
 
 on:
   workflow_run:
     workflows: ["Backend Linting", "Frontend Linting", "Start Web Service"]
     types: [completed]
     branches:
-      - main
+      - prod
   push:
-    # Testing only — remove before merging to main
     branches:
-      - feature/integrate-cloud-environment-with-iac
+      - prod
   workflow_dispatch:
 
 concurrency:
