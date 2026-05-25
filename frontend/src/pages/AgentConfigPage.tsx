@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { Copy, FileDown, Loader2, RefreshCw, RotateCcw, Save, Trash2 } from "lucide-react";
+import {
+  Copy,
+  FileDown,
+  Loader2,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  ShieldAlert,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { AdvancedSection } from "@/components/agent-config/AdvancedSection";
@@ -9,6 +18,7 @@ import { InstructionsSection } from "@/components/agent-config/InstructionsSecti
 import { PipelineSection } from "@/components/agent-config/PipelineSection";
 import { ToolsSection } from "@/components/agent-config/ToolsSection";
 import { VariablesSection } from "@/components/agent-config/VariablesSection";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -191,6 +201,25 @@ export function AgentConfigPage() {
           onChange={(next) => setAgent({ ...agent, ...next })}
           showErrors={showErrors}
         />
+
+        {agent.persona_constraints && (
+          <Alert variant="info" className="bg-blue-50/50">
+            <ShieldAlert className="size-4" />
+            <AlertTitle>Persona Guardrails Active</AlertTitle>
+            <AlertDescription className="space-y-1">
+              {agent.persona_constraints.scope && (
+                <p>
+                  <strong>Scope:</strong> {agent.persona_constraints.scope}
+                </p>
+              )}
+              {agent.persona_constraints.out_of_scope && (
+                <p>
+                  <strong>Forbidden:</strong> {agent.persona_constraints.out_of_scope.join(", ")}
+                </p>
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
 
         <PipelineSection
           value={{ stt: agent.stt, tts: agent.tts, llm: agent.llm }}
