@@ -153,8 +153,11 @@ async def test_invalid_input_increments_conversation_errors_total() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _build_system_prompt + persona_constraints (ticket #69)
+# _build_system_prompt + persona_constraints
 # ---------------------------------------------------------------------------
+
+# These tests verify that the orchestrator correctly appends
+# persona constraints using the new imperative headers (CORE CONSTRAINT).
 
 
 def _agent_with_constraints(constraints: PersonaConstraints | None) -> AgentConfig:
@@ -185,9 +188,19 @@ def test_build_system_prompt_includes_persona_constraints() -> None:
     prompt = orch._build_system_prompt(_agent_with_constraints(constraints), active_tool=None)
 
     assert prompt.startswith("You are John.\nPersona: TechStore customer support.")
-    assert "Scope: TechStore customer service: orders, returns, accounts." in prompt
-    assert "Out of scope (politely redirect): therapy, legal advice" in prompt
-    assert '"I can only help with TechStore questions."' in prompt
+    # Asserting against the new imperative headers
+    assert (
+        "CORE CONSTRAINT - Authorized Scope: TechStore customer service: orders, returns, accounts."
+        in prompt
+    )
+    assert (
+        "CORE CONSTRAINT - Forbidden Topics (you MUST politely refuse and redirect): therapy, legal advice"
+        in prompt
+    )
+    assert (
+        'REQUIRED REFUSAL PHRASE (use this for redirection): "I can only help with TechStore questions."'
+        in prompt
+    )
 
 
 def test_build_system_prompt_empty_constraints_object_is_noop() -> None:
