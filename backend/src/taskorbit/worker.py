@@ -31,11 +31,7 @@ from taskorbit.observability.metrics import configure_default_metrics, get_metri
 
 logger = get_logger(__name__)
 
-# Tunable: increase if the last word of an utterance is missing from replies.
 _DEEPGRAM_FLUSH_DELAY_S: float = 0.3
-
-# Explicit allowlist of data-channel message types this worker handles.
-# Packets with any other `type` value are silently discarded.
 _RECOGNISED_MSG_TYPES: frozenset[str] = frozenset({"commit_turn", "interrupt_playback"})
 
 
@@ -44,10 +40,6 @@ async def entrypoint(ctx: JobContext) -> None:
 
     cfg = get_settings()
 
-    # Read the greeting and conversation_id from participant metadata.
-    # conversation_id is generated client-side by the FE and forwarded via
-    # the LiveKit JWT metadata so voice calls persist under the same id
-    # the History page uses to load messages.
     greeting: str = ""
     conversation_id: str | None = None
     meta: dict = {}
@@ -65,10 +57,8 @@ async def entrypoint(ctx: JobContext) -> None:
         conversation_id=conversation_id or "none",
     )
 
-    session = await build_agent_session(settings=cfg)
+    session = build_agent_session(settings=cfg)
 
-    # Open a per-call DB session so the voice path persists messages via
-    # _persist_messages in ConversationOrchestrator — same path as REST.
     db_session = AsyncSessionLocal()
     agent = build_default_agent(
         settings=cfg,
@@ -103,8 +93,6 @@ async def entrypoint(ctx: JobContext) -> None:
                 audio_duration_ms=round(m.audio_duration * 1000, 1),
             )
 
-    # Holds the most-recent pending reply task so it can be cancelled on
-    # interruption before the orchestrator finishes processing.
     reply_task: asyncio.Task[None] | None = None
 
     async def _commit_and_reply(turn_start: float) -> None:
@@ -158,7 +146,6 @@ async def entrypoint(ctx: JobContext) -> None:
         session.say(greeting)
         logger.info("worker_greeting_spoken", length=len(greeting))
 
-    # Close the DB session when the call ends
     await db_session.aclose()
     logger.info("worker_db_session_closed", conversation_id=conversation_id or "none")
 

@@ -73,17 +73,13 @@ class ConversationOrchestrator:
             if not last_user or not last_user.content.strip():
                 raise ValueError("No user message content found in request.")
 
-            # 1. Detect intent (mocked)
+            # 1. Detect intent
             intent = self._intent_detector.detect(last_user.content)
             logger.info(
                 "intent_detected", intent=intent.name, conversation_id=request.conversation_id
             )
 
-            # 2. Select agent — local import avoids circular dependency with agents/__init__.py
-            # NOTE: The agent object is currently a no-op placeholder. The orchestrator
-            # still drives the pipeline directly from AgentConfig. Wiring the agent
-            # logic (e.g. handle_message) will land when real intent routing replaces
-            # MockIntentDetector.
+            # 2. Select agent
             from taskorbit.agents import AgentRegistry
 
             agent = AgentRegistry.get_agent(request.agent_config, self)
@@ -233,7 +229,7 @@ class ConversationOrchestrator:
         """Persist conversation and messages to the database.
 
         Auto-creates the Conversation row if it doesn't exist, then saves
-        the last user message and the assistant reply in a single transaction.
+        the last user message and the assistant reply.
         Used by both the REST route and the LiveKit voice worker.
         """
         from datetime import UTC, datetime
@@ -244,57 +240,55 @@ class ConversationOrchestrator:
         from taskorbit.database.models import Conversation
 
         try:
-            # Start transaction
-            async with db.begin():
-                # Auto-create conversation if it doesn't exist (FK safety)
-                result = await db.execute(
-                    select(Conversation).where(Conversation.id == request.conversation_id)
+            # Auto-create conversation if it doesn't exist (FK safety)
+            result = await db.execute(
+                select(Conversation).where(Conversation.id == request.conversation_id)
+            )
+            conversation = result.scalar_one_or_none()
+            if not conversation:
+                conversation = Conversation(
+                    id=request.conversation_id,
+                    agent_id=request.agent_config.id,
+                    agent_name=request.agent_config.name,
+                    started_at=datetime.now(UTC),
                 )
-                conversation = result.scalar_one_or_none()
-                if not conversation:
-                    conversation = Conversation(
-                        id=request.conversation_id,
-                        agent_id=request.agent_config.id,
-                        agent_name=request.agent_config.name,
-                        started_at=datetime.now(UTC),
-                    )
-                    db.add(conversation)
-                    logger.info(
-                        "conversation_auto_created",
+                db.add(conversation)
+                await db.commit()
+                logger.info(
+                    "conversation_auto_created",
+                    conversation_id=request.conversation_id,
+                )
+
+            # Save last user message only
+            last_msg = request.messages[-1] if request.messages else None
+            last_user = last_msg if last_msg and last_msg.role == MessageRole.USER else None
+            if last_user:
+                saved = await create_conversation_message(
+                    db=db,
+                    conversation_id=request.conversation_id,
+                    role=last_user.role.value,
+                    content=last_user.content,
+                )
+                if saved is None:
+                    logger.error(
+                        "failed_to_save_user_message",
                         conversation_id=request.conversation_id,
                     )
 
-                # Save last user message only
-                last_msg = request.messages[-1] if request.messages else None
-                last_user = last_msg if last_msg and last_msg.role == MessageRole.USER else None
-                if last_user:
+                # Save assistant reply (only if there was a user message)
+                if response.reply:
                     saved = await create_conversation_message(
                         db=db,
                         conversation_id=request.conversation_id,
-                        role=last_user.role.value,
-                        content=last_user.content,
+                        role=response.reply.role.value,
+                        content=response.reply.content,
                     )
                     if saved is None:
                         logger.error(
-                            "failed_to_save_user_message",
+                            "failed_to_save_assistant_message",
                             conversation_id=request.conversation_id,
                         )
 
-                    # Save assistant reply (only if there was a user message)
-                    if response.reply:
-                        saved = await create_conversation_message(
-                            db=db,
-                            conversation_id=request.conversation_id,
-                            role=response.reply.role.value,
-                            content=response.reply.content,
-                        )
-                        if saved is None:
-                            logger.error(
-                                "failed_to_save_assistant_message",
-                                conversation_id=request.conversation_id,
-                            )
-
-            # Transaction commits automatically here
             logger.info("messages_persisted", conversation_id=request.conversation_id)
 
         except Exception as exc:
@@ -344,11 +338,7 @@ class ConversationOrchestrator:
         required_inputs: list[dict[str, Any]],
         llm_config: LLMConfig,
     ) -> Any:
-        """Run slot extraction over the conversation history.
-
-        Returns SlotExtractionResult. Falls back to all-missing on any error
-        so the main conversation turn is never blocked by extraction failures.
-        """
+        """Run slot extraction over the conversation history."""
         from taskorbit.slots import SlotExtractionResult, SlotExtractor
 
         if not required_inputs:
@@ -369,11 +359,7 @@ class ConversationOrchestrator:
         messages: list[Message],
         agent: BaseAgent,
     ) -> ToolDefinition | None:
-        """Decide which tool should be in scope for this turn, if any.
-
-        Returns first tool from the agent's own task definitions.
-        Real selection based on conversation history lands in a later sprint.
-        """
+        """Decide which tool should be in scope for this turn, if any."""
         tools = agent.get_task_definitions()
         return tools[0] if tools else None
 
@@ -383,14 +369,7 @@ class ConversationOrchestrator:
         messages: list[Message],
         llm_config: LLMConfig,
     ) -> str:
-        """Call the LLM provider specified by ``llm_config`` and return its text.
-
-        Routes to the right concrete client via the factory in
-        ``integrations/llm/factory.py``. The same-language instruction is
-        appended to the system prompt before delegation so every provider
-        receives the multilingual directive consistently. Tool-call parsing
-        happens in the caller so this method stays provider-agnostic.
-        """
+        """Call the LLM provider and return its text."""
         from taskorbit.integrations.llm.factory import get_llm_client
         from taskorbit.integrations.llm.prompts import with_same_language_instruction
 
@@ -403,11 +382,7 @@ class ConversationOrchestrator:
         tool: ToolDefinition,
         context: dict[str, Any],
     ) -> dict[str, Any]:
-        """Execute a tool after the user has confirmed (if required).
-
-        Delegates to the concrete BaseTool implementation in taskorbit.tools.
-        Returns the tool's result payload.
-        """
+        """Execute a tool after the user has confirmed (if required)."""
         raise NotImplementedError
 
     def _make_assistant_message(self, content: str) -> Message:
