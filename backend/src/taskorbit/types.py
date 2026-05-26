@@ -136,6 +136,8 @@ class ConversationResponse(BaseModel):
     selected_agent: str = ""
     status: str = "success"
     error: str = ""
+    extracted_slots: dict[str, Any] = Field(default_factory=dict)
+    missing_slots: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

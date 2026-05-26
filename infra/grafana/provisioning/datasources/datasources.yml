@@ -3,11 +3,15 @@ datasources:
   - name: Prometheus
     type: prometheus
     access: proxy
-    url: http://prometheus:9090
+    # Local dev: set PROMETHEUS_URL=http://prometheus:9090
+    # Production: injected by Terraform as the Cloud Run service URI
+    url: ${PROMETHEUS_URL}
     isDefault: true
     editable: false
   - name: Loki
     type: loki
     access: proxy
-    url: http://loki:3100
+    # Local dev: set LOKI_URL=http://loki:3100
+    # Production: injected by Terraform as the Cloud Run service URI
+    url: ${LOKI_URL}
     editable: false

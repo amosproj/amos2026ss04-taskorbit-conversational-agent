@@ -11,16 +11,28 @@
         "description": "Full name of the caller."
       },
       {
-        "name": "phone_number",
-        "type": "string",
+        "name": "email_address",
+        "type": "email",
         "required": true,
-        "description": "Callback number."
+        "description": "Email address for appointment confirmation."
+      },
+      {
+        "name": "phone_number",
+        "type": "phone",
+        "required": true,
+        "description": "Callback phone number."
       },
       {
         "name": "preferred_date",
         "type": "date",
         "required": true,
         "description": "Preferred appointment date."
+      },
+      {
+        "name": "service_location",
+        "type": "location",
+        "required": false,
+        "description": "Address where the service is needed."
       }
     ],
     "workflow_steps": [
@@ -32,7 +44,7 @@
       {
         "id": "collect-data",
         "action": "extract_required_fields",
-        "description": "Collect name, phone, and preferred date.",
+        "description": "Collect name, email, phone, preferred date, and service location.",
         "tool": "extract_data"
       },
       {
@@ -103,9 +115,15 @@
             "required": true
           },
           {
+            "variable_name": "email_address",
+            "description": "Email address for confirmation.",
+            "type": "email",
+            "required": true
+          },
+          {
             "variable_name": "phone_number",
-            "description": "Callback number.",
-            "type": "string",
+            "description": "Callback phone number.",
+            "type": "phone",
             "required": true
           },
           {
@@ -113,6 +131,12 @@
             "description": "Preferred appointment date.",
             "type": "date",
             "required": true
+          },
+          {
+            "variable_name": "service_location",
+            "description": "Address where the service is needed.",
+            "type": "location",
+            "required": false
           }
         ]
       },

@@ -6,12 +6,14 @@ sees the context for the *currently active* task, never the full agent
 config. This prevents prompt drift and keeps the agent grounded.
 
 Flow per message:
-  1. Detect intent (mocked — always book_service_appointment until issue #18).
+  1. Detect intent via keyword routing.
   2. Select the agent via AgentRegistry.
   3. Determine which tool (if any) should be in scope right now.
-  4. Build a minimal system prompt from that task context only.
+  3b. Extract slots from conversation history using SlotExtractor.
+  4. Build a system prompt augmented with slot collection progress.
   5. Call the LLM provider with a timeout (configurable via settings).
-  6. Return a ConversationResponse with intent, agent, and status fields.
+  5b. Execute DataExtractionTool when all required slots are filled.
+  6. Return a ConversationResponse with intent, agent, slot, and status fields.
 """
 
 from __future__ import annotations
@@ -82,8 +84,21 @@ class ConversationOrchestrator:
             # 3. Select active tool
             active_tool = self._select_active_tool(request.messages, agent)
 
-            # 4. Build system prompt
-            system_prompt = self._build_system_prompt(request.agent_config, active_tool)
+            # 3b. Extract slots from conversation history
+            slot_result = await self._extract_slots(
+                request.messages, intent.required_inputs, request.agent_config.llm
+            )
+            logger.info(
+                "slots_extracted",
+                filled=list(slot_result.filled.keys()),
+                missing=slot_result.missing,
+                conversation_id=request.conversation_id,
+            )
+
+            # 4. Build system prompt augmented with slot collection progress
+            system_prompt = self._build_system_prompt(
+                request.agent_config, active_tool, slot_result
+            )
 
             # 5. Call LLM with a timeout from settings — measure latency
             _llm_start = time.perf_counter()
@@ -93,6 +108,17 @@ class ConversationOrchestrator:
             )
             _llm_elapsed = time.perf_counter() - _llm_start
             get_metrics().pipeline_latency_seconds.labels(stage="llm_call").observe(_llm_elapsed)
+
+            # 5b. Execute DataExtractionTool when all required slots are filled
+            if slot_result.is_complete and intent.required_inputs:
+                from taskorbit.tools.data_extraction import DataExtractionTool
+
+                await DataExtractionTool().execute(slot_result.to_dict())
+                logger.info(
+                    "data_extraction_complete",
+                    slots=list(slot_result.filled.keys()),
+                    conversation_id=request.conversation_id,
+                )
 
             _total_elapsed = time.perf_counter() - _pipeline_start
             get_metrics().pipeline_latency_seconds.labels(stage="total").observe(_total_elapsed)
@@ -109,6 +135,8 @@ class ConversationOrchestrator:
                 selected_intent=intent.name,
                 selected_agent=request.agent_config.name,
                 status="success",
+                extracted_slots=slot_result.to_dict() if slot_result.is_complete else {},
+                missing_slots=slot_result.missing,
             )
 
         except LLMConfigError as exc:
@@ -182,6 +210,7 @@ class ConversationOrchestrator:
         self,
         agent_config: AgentConfig,
         active_tool: ToolDefinition | None,
+        slot_result: Any | None = None,
     ) -> str:
         """Construct a system prompt (LLM context) for the current task."""
         from taskorbit.integrations.llm.prompts import with_persona_guardrails
@@ -194,6 +223,12 @@ class ConversationOrchestrator:
             lines.append(f"Current task: {active_tool.name} - {active_tool.description}")
             if active_tool.parameters:
                 lines.append(f"Available parameters: {active_tool.parameters}")
+        if slot_result is not None:
+            if slot_result.filled:
+                collected = ", ".join(f"{k}={sv.value}" for k, sv in slot_result.filled.items())
+                lines.append(f"Collected so far: {collected}")
+            if slot_result.missing:
+                lines.append(f"Still need from user: {', '.join(slot_result.missing)}")
         prompt = "\n".join(lines)
         prompt = with_persona_guardrails(prompt, agent_config.persona_constraints)
         if agent_config.persona_constraints is not None:
@@ -204,6 +239,32 @@ class ConversationOrchestrator:
                 refusal_template_set=bool(agent_config.persona_constraints.refusal_template),
             )
         return prompt
+
+    async def _extract_slots(
+        self,
+        messages: list[Message],
+        required_inputs: list[dict[str, Any]],
+        llm_config: LLMConfig,
+    ) -> Any:
+        """Run slot extraction over the conversation history.
+
+        Returns SlotExtractionResult. Falls back to all-missing on any error
+        so the main conversation turn is never blocked by extraction failures.
+        """
+        from taskorbit.slots import SlotExtractionResult, SlotExtractor
+
+        if not required_inputs:
+            return SlotExtractionResult()
+        try:
+            extractor = SlotExtractor(llm_fn=self._call_llm, llm_config=llm_config)
+            return await extractor.extract(messages, required_inputs)
+        except Exception as exc:
+            logger.warning(
+                "slot_extraction_error",
+                error=str(exc),
+            )
+            missing = [f["name"] for f in required_inputs if f.get("required", True)]
+            return SlotExtractionResult(missing=missing)
 
     def _select_active_tool(
         self,
