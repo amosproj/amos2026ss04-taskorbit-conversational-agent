@@ -156,7 +156,7 @@ export function ConversationalChat() {
         agentCommittedRef.current = mergedText.trim();
       }
     },
-    [call.upsertTurnById, call.removeTurnById],
+    [call],
   );
 
   const handleSendText = useCallback(
@@ -207,7 +207,7 @@ export function ConversationalChat() {
         );
       }
     },
-    [call.setMicError],
+    [call],
   );
 
   const handleTriggerConfirmation = useCallback(() => {
