@@ -6,6 +6,7 @@ import "@livekit/components-styles";
 import "./index.css";
 
 import { App } from "@/App";
+import { ActiveAgentProvider } from "@/components/active-agent-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -19,8 +20,10 @@ createRoot(rootEl).render(
         itself. Keeping both avoids forking the existing provider. */}
     <ThemeProvider defaultTheme="system" storageKey="taskorbit-ui-theme">
       <NextThemesProvider attribute="class" defaultTheme="system" enableSystem>
-        <App />
-        <Toaster richColors position="bottom-right" />
+        <ActiveAgentProvider>
+          <App />
+          <Toaster richColors position="bottom-right" />
+        </ActiveAgentProvider>
       </NextThemesProvider>
     </ThemeProvider>
   </StrictMode>,
