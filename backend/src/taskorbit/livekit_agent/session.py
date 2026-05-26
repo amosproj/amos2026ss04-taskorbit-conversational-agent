@@ -17,6 +17,7 @@ The pipeline is:
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from livekit.agents import AgentSession
@@ -63,10 +64,6 @@ def build_agent_session(
             api_key=cfg.elevenlabs_api_key,
             voice_id=cfg.elevenlabs_voice_id,
             model=cfg.elevenlabs_model,
-            # Plugin default is mp3_22050_32 (22 kHz / 32 kbps) which sounds
-            # noticeably different from the REST endpoint used for the greeting
-            # (which returns mp3_44100_128 by default). Match that quality here
-            # so both paths use the same audio characteristics.
             encoding="mp3_44100_128",
             voice_settings=VoiceSettings(
                 stability=0.75,
@@ -76,15 +73,8 @@ def build_agent_session(
                 use_speaker_boost=True,
             ),
         ),
-        # Barge-in: stop agent TTS as soon as the user sustains speech for
-        # min_interruption_duration seconds. Brief noises (clicks, coughs)
-        # shorter than the threshold do not trigger an interruption.
         allow_interruptions=True,
         min_interruption_duration=0.8,
-        # Push-to-talk: only reply when generate_reply() is called explicitly.
-        # "manual" endpointing disables VAD/silence auto-trigger.
-        # preemptive_tts=False stops the session from calling llm_node early
-        # to pre-warm TTS — that would fire the orchestrator before Send.
         turn_handling={
             "endpointing": {"mode": "manual"},
             "preemptive_generation": {"preemptive_tts": False},
@@ -96,12 +86,17 @@ def build_default_agent(
     *,
     orchestrator: ConversationOrchestrator | None = None,
     settings: Settings | None = None,
+    db: Any = None,
+    conversation_id: str | None = None,
 ) -> OrchestratorAgent:
     """Build the ``OrchestratorAgent`` paired with this session.
 
-    Kept separate from ``build_agent_session`` because ``session.start``
-    expects the agent as a parameter, not as a constructor argument.
+    Pass ``db`` and ``conversation_id`` from the worker entrypoint so the
+    voice turn persists under the same conversation id the FE generated.
+    Both fall back to safe defaults so existing test code keeps working.
     """
     return OrchestratorAgent(
         orchestrator=orchestrator or ConversationOrchestrator(settings=settings),
+        conversation_id=conversation_id or str(uuid.uuid4()),
+        db=db,
     )
