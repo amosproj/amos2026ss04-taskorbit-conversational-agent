@@ -24,6 +24,7 @@ from livekit.agents.metrics import STTMetrics, TTSMetrics
 from livekit.agents.voice.events import AgentEvent
 
 from taskorbit.config import get_settings
+from taskorbit.database import AsyncSessionLocal
 from taskorbit.livekit_agent import build_agent_session, build_default_agent
 from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import configure_default_metrics, get_metrics
@@ -43,21 +44,37 @@ async def entrypoint(ctx: JobContext) -> None:
 
     cfg = get_settings()
 
-    # Read the greeting from participant metadata so we can speak it through
-    # the session — same TTS/WebRTC pipeline as every other agent turn, so
-    # the voice is identical. The frontend used to call ElevenLabs directly
-    # for the greeting which produced a different audio path (plain MP3
-    # playback vs WebRTC Opus), making the voices sound different.
+    # Read the greeting and conversation_id from participant metadata.
+    # conversation_id is generated client-side by the FE and forwarded via
+    # the LiveKit JWT metadata so voice calls persist under the same id
+    # the History page uses to load messages.
     greeting: str = ""
+    conversation_id: str | None = None
+    meta: dict = {}
     try:
         participant = await ctx.wait_for_participant()
         meta = json.loads(participant.metadata or "{}")
         greeting = str(meta.get("greeting") or "")
+        conversation_id = meta.get("conversation_id") or None
     except Exception:  # noqa: BLE001
         pass
 
+    logger.info(
+        "worker_entrypoint_started",
+        has_conversation_id=conversation_id is not None,
+        conversation_id=conversation_id or "none",
+    )
+
     session = await build_agent_session(settings=cfg)
-    agent = build_default_agent(settings=cfg)
+
+    # Open a per-call DB session so the voice path persists messages via
+    # _persist_messages in ConversationOrchestrator — same path as REST.
+    db_session = AsyncSessionLocal()
+    agent = build_default_agent(
+        settings=cfg,
+        db=db_session,
+        conversation_id=conversation_id,
+    )
 
     @session.on("metrics_collected")
     def _on_metrics(ev: AgentEvent) -> None:
@@ -91,15 +108,11 @@ async def entrypoint(ctx: JobContext) -> None:
     reply_task: asyncio.Task[None] | None = None
 
     async def _commit_and_reply(turn_start: float) -> None:
-        # Small delay so Deepgram can flush its final transcription segment
-        # into the ChatContext before generate_reply() reads it. Without this,
-        # the last word(s) of the utterance may be missing from the reply.
         try:
             await asyncio.sleep(_DEEPGRAM_FLUSH_DELAY_S)
             result = session.generate_reply()
             if asyncio.iscoroutine(result):
                 await result
-            _turn_elapsed = time.perf_counter() - turn_start
             _turn_elapsed = time.perf_counter() - turn_start
             get_metrics().pipeline_latency_seconds.labels(stage="worker_turn").observe(
                 _turn_elapsed
@@ -111,10 +124,6 @@ async def entrypoint(ctx: JobContext) -> None:
         except Exception as exc:  # noqa: BLE001
             logger.warning("worker_generate_reply_failed", error=str(exc))
 
-    # When the frontend Send button is clicked, useMicRecorder.sendUtterance()
-    # publishes {"type": "commit_turn"} over the data channel. Handling it here
-    # lets the agent start processing immediately instead of waiting for VAD
-    # silence detection to time out.
     @ctx.room.on("data_received")
     def _on_data(packet: rtc.DataPacket) -> None:
         nonlocal reply_task
@@ -149,13 +158,14 @@ async def entrypoint(ctx: JobContext) -> None:
         session.say(greeting)
         logger.info("worker_greeting_spoken", length=len(greeting))
 
+    # Close the DB session when the call ends
+    await db_session.aclose()
+    logger.info("worker_db_session_closed", conversation_id=conversation_id or "none")
+
 
 def run_worker() -> None:
     import os
 
-    # prometheus_client multiprocess mode: when PROMETHEUS_MULTIPROC_DIR is set,
-    # each LiveKit subprocess writes metrics to files in that directory.
-    # MultiProcessCollector aggregates them so the HTTP server reflects all processes.
     multiproc_dir = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
     if multiproc_dir:
         os.makedirs(multiproc_dir, exist_ok=True)
