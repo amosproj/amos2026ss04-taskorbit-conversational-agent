@@ -119,10 +119,12 @@ export function HistoryPage() {
                             {formatDate(conv.started_at)}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <Clock className="h-3 w-3" />
-                          <span>{conv.ended_at ? formatDate(conv.ended_at) : "In progress"}</span>
-                        </div>
+                        {conv.ended_at && (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Clock className="h-3 w-3" />
+                            <span>{formatDate(conv.ended_at)}</span>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
