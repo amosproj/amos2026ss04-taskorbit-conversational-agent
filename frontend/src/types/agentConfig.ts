@@ -100,7 +100,7 @@ export type VadConfig = {
 /**
  * PersonaConstraints — optional scope/refusal guardrails keeping the agent
  * in role on off-topic input (ticket #69). Aligned with
- * `agentMetadata.persona_constraints` in schemas/agent-task.schema.json.
+ * `agentDefinition.persona_constraints` in schemas/agent-task.schema.json.
  */
 export type PersonaConstraints = {
   scope?: string;

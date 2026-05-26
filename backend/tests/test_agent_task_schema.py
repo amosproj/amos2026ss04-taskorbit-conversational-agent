@@ -82,7 +82,7 @@ def test_schema_accepts_persona_constraints(
 ) -> None:
     """Adding a fully populated persona_constraints block validates."""
     data = deepcopy(valid_example)
-    data["agent"]["metadata"]["persona_constraints"] = {
+    data["agent"]["persona_constraints"] = {
         "scope": "TechStore customer service.",
         "out_of_scope": ["therapy", "legal advice"],
         "refusal_template": "I can only help with TechStore questions.",
@@ -98,7 +98,7 @@ def test_schema_accepts_missing_persona_constraints(
     Backward-compatibility guarantee: existing saved agent configs continue
     to pass schema validation after the persona_constraints field is added.
     """
-    assert "persona_constraints" not in valid_example["agent"]["metadata"]
+    assert "persona_constraints" not in valid_example["agent"]
     validate(instance=valid_example, schema=schema)
 
 
@@ -108,7 +108,7 @@ def test_schema_accepts_empty_persona_constraints(
     """A persona_constraints object with zero fields is allowed (every
     sub-field is optional)."""
     data = deepcopy(valid_example)
-    data["agent"]["metadata"]["persona_constraints"] = {}
+    data["agent"]["persona_constraints"] = {}
     validate(instance=data, schema=schema)
 
 
@@ -117,7 +117,7 @@ def test_schema_rejects_unknown_field_inside_persona_constraints(
 ) -> None:
     """personaConstraints has additionalProperties=false — unknown keys fail."""
     data = deepcopy(valid_example)
-    data["agent"]["metadata"]["persona_constraints"] = {
+    data["agent"]["persona_constraints"] = {
         "scope": "ok",
         "unknown_field": "should fail",
     }

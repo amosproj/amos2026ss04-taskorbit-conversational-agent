@@ -213,10 +213,6 @@
         },
         "description": {
           "type": "string"
-        },
-        "persona_constraints": {
-          "$ref": "#/$defs/personaConstraints",
-          "description": "Optional scope/refusal guardrails — keeps agent in role on off-topic input (ticket #69)."
         }
       }
     },
