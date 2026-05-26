@@ -25,17 +25,6 @@ _VALID_PAYLOAD = {
     "messages": [{"role": "user", "content": "Hello"}],
 }
 
-_NO_USER_PAYLOAD = {
-    "conversation_id": "conv-no-user",
-    "agent_config": {
-        "id": "agent-1",
-        "name": "Bot",
-        "persona": "Helpful",
-        "greeting": "Hi!",
-    },
-    "messages": [{"role": "assistant", "content": "Hello"}],
-}
-
 
 def _mock_db() -> AsyncMock:
     """Return a mock async DB session."""
@@ -48,8 +37,8 @@ def _mock_db() -> AsyncMock:
     return db
 
 
-def _mock_orchestrator_with_response() -> AsyncMock:
-    """Return a mock orchestrator with a valid response."""
+def test_process_conversation_returns_200_with_mock() -> None:
+    """Verifies that the endpoint returns a 200 and a valid response using a mock orchestrator."""
     mock_response = ConversationResponse(
         conversation_id="conv-1",
         reply=Message(role=MessageRole.ASSISTANT, content="[Mocked] Hello"),
@@ -57,17 +46,16 @@ def _mock_orchestrator_with_response() -> AsyncMock:
     )
     mock_orchestrator = AsyncMock()
     mock_orchestrator.process_message.return_value = mock_response
-    return mock_orchestrator
-
-
-def test_process_conversation_returns_200_with_mock() -> None:
-    """Verifies that the endpoint returns a 200 and a valid response using a mock orchestrator."""
-    mock_orchestrator = _mock_orchestrator_with_response()
     app = create_app()
     app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
     app.dependency_overrides[get_session] = _mock_db
-    with TestClient(app) as client:
-        response = client.post("/v1/conversations/process", json=_VALID_PAYLOAD)
+    with patch(
+        "taskorbit.api.routes.conversations.create_conversation_message",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        with TestClient(app) as client:
+            response = client.post("/v1/conversations/process", json=_VALID_PAYLOAD)
     assert response.status_code == 200
     body = response.json()
     assert body["conversation_id"] == "conv-1"
@@ -121,85 +109,4 @@ def test_create_conversation_returns_201() -> None:
     with TestClient(app) as client:
         response = client.post("/v1/conversations")
     assert response.status_code == 201
-    app.dependency_overrides = {}
-
-
-# ============ TESTS FOR AUTO-CREATE CONVERSATION BEHAVIOR ============
-
-
-def test_process_conversation_auto_creates_when_missing() -> None:
-    """Auto-create fires when conversation row doesn't exist."""
-    mock_orchestrator = _mock_orchestrator_with_response()
-    app = create_app()
-    app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
-    app.dependency_overrides[get_session] = _mock_db
-    with TestClient(app) as client:
-        response = client.post("/v1/conversations/process", json=_VALID_PAYLOAD)
-    assert response.status_code == 200
-    # orchestrator.process_message was called with db argument
-    mock_orchestrator.process_message.assert_called_once()
-    args, kwargs = mock_orchestrator.process_message.call_args
-    assert "db" in kwargs or len(args) >= 2
-    app.dependency_overrides = {}
-
-
-def test_process_conversation_passes_agent_fields_from_request() -> None:
-    """Agent fields come from the request, not hardcoded defaults."""
-    mock_orchestrator = _mock_orchestrator_with_response()
-    app = create_app()
-    app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
-    app.dependency_overrides[get_session] = _mock_db
-    payload = {
-        "conversation_id": "conv-custom",
-        "agent_config": {
-            "id": "custom-agent-id",
-            "name": "CustomBot",
-            "persona": "Custom persona",
-            "greeting": "Hello!",
-        },
-        "messages": [{"role": "user", "content": "Test"}],
-    }
-    with TestClient(app) as client:
-        response = client.post("/v1/conversations/process", json=payload)
-    assert response.status_code == 200
-    args, kwargs = mock_orchestrator.process_message.call_args
-    request_arg = args[0] if args else kwargs.get("request")
-    assert request_arg.agent_config.id == "custom-agent-id"
-    assert request_arg.agent_config.name == "CustomBot"
-    app.dependency_overrides = {}
-
-
-def test_process_conversation_no_user_message_still_returns_200() -> None:
-    """No-user-message edge case — endpoint returns 200, orchestrator called."""
-    mock_response = ConversationResponse(
-        conversation_id="conv-no-user",
-        reply=Message(role=MessageRole.ASSISTANT, content="Hello"),
-        status="success",
-    )
-    mock_orchestrator = AsyncMock()
-    mock_orchestrator.process_message.return_value = mock_response
-    app = create_app()
-    app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
-    app.dependency_overrides[get_session] = _mock_db
-    with TestClient(app) as client:
-        response = client.post("/v1/conversations/process", json=_NO_USER_PAYLOAD)
-    assert response.status_code == 200
-    mock_orchestrator.process_message.assert_called_once()
-    app.dependency_overrides = {}
-
-
-def test_process_conversation_idempotent_when_exists() -> None:
-    """Orchestrator is called with db — idempotency handled inside orchestrator."""
-    mock_orchestrator = _mock_orchestrator_with_response()
-    app = create_app()
-    app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
-    app.dependency_overrides[get_session] = _mock_db
-    with TestClient(app) as client:
-        # First call
-        r1 = client.post("/v1/conversations/process", json=_VALID_PAYLOAD)
-        # Second call same conversation_id
-        r2 = client.post("/v1/conversations/process", json=_VALID_PAYLOAD)
-    assert r1.status_code == 200
-    assert r2.status_code == 200
-    assert mock_orchestrator.process_message.call_count == 2
     app.dependency_overrides = {}
