@@ -11,9 +11,9 @@ Flow per message:
   3. Determine which tool (if any) should be in scope right now.
   3b. Extract slots from conversation history using SlotExtractor.
   4. Build a system prompt augmented with slot collection progress.
+  5. Call the LLM provider with a timeout (configurable via settings).
   5b. Execute DataExtractionTool when all required slots are filled.
   6. Return a ConversationResponse with intent, agent, slot, and status fields.
-  7. Persist conversation and messages to DB if a session is provided.
 """
 
 from __future__ import annotations
@@ -50,20 +50,8 @@ class ConversationOrchestrator:
         self._settings = settings or get_settings()
         self._intent_detector = MockIntentDetector()
 
-    async def process_message(
-        self,
-        request: ConversationRequest,
-        db: Any | None = None,
-    ) -> ConversationResponse:
-        """Main entry point called by the API layer and agent workers.
-
-        Args:
-            request: The conversation request containing messages and agent config.
-            db: Optional AsyncSession for persisting conversation and messages.
-                When provided, auto-creates the conversation row if missing and
-                saves both user and assistant messages. Used by both the REST
-                route and the LiveKit voice worker.
-        """
+    async def process_message(self, request: ConversationRequest) -> ConversationResponse:
+        """Main entry point called by the API layer and agent workers."""
         _pipeline_start = time.perf_counter()
         try:
             last_user = next(
@@ -73,13 +61,17 @@ class ConversationOrchestrator:
             if not last_user or not last_user.content.strip():
                 raise ValueError("No user message content found in request.")
 
-            # 1. Detect intent
+            # 1. Detect intent (mocked)
             intent = self._intent_detector.detect(last_user.content)
             logger.info(
                 "intent_detected", intent=intent.name, conversation_id=request.conversation_id
             )
 
-            # 2. Select agent
+            # 2. Select agent — local import avoids circular dependency with agents/__init__.py
+            # NOTE: The agent object is currently a no-op placeholder. The orchestrator
+            # still drives the pipeline directly from AgentConfig. Wiring the agent
+            # logic (e.g. handle_message) will land when real intent routing replaces
+            # MockIntentDetector.
             from taskorbit.agents import AgentRegistry
 
             agent = AgentRegistry.get_agent(request.agent_config, self)
@@ -137,7 +129,7 @@ class ConversationOrchestrator:
                 total_latency_ms=round(_total_elapsed * 1000, 1),
             )
 
-            response = ConversationResponse(
+            return ConversationResponse(
                 conversation_id=request.conversation_id,
                 reply=self._make_assistant_message(llm_text),
                 selected_intent=intent.name,
@@ -146,12 +138,6 @@ class ConversationOrchestrator:
                 extracted_slots=slot_result.to_dict() if slot_result.is_complete else {},
                 missing_slots=slot_result.missing,
             )
-
-            # 6. Persist messages if db session provided (REST route + voice worker)
-            if db is not None:
-                await self._persist_messages(db, request, response)
-
-            return response
 
         except LLMConfigError as exc:
             get_metrics().conversation_errors_total.labels(error_type="llm_config").inc()
@@ -220,84 +206,6 @@ class ConversationOrchestrator:
                 error=str(exc),
             )
 
-    async def _persist_messages(
-        self,
-        db: Any,
-        request: ConversationRequest,
-        response: ConversationResponse,
-    ) -> None:
-        """Persist conversation and messages to the database.
-
-        Auto-creates the Conversation row if it doesn't exist, then saves
-        the last user message and the assistant reply.
-        Used by both the REST route and the LiveKit voice worker.
-        """
-        from datetime import UTC, datetime
-
-        from sqlalchemy import select
-
-        from taskorbit.database.crud import create_conversation_message
-        from taskorbit.database.models import Conversation
-
-        try:
-            # Auto-create conversation if it doesn't exist (FK safety)
-            result = await db.execute(
-                select(Conversation).where(Conversation.id == request.conversation_id)
-            )
-            conversation = result.scalar_one_or_none()
-            if not conversation:
-                conversation = Conversation(
-                    id=request.conversation_id,
-                    agent_id=request.agent_config.id,
-                    agent_name=request.agent_config.name,
-                    started_at=datetime.now(UTC),
-                )
-                db.add(conversation)
-                await db.commit()
-                logger.info(
-                    "conversation_auto_created",
-                    conversation_id=request.conversation_id,
-                )
-
-            # Save last user message only
-            last_msg = request.messages[-1] if request.messages else None
-            last_user = last_msg if last_msg and last_msg.role == MessageRole.USER else None
-            if last_user:
-                saved = await create_conversation_message(
-                    db=db,
-                    conversation_id=request.conversation_id,
-                    role=last_user.role.value,
-                    content=last_user.content,
-                )
-                if saved is None:
-                    logger.error(
-                        "failed_to_save_user_message",
-                        conversation_id=request.conversation_id,
-                    )
-
-                # Save assistant reply (only if there was a user message)
-                if response.reply:
-                    saved = await create_conversation_message(
-                        db=db,
-                        conversation_id=request.conversation_id,
-                        role=response.reply.role.value,
-                        content=response.reply.content,
-                    )
-                    if saved is None:
-                        logger.error(
-                            "failed_to_save_assistant_message",
-                            conversation_id=request.conversation_id,
-                        )
-
-            logger.info("messages_persisted", conversation_id=request.conversation_id)
-
-        except Exception as exc:
-            logger.error(
-                "persistence_failed",
-                error=str(exc),
-                conversation_id=request.conversation_id,
-            )
-
     def _build_system_prompt(
         self,
         agent_config: AgentConfig,
@@ -338,7 +246,11 @@ class ConversationOrchestrator:
         required_inputs: list[dict[str, Any]],
         llm_config: LLMConfig,
     ) -> Any:
-        """Run slot extraction over the conversation history."""
+        """Run slot extraction over the conversation history.
+
+        Returns SlotExtractionResult. Falls back to all-missing on any error
+        so the main conversation turn is never blocked by extraction failures.
+        """
         from taskorbit.slots import SlotExtractionResult, SlotExtractor
 
         if not required_inputs:
@@ -359,7 +271,11 @@ class ConversationOrchestrator:
         messages: list[Message],
         agent: BaseAgent,
     ) -> ToolDefinition | None:
-        """Decide which tool should be in scope for this turn, if any."""
+        """Decide which tool should be in scope for this turn, if any.
+
+        Returns first tool from the agent's own task definitions.
+        Real selection based on conversation history lands in a later sprint.
+        """
         tools = agent.get_task_definitions()
         return tools[0] if tools else None
 
@@ -369,7 +285,14 @@ class ConversationOrchestrator:
         messages: list[Message],
         llm_config: LLMConfig,
     ) -> str:
-        """Call the LLM provider and return its text."""
+        """Call the LLM provider specified by ``llm_config`` and return its text.
+
+        Routes to the right concrete client via the factory in
+        ``integrations/llm/factory.py``. The same-language instruction is
+        appended to the system prompt before delegation so every provider
+        receives the multilingual directive consistently. Tool-call parsing
+        happens in the caller so this method stays provider-agnostic.
+        """
         from taskorbit.integrations.llm.factory import get_llm_client
         from taskorbit.integrations.llm.prompts import with_same_language_instruction
 
@@ -382,7 +305,11 @@ class ConversationOrchestrator:
         tool: ToolDefinition,
         context: dict[str, Any],
     ) -> dict[str, Any]:
-        """Execute a tool after the user has confirmed (if required)."""
+        """Execute a tool after the user has confirmed (if required).
+
+        Delegates to the concrete BaseTool implementation in taskorbit.tools.
+        Returns the tool's result payload.
+        """
         raise NotImplementedError
 
     def _make_assistant_message(self, content: str) -> Message:

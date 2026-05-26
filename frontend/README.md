@@ -6,6 +6,7 @@ This package is the browser-side client for the TaskOrbit Conversational
 Agent. It hosts the voice-interaction UI and the LiveKit client that
 streams audio to the backend agent worker.
 
+
 ---
 
 ## Setup
@@ -38,17 +39,17 @@ by real LiveKit room events.
 
 Key moving parts:
 
-| File                                                                     | Role                                                                               |
-| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `hooks/useVoiceCall.ts`                                                  | Owns the call lifecycle, transcript array, token fetch.                            |
-| `hooks/useMicRecorder.ts`                                                | Bridges mic publish/mute on the local participant + audio levels for the waveform. |
-| `hooks/useAgentTranscription.ts`                                         | Subscribes to `lk.transcription` text streams for live captions.                   |
-| `hooks/useConnectionStatus.ts`                                           | Surfaces `Reconnecting` so the UI can show a banner.                               |
-| `lib/livekitToken.ts`                                                    | POST `/api/v1/livekit/token` (optional JSON `metadata` for the worker).            |
-| `lib/livekitAgentMetadata.ts`                                            | Maps UI `AgentConfig` → backend JWT metadata.                                      |
-| `components/chat/VoiceSessionBridge.tsx`                                 | Translates LiveKit events into call-status phase changes.                          |
-| `components/chat/InCallControls.tsx`                                     | Mic button + Stop/Send buttons + waveform + End call.                              |
-| `components/chat/MicButton.tsx`, `RecordingControls.tsx`, `Waveform.tsx` | Pure UI primitives.                                                                |
+| File | Role |
+|---|---|
+| `hooks/useVoiceCall.ts` | Owns the call lifecycle, transcript array, token fetch. |
+| `hooks/useMicRecorder.ts` | Bridges mic publish/mute on the local participant + audio levels for the waveform. |
+| `hooks/useAgentTranscription.ts` | Subscribes to `lk.transcription` text streams for live captions. |
+| `hooks/useConnectionStatus.ts` | Surfaces `Reconnecting` so the UI can show a banner. |
+| `lib/livekitToken.ts` | POST `/api/v1/livekit/token` (optional JSON `metadata` for the worker). |
+| `lib/livekitAgentMetadata.ts` | Maps UI `AgentConfig` → backend JWT metadata. |
+| `components/chat/VoiceSessionBridge.tsx` | Translates LiveKit events into call-status phase changes. |
+| `components/chat/InCallControls.tsx` | Mic button + Stop/Send buttons + waveform + End call. |
+| `components/chat/MicButton.tsx`, `RecordingControls.tsx`, `Waveform.tsx` | Pure UI primitives. |
 
 Audio playback for the agent's reply uses LiveKit's `RoomAudioRenderer`
 — the worker publishes the ElevenLabs TTS as a remote audio track and
@@ -60,12 +61,12 @@ fallback for the typed-input ("Use text instead") branch.
 
 ## Environment (voice)
 
-| Variable           | Where                 | Purpose                                                          |
-| ------------------ | --------------------- | ---------------------------------------------------------------- |
-| `VITE_API_URL`     | `frontend/.env.local` | Backend origin for `/api/*` proxy (e.g. `http://localhost:8000`) |
-| `LIVEKIT_*`        | `backend/.env`        | Minted by the API; worker consumes the same values               |
-| `DEEPGRAM_API_KEY` | `backend/.env`        | Speech-to-text in the worker                                     |
-| `ELEVENLABS_*`     | `backend/.env`        | Text-to-speech in the worker                                     |
+| Variable | Where | Purpose |
+|----------|--------|---------|
+| `VITE_API_URL` | `frontend/.env.local` | Backend origin for `/api/*` proxy (e.g. `http://localhost:8000`) |
+| `LIVEKIT_*` | `backend/.env` | Minted by the API; worker consumes the same values |
+| `DEEPGRAM_API_KEY` | `backend/.env` | Speech-to-text in the worker |
+| `ELEVENLABS_*` | `backend/.env` | Text-to-speech in the worker |
 
 The browser receives the LiveKit WebSocket URL inside the token response — it is not a separate frontend env var.
 
@@ -130,14 +131,14 @@ frontend/
 
 ## Useful commands
 
-| Command              | What it does                                      |
-| -------------------- | ------------------------------------------------- |
-| `npm run dev`        | Vite dev server with HMR                          |
-| `npm run build`      | Type-check then build for production into `dist/` |
-| `npm run preview`    | Serve the built bundle locally                    |
-| `npm run lint`       | ESLint over `src/`                                |
-| `npm run format`     | Prettier over `src/`                              |
-| `npm run type-check` | `tsc --noEmit` only                               |
+| Command | What it does |
+|---|---|
+| `npm run dev` | Vite dev server with HMR |
+| `npm run build` | Type-check then build for production into `dist/` |
+| `npm run preview` | Serve the built bundle locally |
+| `npm run lint` | ESLint over `src/` |
+| `npm run format` | Prettier over `src/` |
+| `npm run type-check` | `tsc --noEmit` only |
 
 ---
 
