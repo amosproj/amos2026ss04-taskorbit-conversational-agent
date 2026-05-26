@@ -7,7 +7,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from taskorbit.orchestration import ConversationOrchestrator
-from taskorbit.types import AgentConfig, ConversationRequest, Message, MessageRole
+from taskorbit.types import (
+    AgentConfig,
+    ConversationRequest,
+    Message,
+    MessageRole,
+    PersonaConstraints,
+)
 
 
 def _make_request(content: str = "Hello") -> ConversationRequest:
@@ -144,3 +150,63 @@ async def test_invalid_input_increments_conversation_errors_total() -> None:
     mock_metrics.conversation_errors_total.labels(
         error_type="invalid_input"
     ).inc.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _build_system_prompt + persona_constraints
+# ---------------------------------------------------------------------------
+
+# These tests verify that the orchestrator correctly appends
+# persona constraints using the new imperative headers (CORE CONSTRAINT).
+
+
+def _agent_with_constraints(constraints: PersonaConstraints | None) -> AgentConfig:
+    return AgentConfig(
+        id="agent-1",
+        name="John",
+        persona="TechStore customer support.",
+        greeting="Hi!",
+        persona_constraints=constraints,
+    )
+
+
+def test_build_system_prompt_without_constraints_unchanged() -> None:
+    """With no persona_constraints the prompt is exactly the existing format."""
+    orch = ConversationOrchestrator()
+    prompt = orch._build_system_prompt(_agent_with_constraints(None), active_tool=None)
+    assert prompt == "You are John.\nPersona: TechStore customer support."
+
+
+def test_build_system_prompt_includes_persona_constraints() -> None:
+    """Populated constraints append scope, out_of_scope, and refusal_template lines."""
+    constraints = PersonaConstraints(
+        scope="TechStore customer service: orders, returns, accounts.",
+        out_of_scope=["therapy", "legal advice"],
+        refusal_template="I can only help with TechStore questions.",
+    )
+    orch = ConversationOrchestrator()
+    prompt = orch._build_system_prompt(_agent_with_constraints(constraints), active_tool=None)
+
+    assert prompt.startswith("You are John.\nPersona: TechStore customer support.")
+    # Asserting against the new imperative headers
+    assert (
+        "CORE CONSTRAINT - Authorized Scope: TechStore customer service: orders, returns, accounts."
+        in prompt
+    )
+    assert (
+        "CORE CONSTRAINT - Forbidden Topics (you MUST politely refuse and redirect): therapy, legal advice"
+        in prompt
+    )
+    assert (
+        'REQUIRED REFUSAL PHRASE (use this for redirection): "I can only help with TechStore questions."'
+        in prompt
+    )
+
+
+def test_build_system_prompt_empty_constraints_object_is_noop() -> None:
+    """A PersonaConstraints with every field empty leaves the prompt unchanged."""
+    orch = ConversationOrchestrator()
+    prompt = orch._build_system_prompt(
+        _agent_with_constraints(PersonaConstraints()), active_tool=None
+    )
+    assert prompt == "You are John.\nPersona: TechStore customer support."

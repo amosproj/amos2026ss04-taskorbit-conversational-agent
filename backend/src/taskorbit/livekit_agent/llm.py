@@ -30,6 +30,7 @@ from taskorbit.types import (
     LLMConfig,
     Message,
     MessageRole,
+    PersonaConstraints,
     STTConfig,
     TTSConfig,
 )
@@ -43,16 +44,37 @@ def _default_agent_config() -> AgentConfig:
     The voice worker doesn't have access to the frontend agent config
     today (token metadata wiring is a future task). For now we synthesise
     a plain config so the orchestrator can still produce a reply.
+
+    Mirrors the John Doe TechStore preset from frontend/src/lib/mockAgents.ts,
+    including persona_constraints (ticket #69) so the voice path receives
+    the same guardrails as the text path until token metadata wiring lands.
     """
     return AgentConfig(
         id="livekit-default",
-        name="TaskOrbit",
-        persona="A helpful voice assistant.",
-        greeting="Hello!",
+        name="John Doe",
+        persona="A friendly and professional customer service agent for TechStore.",
+        greeting="Hi there! I'm John from TechStore customer support.",
         stt=STTConfig(),
         llm=LLMConfig(),
         tts=TTSConfig(),
         tools=[],
+        persona_constraints=PersonaConstraints(
+            scope=(
+                "TechStore customer service: account setup, order tracking, "
+                "returns, and product questions."
+            ),
+            out_of_scope=[
+                "medical advice",
+                "therapy or emotional counseling",
+                "legal advice",
+                "financial advice",
+            ],
+            refusal_template=(
+                "I'm here to help with TechStore questions — for that I'd "
+                "recommend reaching out to a qualified professional. Is there "
+                "anything TechStore-related I can help with?"
+            ),
+        ),
     )
 
 

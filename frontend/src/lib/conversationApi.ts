@@ -25,6 +25,12 @@ type BackendTool = {
   parameters: Record<string, unknown>;
 };
 
+type BackendPersonaConstraints = {
+  scope?: string;
+  out_of_scope?: string[];
+  refusal_template?: string;
+};
+
 type BackendAgentConfig = {
   id: string;
   name: string;
@@ -34,6 +40,7 @@ type BackendAgentConfig = {
   llm: { provider: string; model: string };
   tts: { provider: string; voice_id: string; model: string };
   tools: BackendTool[];
+  persona_constraints?: BackendPersonaConstraints;
 };
 
 type BackendMessage = { role: "user" | "assistant" | "system"; content: string };
@@ -85,7 +92,7 @@ function adaptTool(tool: FrontendTool): BackendTool {
 }
 
 function adaptAgentConfig(agent: AgentConfig): BackendAgentConfig {
-  return {
+  const out: BackendAgentConfig = {
     id: agent.agent_id,
     name: agent.name,
     persona: agent.instructions,
@@ -95,6 +102,10 @@ function adaptAgentConfig(agent: AgentConfig): BackendAgentConfig {
     tts: { provider: agent.tts.provider, voice_id: agent.tts.voice_id, model: agent.tts.model },
     tools: agent.tools.map(adaptTool),
   };
+  if (agent.persona_constraints) {
+    out.persona_constraints = agent.persona_constraints;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

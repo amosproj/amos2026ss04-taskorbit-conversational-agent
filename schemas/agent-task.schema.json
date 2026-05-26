@@ -112,6 +112,10 @@
         "vad": {
           "$ref": "#/$defs/vadConfig",
           "description": "Optional — voice activity detection; FE AgentConfig.vad."
+        },
+        "persona_constraints": {
+          "$ref": "#/$defs/personaConstraints",
+          "description": "Optional scope/refusal guardrails — keeps agent in role on off-topic input (ticket #69)."
         }
       }
     },
@@ -209,6 +213,28 @@
         },
         "description": {
           "type": "string"
+        }
+      }
+    },
+    "personaConstraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "type": "string",
+          "description": "What the agent does — a 1-2 sentence scope statement."
+        },
+        "out_of_scope": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Domains the agent should politely decline (e.g. 'therapy', 'medical advice')."
+        },
+        "refusal_template": {
+          "type": "string",
+          "description": "Verbatim phrase to use when redirecting off-topic input."
         }
       }
     },
