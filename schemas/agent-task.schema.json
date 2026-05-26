@@ -355,7 +355,7 @@
         },
         "type": {
           "type": "string",
-          "enum": ["string", "number", "boolean", "date"],
+          "enum": ["string", "number", "boolean", "date", "email", "phone", "location"],
           "description": "Matches frontend ParamType."
         },
         "required": {
@@ -386,7 +386,10 @@
             "number",
             "boolean",
             "integer",
-            "date"
+            "date",
+            "email",
+            "phone",
+            "location"
           ]
         },
         "required": {
