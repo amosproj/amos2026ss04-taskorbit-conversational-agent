@@ -21,13 +21,7 @@ export default tseslint.config(
   {
     // Files ESLint should never look at. Lockfiles, build output, type-check
     // caches, and generated assets stay out of the lint surface.
-    ignores: [
-      "dist",
-      "node_modules",
-      "*.tsbuildinfo",
-      "public",
-      "vite.config.ts.timestamp-*",
-    ],
+    ignores: ["dist", "node_modules", "*.tsbuildinfo", "public", "vite.config.ts.timestamp-*"],
   },
   {
     files: ["**/*.{ts,tsx}"],
@@ -52,10 +46,7 @@ export default tseslint.config(
       // Option key is `allowConstantExport` (singular) in
       // eslint-plugin-react-refresh >= 0.4.x; the schema is strictly validated
       // by ESLint 9 so spelling matters.
-      "react-refresh/only-export-components": [
-        "warn",
-        { allowConstantExport: true },
-      ],
+      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       // Allow `_`-prefixed unused arguments (matches typescript-eslint convention).
       "@typescript-eslint/no-unused-vars": [
         "error",

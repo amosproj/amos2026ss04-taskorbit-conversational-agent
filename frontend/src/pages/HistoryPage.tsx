@@ -1,207 +1,196 @@
-import { Fragment, useEffect, useRef, useState } from "react";
-import { DatabaseZap, MessageSquareDashed } from "lucide-react";
-
-import { ConversationListItem } from "@/components/history/ConversationListItem";
-import { TranscriptBubble } from "@/components/history/TranscriptBubble";
-import { TranscriptToolMarker } from "@/components/history/TranscriptToolMarker";
-import { Empty } from "@/components/Empty";
-import { Badge } from "@/components/ui/badge";
+import { useEffect, useState } from "react";
+import { MessageSquare, Clock } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MOCK_CONVERSATIONS, type Conversation, type ToolFiring } from "@/lib/mockConversations";
+import {
+  getConversations,
+  getConversationMessages,
+  type ConversationMessage,
+} from "@/lib/conversationApi";
 
-const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-
-const dayMs = 1000 * 60 * 60 * 24;
-
-function startOfDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function formatStartedAt(iso: string): string {
-  return dateTimeFormatter.format(new Date(iso));
-}
-
-function formatRelativeStart(iso: string): string {
-  const now = new Date();
-  const then = new Date(iso);
-  const diffDays = Math.round((startOfDay(now).getTime() - startOfDay(then).getTime()) / dayMs);
-  const time = then.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  if (diffDays === 0) return `Today, ${time}`;
-  if (diffDays === 1) return `Yesterday, ${time}`;
-  if (diffDays > 1 && diffDays < 7) return `${diffDays}d ago, ${time}`;
-  return then.toLocaleDateString([], { month: "short", day: "numeric" });
-}
-
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return m > 0 ? `${m}m ${s}s` : `${s}s`;
-}
-
-const languageDisplayNames =
-  typeof Intl !== "undefined" && "DisplayNames" in Intl
-    ? new Intl.DisplayNames(undefined, { type: "language" })
-    : null;
-
-function formatLanguage(tag: string): string {
-  return languageDisplayNames?.of(tag) ?? tag.toUpperCase();
-}
-
-function groupFiringsByTurn(firings: ToolFiring[]): Map<string, ToolFiring[]> {
-  const map = new Map<string, ToolFiring[]>();
-  for (const firing of firings) {
-    const list = map.get(firing.triggered_after_turn_id) ?? [];
-    list.push(firing);
-    map.set(firing.triggered_after_turn_id, list);
-  }
-  return map;
-}
-
-// `lg` in Tailwind v4 is the 1024px breakpoint — anything below collapses
-// the two-pane grid into a single column. On mobile/tablet the detail pane
-// renders below the list, so we scroll it into view when a call is picked.
-const lgBreakpointPx = 1024;
+type Conversation = {
+  id: string;
+  agent_name: string;
+  started_at: string;
+  ended_at: string | null;
+};
 
 export function HistoryPage() {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const detailRef = useRef<HTMLDivElement>(null);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [messages, setMessages] = useState<ConversationMessage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
 
-  const selected: Conversation | null =
-    selectedId !== null ? (MOCK_CONVERSATIONS.find((c) => c.id === selectedId) ?? null) : null;
-
-  const extractionRows: Array<[string, string | number | boolean]> = selected
-    ? selected.tool_firings.flatMap((f) =>
-        f.type === "data_extraction" ? Object.entries(f.values) : [],
-      )
-    : [];
-
-  const firingsByTurn = selected
-    ? groupFiringsByTurn(selected.tool_firings)
-    : new Map<string, ToolFiring[]>();
-
+  // Load all conversations on page load
   useEffect(() => {
-    if (selectedId === null) return;
-    if (typeof window === "undefined") return;
-    if (window.innerWidth >= lgBreakpointPx) return;
-    detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [selectedId]);
+    const loadConversations = async () => {
+      try {
+        setLoading(true);
+        const data = await getConversations();
+        setConversations(data.conversations || []);
+      } catch (error) {
+        console.error("Failed to load conversations:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadConversations();
+  }, []);
+
+  // Load messages when a conversation is selected
+  const handleSelectConversation = async (conversation: Conversation) => {
+    setSelectedConversation(conversation);
+    setLoadingMessages(true);
+    try {
+      const data = await getConversationMessages(conversation.id);
+      setMessages(data.messages || []);
+    } catch (error) {
+      console.error("Failed to load messages:", error);
+      setMessages([]);
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    if (date >= today) {
+      return `Today, ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    } else if (date >= yesterday) {
+      return `Yesterday, ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    } else {
+      return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Loading conversations...</p>
+      </div>
+    );
+  }
 
   return (
-    <section className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <header className="space-y-1">
-        <p className="text-sm font-medium tracking-widest text-muted-foreground uppercase">
-          History
-        </p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Conversation history</h1>
-        <p className="text-sm text-muted-foreground">
-          Past calls grouped by recency. Select one to inspect the transcript and any data the agent
-          collected during the call.
-        </p>
-      </header>
+    <div className="container mx-auto py-8 px-4 max-w-6xl">
+      <h1 className="text-3xl font-bold mb-2">Conversation History</h1>
+      <p className="text-muted-foreground mb-8">
+        Past conversations grouped by recency. Select one to inspect the transcript.
+      </p>
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)_18rem]">
-        <aside aria-label="Past conversations">
-          <ScrollArea className="h-[min(70vh,40rem)] pr-2">
-            <ul className="flex flex-col gap-3">
-              {MOCK_CONVERSATIONS.map((c) => (
-                <li key={c.id}>
-                  <ConversationListItem
-                    conversation={c}
-                    selected={c.id === selectedId}
-                    onSelect={() => setSelectedId(c.id)}
-                    formatRelativeStart={formatRelativeStart}
-                    formatDuration={formatDuration}
-                  />
-                </li>
-              ))}
-            </ul>
-          </ScrollArea>
-        </aside>
-
-        <div ref={detailRef} className="flex min-w-0 flex-col gap-6">
-          {selected !== null ? (
-            <Card>
-              <CardHeader className="border-b">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="space-y-1">
-                    <CardTitle>
-                      {selected.agent_name} · {selected.caller_label}
-                    </CardTitle>
-                    <CardDescription>
-                      {formatStartedAt(selected.started_at)} ·{" "}
-                      {formatDuration(selected.duration_seconds)}
-                    </CardDescription>
-                  </div>
-                  <Badge variant="outline">{formatLanguage(selected.language)}</Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-6">
-                <ScrollArea className="h-[min(50vh,28rem)] pr-3">
-                  <ul className="flex flex-col gap-4" aria-label="Transcript">
-                    {selected.transcript.map((turn) => {
-                      const firings = firingsByTurn.get(turn.id) ?? [];
-                      return (
-                        <Fragment key={turn.id}>
-                          <TranscriptBubble turn={turn} />
-                          {firings.map((firing, i) => (
-                            <TranscriptToolMarker key={`${turn.id}-firing-${i}`} firing={firing} />
-                          ))}
-                        </Fragment>
-                      );
-                    })}
-                  </ul>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          ) : (
-            <Empty
-              icon={MessageSquareDashed}
-              title="Pick a conversation"
-              description="Select a past call from the list to view the transcript and any data extracted during the call."
-            />
-          )}
-        </div>
-
-        <aside aria-label="Extracted data" className="min-w-0">
-          {selected !== null ? (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Extracted data</CardTitle>
-                <CardDescription>
-                  Values the agent saved during the call via data extraction tools.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {extractionRows.length > 0 ? (
-                  <dl className="flex flex-col gap-3">
-                    {extractionRows.map(([key, value]) => (
-                      <div key={key} className="flex flex-col gap-0.5">
-                        <dt className="text-xs text-muted-foreground">{key}</dt>
-                        <dd className="font-mono text-sm break-all">{String(value)}</dd>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Conversation List */}
+        <div className="md:col-span-1">
+          <Card>
+            <CardHeader>
+              <CardTitle>Conversations</CardTitle>
+              <CardDescription>
+                {conversations.length} conversation{conversations.length !== 1 ? "s" : ""} found
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ScrollArea className="h-[500px] pr-4">
+                {conversations.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-8">
+                    No conversations yet. Start a new conversation to see it here.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {conversations.map((conv) => (
+                      <div
+                        key={conv.id}
+                        className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                          selectedConversation?.id === conv.id
+                            ? "bg-primary/10 border border-primary/20"
+                            : "hover:bg-muted"
+                        }`}
+                        onClick={() => handleSelectConversation(conv)}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-medium">{conv.agent_name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {formatDate(conv.started_at)}
+                          </span>
+                        </div>
+                        {conv.ended_at && (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Clock className="h-3 w-3" />
+                            <span>{formatDate(conv.ended_at)}</span>
+                          </div>
+                        )}
                       </div>
                     ))}
-                  </dl>
-                ) : (
-                  <Empty
-                    icon={DatabaseZap}
-                    title="No data extracted"
-                    description="The agent didn't fire a data extraction tool during this call."
-                  />
+                  </div>
                 )}
-              </CardContent>
-            </Card>
-          ) : null}
-        </aside>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Messages Panel */}
+        <div className="md:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                {selectedConversation
+                  ? `Conversation with ${selectedConversation.agent_name}`
+                  : "Select a conversation"}
+              </CardTitle>
+              <CardDescription>
+                {selectedConversation
+                  ? `Started ${formatDate(selectedConversation.started_at)}`
+                  : "Choose a conversation from the list to view the transcript"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!selectedConversation ? (
+                <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+                  <MessageSquare className="h-12 w-12 mb-4 opacity-50" />
+                  <p>Select a conversation to view messages</p>
+                </div>
+              ) : loadingMessages ? (
+                <div className="flex items-center justify-center h-64">
+                  <p className="text-muted-foreground">Loading messages...</p>
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+                  <MessageSquare className="h-12 w-12 mb-4 opacity-50" />
+                  <p>No messages in this conversation</p>
+                </div>
+              ) : (
+                <ScrollArea className="h-[500px] pr-4">
+                  <div className="space-y-4">
+                    {messages.map((msg) => (
+                      <div
+                        key={msg.id}
+                        className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                      >
+                        <div
+                          className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                            msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
+                          }`}
+                        >
+                          <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                          <p className="text-xs opacity-70 mt-1">
+                            {new Date(msg.created_at).toLocaleTimeString()}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
-    </section>
+    </div>
   );
 }

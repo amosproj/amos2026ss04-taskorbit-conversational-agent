@@ -54,10 +54,11 @@ def configured_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("DEEPGRAM_API_KEY", "dg-test-key")
     monkeypatch.setenv("ELEVENLABS_API_KEY", "el-test-key")
     get_settings.cache_clear()
-    try:
-        yield
-    finally:
-        get_settings.cache_clear()
+    with patch("taskorbit.worker.AsyncSessionLocal", return_value=AsyncMock()):
+        try:
+            yield
+        finally:
+            get_settings.cache_clear()
 
 
 def _make_ctx() -> tuple[MagicMock, dict[str, object]]:
@@ -77,16 +78,14 @@ def _make_ctx() -> tuple[MagicMock, dict[str, object]]:
     return ctx, registered
 
 
-def _make_session_mock() -> AsyncMock:
-    """Return an AsyncMock session where .on() acts as a synchronous decorator factory.
-
-    AgentSession.on() is synchronous (not a coroutine) — it registers a callback
-    and returns the decorator. AsyncMock makes child attributes AsyncMocks by default,
-    which means session.on(...) would return a coroutine instead of a callable.
-    Replacing it with a plain MagicMock preserves the synchronous decorator pattern.
-    """
-    session = AsyncMock()
+def _make_session_mock() -> MagicMock:
+    """Return a MagicMock session where .on() acts as a synchronous decorator factory."""
+    session = MagicMock()
     session.on = MagicMock(side_effect=lambda event: (lambda fn: fn))
+    session.start = AsyncMock()
+    session.say = MagicMock()
+    session.interrupt = MagicMock()
+    session.generate_reply = MagicMock(return_value=None)
     return session
 
 
@@ -114,7 +113,7 @@ async def test_entrypoint_starts_session(configured_settings: None) -> None:
     mock_agent = MagicMock()
 
     with (
-        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_agent_session", new=MagicMock(return_value=mock_session)),
         patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
     ):
         await entrypoint(ctx)
@@ -135,7 +134,7 @@ async def test_commit_turn_triggers_reply(configured_settings: None) -> None:
     mock_agent = MagicMock()
 
     with (
-        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_agent_session", new=MagicMock(return_value=mock_session)),
         patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
         patch("taskorbit.worker._DEEPGRAM_FLUSH_DELAY_S", 0),
     ):
@@ -144,8 +143,8 @@ async def test_commit_turn_triggers_reply(configured_settings: None) -> None:
         handler = registered["data_received"]
         packet = _data_packet(json.dumps({"type": "commit_turn"}).encode())
         handler(packet)
-        await asyncio.sleep(0)  # start _commit_and_reply task
-        await asyncio.sleep(0)  # complete past its inner sleep(0)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
 
         mock_agent.request_reply.assert_called_once()
         mock_session.generate_reply.assert_called_once()
@@ -159,14 +158,13 @@ async def test_invalid_json_ignored(configured_settings: None) -> None:
     mock_agent = MagicMock()
 
     with (
-        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_agent_session", new=MagicMock(return_value=mock_session)),
         patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
     ):
         await entrypoint(ctx)
 
     handler = registered["data_received"]
     handler(_data_packet(b"not valid json{{"))
-
     mock_agent.request_reply.assert_not_called()
 
 
@@ -178,14 +176,13 @@ async def test_unknown_message_type_ignored(configured_settings: None) -> None:
     mock_agent = MagicMock()
 
     with (
-        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_agent_session", new=MagicMock(return_value=mock_session)),
         patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
     ):
         await entrypoint(ctx)
 
     handler = registered["data_received"]
     handler(_data_packet(json.dumps({"type": "ping"}).encode()))
-
     mock_agent.request_reply.assert_not_called()
 
 
@@ -197,14 +194,13 @@ async def test_server_packet_ignored(configured_settings: None) -> None:
     mock_agent = MagicMock()
 
     with (
-        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_agent_session", new=MagicMock(return_value=mock_session)),
         patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
     ):
         await entrypoint(ctx)
 
     handler = registered["data_received"]
     handler(_server_packet(json.dumps({"type": "commit_turn"}).encode()))
-
     mock_agent.request_reply.assert_not_called()
 
 
@@ -213,18 +209,16 @@ async def test_interrupt_playback_calls_session_interrupt(configured_settings: N
     """An "interrupt_playback" message should call session.interrupt() immediately."""
     ctx, registered = _make_ctx()
     mock_session = _make_session_mock()
-    mock_session.interrupt = MagicMock()
     mock_agent = MagicMock()
 
     with (
-        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_agent_session", new=MagicMock(return_value=mock_session)),
         patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
     ):
         await entrypoint(ctx)
 
     handler = registered["data_received"]
     handler(_data_packet(json.dumps({"type": "interrupt_playback"}).encode()))
-
     mock_session.interrupt.assert_called_once()
     mock_agent.request_reply.assert_not_called()
 
@@ -234,12 +228,10 @@ async def test_commit_turn_does_not_call_interrupt(configured_settings: None) ->
     """A "commit_turn" message must not trigger session.interrupt()."""
     ctx, registered = _make_ctx()
     mock_session = _make_session_mock()
-    mock_session.generate_reply = MagicMock(return_value=None)
-    mock_session.interrupt = MagicMock()
     mock_agent = MagicMock()
 
     with (
-        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_agent_session", new=MagicMock(return_value=mock_session)),
         patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
         patch("taskorbit.worker._DEEPGRAM_FLUSH_DELAY_S", 0),
     ):
@@ -262,7 +254,7 @@ async def test_interrupt_session_exception_is_logged(configured_settings: None) 
     mock_agent = MagicMock()
 
     with (
-        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_agent_session", new=MagicMock(return_value=mock_session)),
         patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
     ):
         await entrypoint(ctx)
@@ -273,36 +265,26 @@ async def test_interrupt_session_exception_is_logged(configured_settings: None) 
 
 @pytest.mark.asyncio
 async def test_interrupt_cancels_pending_reply_task(configured_settings: None) -> None:
-    """interrupt_playback arriving before _commit_and_reply completes must cancel
-    the task so generate_reply() is never called for the stale turn."""
+    """interrupt_playback arriving before _commit_and_reply completes must cancel the task."""
     ctx, registered = _make_ctx()
     mock_session = _make_session_mock()
     mock_session.generate_reply = MagicMock(return_value=None)
-    mock_session.interrupt = MagicMock()
     mock_agent = MagicMock()
 
     with (
-        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_agent_session", new=MagicMock(return_value=mock_session)),
         patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
         patch("taskorbit.worker._DEEPGRAM_FLUSH_DELAY_S", 0),
     ):
         await entrypoint(ctx)
 
         handler = registered["data_received"]
-
-        # commit_turn creates the _commit_and_reply task (not yet started).
         handler(_data_packet(json.dumps({"type": "commit_turn"}).encode()))
-
-        # interrupt_playback arrives before any await — cancels the pending task.
         handler(_data_packet(json.dumps({"type": "interrupt_playback"}).encode()))
-
-        # Let the event loop run: the task starts, hits asyncio.sleep(0), receives
-        # the cancellation, raises CancelledError, and exits cleanly.
         await asyncio.sleep(0)
         await asyncio.sleep(0)
 
     mock_session.interrupt.assert_called_once()
-    # generate_reply must NOT have been called — the task was cancelled first.
     mock_session.generate_reply.assert_not_called()
 
 
@@ -313,7 +295,8 @@ async def test_on_metrics_tts_observes_latency(configured_settings: None) -> Non
     mock_agent = MagicMock()
     metrics_handler_ref: list = []
 
-    mock_session = AsyncMock()
+    mock_session = MagicMock()
+    mock_session.start = AsyncMock()
 
     def capture_on(event: str):
         def decorator(fn):
@@ -326,7 +309,7 @@ async def test_on_metrics_tts_observes_latency(configured_settings: None) -> Non
     mock_session.on = MagicMock(side_effect=capture_on)
 
     with (
-        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_agent_session", new=MagicMock(return_value=mock_session)),
         patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
         patch("taskorbit.worker.get_metrics") as mock_get_metrics,
     ):
@@ -350,7 +333,8 @@ async def test_on_metrics_stt_observes_latency(configured_settings: None) -> Non
     mock_agent = MagicMock()
     metrics_handler_ref: list = []
 
-    mock_session = AsyncMock()
+    mock_session = MagicMock()
+    mock_session.start = AsyncMock()
 
     def capture_on(event: str):
         def decorator(fn):
@@ -363,7 +347,7 @@ async def test_on_metrics_stt_observes_latency(configured_settings: None) -> Non
     mock_session.on = MagicMock(side_effect=capture_on)
 
     with (
-        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_agent_session", new=MagicMock(return_value=mock_session)),
         patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
         patch("taskorbit.worker.get_metrics") as mock_get_metrics,
     ):
@@ -380,12 +364,13 @@ async def test_on_metrics_stt_observes_latency(configured_settings: None) -> Non
 
 @pytest.mark.asyncio
 async def test_on_metrics_stt_zero_duration_not_observed(configured_settings: None) -> None:
-    """STTMetrics with duration == 0 must not call observe (avoids polluting histogram)."""
+    """STTMetrics with duration == 0 must not call observe."""
     ctx, _ = _make_ctx()
     mock_agent = MagicMock()
     metrics_handler_ref: list = []
 
-    mock_session = AsyncMock()
+    mock_session = MagicMock()
+    mock_session.start = AsyncMock()
 
     def capture_on(event: str):
         def decorator(fn):
@@ -398,7 +383,7 @@ async def test_on_metrics_stt_zero_duration_not_observed(configured_settings: No
     mock_session.on = MagicMock(side_effect=capture_on)
 
     with (
-        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_agent_session", new=MagicMock(return_value=mock_session)),
         patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
         patch("taskorbit.worker.get_metrics") as mock_get_metrics,
     ):
@@ -410,7 +395,6 @@ async def test_on_metrics_stt_zero_duration_not_observed(configured_settings: No
         ev.metrics = _make_stt_metrics(duration=0.0)
         metrics_handler_ref[0](ev)
 
-    # pipeline_latency_seconds must not have been called with stt_processing
     stt_calls = [
         c
         for c in mock_metrics.pipeline_latency_seconds.labels.call_args_list
@@ -427,7 +411,7 @@ async def test_local_participant_packet_ignored(configured_settings: None) -> No
     mock_agent = MagicMock()
 
     with (
-        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_agent_session", new=MagicMock(return_value=mock_session)),
         patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
     ):
         await entrypoint(ctx)
@@ -436,39 +420,30 @@ async def test_local_participant_packet_ignored(configured_settings: None) -> No
     local_identity = ctx.room.local_participant.identity
     packet = _data_packet(json.dumps({"type": "commit_turn"}).encode(), local_identity)
     handler(packet)
-
     mock_agent.request_reply.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_interrupt_during_flush_delay_cancels_task(configured_settings: None) -> None:
-    """interrupt_playback arriving while _commit_and_reply is sleeping on the
-    Deepgram flush delay must cancel the task before generate_reply is called."""
+    """interrupt_playback arriving while _commit_and_reply is sleeping must cancel the task."""
     ctx, registered = _make_ctx()
     mock_session = _make_session_mock()
     mock_session.generate_reply = MagicMock(return_value=None)
-    mock_session.interrupt = MagicMock()
     mock_agent = MagicMock()
 
     small_delay = 0.01
 
     with (
-        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_agent_session", new=MagicMock(return_value=mock_session)),
         patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
         patch("taskorbit.worker._DEEPGRAM_FLUSH_DELAY_S", small_delay),
     ):
         await entrypoint(ctx)
 
         handler = registered["data_received"]
-
-        # Start the commit/reply cycle — task enters asyncio.sleep(small_delay).
         handler(_data_packet(json.dumps({"type": "commit_turn"}).encode()))
-        await asyncio.sleep(0)  # let the task start and reach the sleep
-
-        # Interrupt arrives while the task is still sleeping.
+        await asyncio.sleep(0)
         handler(_data_packet(json.dumps({"type": "interrupt_playback"}).encode()))
-
-        # Allow the event loop to process the cancellation.
         await asyncio.sleep(small_delay * 2)
 
     mock_session.interrupt.assert_called_once()
@@ -477,31 +452,24 @@ async def test_interrupt_during_flush_delay_cancels_task(configured_settings: No
 
 @pytest.mark.asyncio
 async def test_interrupt_after_completed_task_does_not_raise(configured_settings: None) -> None:
-    """interrupt_playback sent after the reply task already finished must still
-    call session.interrupt() without raising an error (reply_task.done() guard)."""
+    """interrupt_playback sent after the reply task finished must not raise."""
     ctx, registered = _make_ctx()
     mock_session = _make_session_mock()
     mock_session.generate_reply = MagicMock(return_value=None)
-    mock_session.interrupt = MagicMock()
     mock_agent = MagicMock()
 
     with (
-        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_agent_session", new=MagicMock(return_value=mock_session)),
         patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
         patch("taskorbit.worker._DEEPGRAM_FLUSH_DELAY_S", 0),
     ):
         await entrypoint(ctx)
 
         handler = registered["data_received"]
-
-        # Let commit_turn run to completion first.
         handler(_data_packet(json.dumps({"type": "commit_turn"}).encode()))
         await asyncio.sleep(0)
         await asyncio.sleep(0)
-
         mock_session.generate_reply.assert_called_once()
-
-        # Now interrupt arrives — reply_task is already done, should not raise.
         handler(_data_packet(json.dumps({"type": "interrupt_playback"}).encode()))
 
     mock_session.interrupt.assert_called_once()

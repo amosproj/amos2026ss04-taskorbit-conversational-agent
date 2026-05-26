@@ -25,6 +25,12 @@ type BackendTool = {
   parameters: Record<string, unknown>;
 };
 
+type BackendPersonaConstraints = {
+  scope?: string;
+  out_of_scope?: string[];
+  refusal_template?: string;
+};
+
 type BackendAgentConfig = {
   id: string;
   name: string;
@@ -34,6 +40,7 @@ type BackendAgentConfig = {
   llm: { provider: string; model: string };
   tts: { provider: string; voice_id: string; model: string };
   tools: BackendTool[];
+  persona_constraints?: BackendPersonaConstraints;
 };
 
 type BackendMessage = { role: "user" | "assistant" | "system"; content: string };
@@ -85,7 +92,7 @@ function adaptTool(tool: FrontendTool): BackendTool {
 }
 
 function adaptAgentConfig(agent: AgentConfig): BackendAgentConfig {
-  return {
+  const out: BackendAgentConfig = {
     id: agent.agent_id,
     name: agent.name,
     persona: agent.instructions,
@@ -95,6 +102,10 @@ function adaptAgentConfig(agent: AgentConfig): BackendAgentConfig {
     tts: { provider: agent.tts.provider, voice_id: agent.tts.voice_id, model: agent.tts.model },
     tools: agent.tools.map(adaptTool),
   };
+  if (agent.persona_constraints) {
+    out.persona_constraints = agent.persona_constraints;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -157,3 +168,35 @@ export async function getConversations(): Promise<ConversationsResponse> {
   }
   return response.json();
 }
+
+/**
+ * Get all messages for a specific conversation.
+ *
+ * @param conversationId - The ID of the conversation
+ * @returns Promise with conversation messages
+ */
+export async function getConversationMessages(conversationId: string): Promise<{
+  conversation_id: string;
+  messages: ConversationMessage[];
+}> {
+  const response = await fetch(`/api/v1/conversations/${conversationId}/messages`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch conversation messages");
+  }
+  return response.json();
+}
+
+// ---------------------------------------------------------------------------
+// Exported Types
+// ---------------------------------------------------------------------------
+
+/**
+ * Represents a single message in a conversation.
+ * Exported for use in HistoryPage and other components.
+ */
+export type ConversationMessage = {
+  id: number;
+  role: string;
+  content: string;
+  created_at: string;
+};

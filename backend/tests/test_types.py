@@ -10,6 +10,7 @@ from taskorbit.types import (
     LLMConfig,
     Message,
     MessageRole,
+    PersonaConstraints,
     STTConfig,
     ToolDefinition,
     ToolType,
@@ -105,3 +106,51 @@ def test_conversation_response_defaults() -> None:
     assert resp.tool_invoked is None
     assert resp.requires_confirmation is False
     assert resp.confirmation_prompt == ""
+
+
+# ---------------------------------------------------------------------------
+# PersonaConstraints + AgentConfig.persona_constraints (ticket #69)
+# ---------------------------------------------------------------------------
+
+
+def test_persona_constraints_all_fields_optional() -> None:
+    """PersonaConstraints can be instantiated with zero arguments."""
+    pc = PersonaConstraints()
+    assert pc.scope is None
+    assert pc.out_of_scope == []
+    assert pc.refusal_template is None
+
+
+def test_persona_constraints_populated() -> None:
+    pc = PersonaConstraints(
+        scope="TechStore support.",
+        out_of_scope=["therapy", "legal advice"],
+        refusal_template="I can only help with TechStore.",
+    )
+    assert pc.scope == "TechStore support."
+    assert pc.out_of_scope == ["therapy", "legal advice"]
+    assert pc.refusal_template == "I can only help with TechStore."
+
+
+def test_agent_config_persona_constraints_defaults_to_none() -> None:
+    """Backward-compatibility — existing AgentConfig calls work unchanged."""
+    config = _make_agent_config()
+    assert config.persona_constraints is None
+
+
+def test_agent_config_round_trips_persona_constraints() -> None:
+    """model_dump → model_validate preserves persona_constraints byte-for-byte."""
+    original = AgentConfig(
+        id="agent-1",
+        name="John",
+        persona="TechStore support.",
+        greeting="Hi!",
+        persona_constraints=PersonaConstraints(
+            scope="TechStore.",
+            out_of_scope=["therapy"],
+            refusal_template="Sorry.",
+        ),
+    )
+    dumped = original.model_dump()
+    restored = AgentConfig.model_validate(dumped)
+    assert restored.persona_constraints == original.persona_constraints

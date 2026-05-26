@@ -15,7 +15,15 @@ import pytest
 from taskorbit.config import Settings
 from taskorbit.integrations.llm.errors import LLMAPIError
 from taskorbit.orchestration import ConversationOrchestrator
-from taskorbit.types import LLMConfig, LLMProvider, Message, MessageRole
+from taskorbit.types import (
+    AgentConfig,
+    ConversationRequest,
+    LLMConfig,
+    LLMProvider,
+    Message,
+    MessageRole,
+    PersonaConstraints,
+)
 
 
 def _make_orchestrator() -> ConversationOrchestrator:
@@ -104,3 +112,90 @@ async def test_call_llm_propagates_client_errors(
     with patch("taskorbit.integrations.llm.factory.get_llm_client", return_value=mock_client):
         with pytest.raises(LLMAPIError, match="boom"):
             await orchestrator._call_llm("sys", _make_messages(), llm_config)
+
+
+# ---------------------------------------------------------------------------
+# Persona guardrails flow end-to-end into the LLM prompt
+# ---------------------------------------------------------------------------
+
+# Integration test verifying that the full guardrail chain
+# (orchestrator -> helper -> LLM client) correctly propagates the new
+# imperative headers to the model's system prompt.
+
+
+@pytest.mark.asyncio
+async def test_persona_guardrails_flow_through_to_llm_prompt(
+    orchestrator: ConversationOrchestrator,
+) -> None:
+    """When an AgentConfig has persona_constraints set, the refusal template
+    and scope/out-of-scope lines must reach the LLM client's generate() call.
+
+    This is the strongest unit-shaped proof of AC #2 (off-topic input does
+    not cause role switch) — if the guardrail text is in the prompt the
+    model receives, the model has the explicit instruction to redirect.
+    """
+    refusal = "I can only help with TechStore questions."
+    agent = AgentConfig(
+        id="agent-1",
+        name="John",
+        persona="TechStore customer support.",
+        greeting="Hi!",
+        persona_constraints=PersonaConstraints(
+            scope="TechStore customer service.",
+            out_of_scope=["therapy", "legal advice"],
+            refusal_template=refusal,
+        ),
+    )
+    request = ConversationRequest(
+        conversation_id="conv-guardrails",
+        agent_config=agent,
+        messages=[Message(role=MessageRole.USER, content="I'm just very sad.")],
+    )
+
+    mock_client = MagicMock()
+    mock_client.generate = AsyncMock(return_value="Sorry, I can only help with TechStore.")
+
+    with patch("taskorbit.integrations.llm.factory.get_llm_client", return_value=mock_client):
+        response = await orchestrator.process_message(request)
+
+    assert response.status == "success"
+    augmented_prompt = mock_client.generate.call_args.args[0]
+    # Asserting against the new imperative headers
+    assert "CORE CONSTRAINT - Authorized Scope: TechStore customer service." in augmented_prompt
+    assert (
+        "CORE CONSTRAINT - Forbidden Topics (you MUST politely refuse and redirect): therapy, legal advice"
+        in augmented_prompt
+    )
+    assert f'"{refusal}"' in augmented_prompt
+    # Same-language directive still lands last, after guardrails.
+    assert "Respond in the same language" in augmented_prompt
+
+
+@pytest.mark.asyncio
+async def test_no_persona_guardrails_means_no_guardrail_text_in_prompt(
+    orchestrator: ConversationOrchestrator,
+) -> None:
+    """Backward-compatibility: agents without persona_constraints receive a
+    prompt with zero guardrail boilerplate — protects every existing config."""
+    agent = AgentConfig(
+        id="agent-1",
+        name="John",
+        persona="TechStore customer support.",
+        greeting="Hi!",
+        persona_constraints=None,
+    )
+    request = ConversationRequest(
+        conversation_id="conv-no-guardrails",
+        agent_config=agent,
+        messages=[Message(role=MessageRole.USER, content="Hello")],
+    )
+
+    mock_client = MagicMock()
+    mock_client.generate = AsyncMock(return_value="Hi!")
+
+    with patch("taskorbit.integrations.llm.factory.get_llm_client", return_value=mock_client):
+        await orchestrator.process_message(request)
+
+    augmented_prompt = mock_client.generate.call_args.args[0]
+    assert "CORE CONSTRAINT" not in augmented_prompt
+    assert "REQUIRED REFUSAL PHRASE" not in augmented_prompt

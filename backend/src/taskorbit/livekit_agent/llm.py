@@ -16,6 +16,7 @@ later only requires changing ``ConversationOrchestrator.process_message``
 from __future__ import annotations
 
 import time
+import uuid
 from collections.abc import AsyncIterable
 from typing import Any
 
@@ -30,6 +31,7 @@ from taskorbit.types import (
     LLMConfig,
     Message,
     MessageRole,
+    PersonaConstraints,
     STTConfig,
     TTSConfig,
 )
@@ -43,16 +45,37 @@ def _default_agent_config() -> AgentConfig:
     The voice worker doesn't have access to the frontend agent config
     today (token metadata wiring is a future task). For now we synthesise
     a plain config so the orchestrator can still produce a reply.
+
+    Mirrors the John Doe TechStore preset from frontend/src/lib/mockAgents.ts,
+    including persona_constraints (ticket #69) so the voice path receives
+    the same guardrails as the text path until token metadata wiring lands.
     """
     return AgentConfig(
         id="livekit-default",
-        name="TaskOrbit",
-        persona="A helpful voice assistant.",
-        greeting="Hello!",
+        name="John Doe",
+        persona="A friendly and professional customer service agent for TechStore.",
+        greeting="Hi there! I'm John from TechStore customer support.",
         stt=STTConfig(),
         llm=LLMConfig(),
         tts=TTSConfig(),
         tools=[],
+        persona_constraints=PersonaConstraints(
+            scope=(
+                "TechStore customer service: account setup, order tracking, "
+                "returns, and product questions."
+            ),
+            out_of_scope=[
+                "medical advice",
+                "therapy or emotional counseling",
+                "legal advice",
+                "financial advice",
+            ],
+            refusal_template=(
+                "I'm here to help with TechStore questions — for that I'd "
+                "recommend reaching out to a qualified professional. Is there "
+                "anything TechStore-related I can help with?"
+            ),
+        ),
     )
 
 
@@ -138,14 +161,16 @@ class OrchestratorAgent(Agent):
         *,
         instructions: str | None = None,
         agent_config: AgentConfig | None = None,
-        conversation_id: str = "livekit-session",
+        conversation_id: str | None = None,
+        db: Any = None,
     ) -> None:
         super().__init__(
             instructions=instructions or "You are TaskOrbit, a helpful voice assistant.",
         )
         self._orchestrator = orchestrator
         self._agent_config = agent_config or _default_agent_config()
-        self._conversation_id = conversation_id
+        self._conversation_id = conversation_id or str(uuid.uuid4())
+        self._db = db
         self._reply_requested: bool = False
         self._t_commit: float | None = None
 
@@ -200,7 +225,8 @@ class OrchestratorAgent(Agent):
             agent_config=self._agent_config,
             messages=messages,
         )
-        response = await self._orchestrator.process_message(request)
+        # Pass the database session to the orchestrator for persistence
+        response = await self._orchestrator.process_message(request, db=self._db)
         status = "success" if response.status == "success" else "error"
         get_metrics().voice_pipeline_requests_total.labels(
             handler="/v1/conversations/process", status=status
