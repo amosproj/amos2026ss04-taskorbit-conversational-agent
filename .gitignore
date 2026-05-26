@@ -85,8 +85,8 @@ frontend/tsconfig.*.tsbuildinfo
 *.db
 
 # Large binary video files — link to external host instead
-*.mkv
-*.zip
+# *.mkv # we need videos for deliverables
+# *.zip
 
 # Terraform — never commit state or var files containing secrets
 terraform/.terraform/
