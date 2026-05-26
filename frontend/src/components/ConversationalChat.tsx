@@ -40,7 +40,9 @@ export function ConversationalChat() {
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastUserTurnIdRef = useRef<string | null>(null);
-  const [previousConversations, setPreviousConversations] = useState<Record<string, string | null>[]>([]);
+  const [previousConversations, setPreviousConversations] = useState<
+    Record<string, string | null>[]
+  >([]);
 
   useEffect(() => {
     const loadConversations = async () => {
