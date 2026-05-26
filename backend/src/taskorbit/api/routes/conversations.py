@@ -12,12 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from taskorbit.config import Settings, get_settings
 from taskorbit.database import get_session
 from taskorbit.database.crud import (
+    create_conversation_message,
     get_messages_by_conversation,
 )
 from taskorbit.database.models import Conversation
 from taskorbit.logging.setup import get_logger
 from taskorbit.orchestration import ConversationOrchestrator
-from taskorbit.types import ConversationRequest, ConversationResponse
+from taskorbit.types import ConversationRequest, ConversationResponse, MessageRole
 
 logger = get_logger(__name__)
 
@@ -43,8 +44,41 @@ async def process_conversation(
         message_count=len(request.messages),
     )
     try:
-        # Delegate to orchestrator which handles persistence via db parameter
-        response = await orchestrator.process_message(request, db=db)
+        response = await orchestrator.process_message(request)
+
+        # Save user message (only the last message if it's from user)
+        last_msg = request.messages[-1] if request.messages else None
+        last_user = last_msg if last_msg and last_msg.role == MessageRole.USER else None
+
+        if last_user:
+            result = await db.execute(
+                select(Conversation).where(Conversation.id == request.conversation_id)
+            )
+            conversation = result.scalar_one_or_none()
+            if not conversation:
+                logger.warning("conversation_not_found", conversation_id=request.conversation_id)
+
+            saved = await create_conversation_message(
+                db=db,
+                conversation_id=request.conversation_id,
+                role=last_user.role.value,
+                content=last_user.content,
+            )
+            if saved is None:
+                logger.error("failed_to_save_user_message", conversation_id=request.conversation_id)
+
+        # Save assistant reply
+        if response.reply:
+            saved = await create_conversation_message(
+                db=db,
+                conversation_id=request.conversation_id,
+                role=response.reply.role.value,
+                content=response.reply.content,
+            )
+            if saved is None:
+                logger.error(
+                    "failed_to_save_assistant_message", conversation_id=request.conversation_id
+                )
 
         logger.info(
             "conversation_request_completed",
