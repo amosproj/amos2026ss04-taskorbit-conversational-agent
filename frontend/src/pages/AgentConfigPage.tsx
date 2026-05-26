@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Copy, FileDown, Loader2, RefreshCw, RotateCcw, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { useActiveAgent } from "@/components/active-agent-provider";
 import { AdvancedSection } from "@/components/agent-config/AdvancedSection";
 import { ConfirmationsSection } from "@/components/agent-config/ConfirmationsSection";
 import { IdentitySection } from "@/components/agent-config/IdentitySection";
@@ -40,11 +41,16 @@ function isComplete(agent: AgentConfig) {
 }
 
 export function AgentConfigPage() {
-  const [agent, setAgent] = useState<AgentConfig>(JOHN_DOE_AGENT);
+  // Active agent + loadedConfigId live in shared context so the chat surface
+  // sees whatever was last loaded/saved here, and the form survives route
+  // navigation + page reloads (see active-agent-provider.tsx).
+  const { agent, loadedConfigId, setActiveAgent } = useActiveAgent();
+  // Shim so the inline JSX `setAgent({ ...agent, fieldX })` callsites below
+  // don't need rewriting; loadedConfigId is preserved on every form edit.
+  const setAgent = (next: AgentConfig) => setActiveAgent(next, loadedConfigId);
   const [showErrors, setShowErrors] = useState(false);
   const [savedConfigs, setSavedConfigs] = useState<SavedAgentConfigSummary[]>([]);
   const [isListLoading, setIsListLoading] = useState(false);
-  const [loadedConfigId, setLoadedConfigId] = useState<string | null>(null);
 
   // Fetch the saved-config list once on mount + expose a refresh helper.
   // Used by the "Load preset" dropdown and re-called after a successful save
@@ -70,24 +76,21 @@ export function AgentConfigPage() {
   }, [refreshList]);
 
   const reset = () => {
-    setAgent(EMPTY_AGENT);
+    setActiveAgent(EMPTY_AGENT, null);
     setShowErrors(false);
-    setLoadedConfigId(null);
     toast("Reset to empty.");
   };
 
   const loadPreset = () => {
-    setAgent(JOHN_DOE_AGENT);
+    setActiveAgent(JOHN_DOE_AGENT, null);
     setShowErrors(false);
-    setLoadedConfigId(null);
     toast.success("Preset loaded.");
   };
 
   const loadById = async (id: string) => {
     try {
       const saved = await loadAgentConfig(id);
-      setAgent(saved.config as unknown as AgentConfig);
-      setLoadedConfigId(saved.id);
+      setActiveAgent(saved.config as unknown as AgentConfig, saved.id);
       setShowErrors(false);
       toast.success("Configuration loaded.", {
         description: `Loaded "${saved.name}".`,
@@ -106,7 +109,8 @@ export function AgentConfigPage() {
       await deleteAgentConfig(id);
       toast.success("Configuration deleted.");
       if (loadedConfigId === id) {
-        setLoadedConfigId(null);
+        // Keep current form contents but unlink from the deleted DB row.
+        setActiveAgent(agent, null);
       }
       void refreshList();
     } catch (err) {

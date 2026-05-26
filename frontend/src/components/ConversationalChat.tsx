@@ -14,9 +14,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useVoiceCall } from "@/hooks/useVoiceCall";
 import type { TranscriptionSegment } from "@/hooks/useAgentTranscription";
+import { useActiveAgent } from "@/components/active-agent-provider";
 import { buildLiveKitWorkerMetadata } from "@/lib/livekitAgentMetadata";
 import { sendMessage, getConversations } from "@/lib/conversationApi";
-import { JOHN_DOE_AGENT } from "@/lib/mockAgents";
 import { playSynthesizedSpeech } from "@/lib/ttsApi";
 import type { ConfirmationPromptState } from "@/types/callState";
 
@@ -41,7 +41,10 @@ const mockConfirmationPrompt: ConfirmationPromptState = {
  * answer is still heard when the user uses the text disclosure.
  */
 export function ConversationalChat() {
-  const agent = JOHN_DOE_AGENT;
+  // Active agent comes from shared context, set on the config page. Before
+  // this hook existed, the chat was hardcoded to JOHN_DOE_AGENT — Christoph
+  // + Carl reported the bug on Discord 2026-05-24.
+  const { agent } = useActiveAgent();
   const appName = import.meta.env.VITE_APP_NAME ?? "TaskOrbit";
 
   const call = useVoiceCall();
