@@ -67,13 +67,16 @@ def test_build_agent_session_uses_deepgram_elevenlabs_silero(
         activation_threshold=0.7,
         deactivation_threshold=0.45,
         min_speech_duration=0.2,
-        min_silence_duration=0.55,
+        min_silence_duration=1.5,
         prefix_padding_duration=0.4,
     )
     mock_stt.assert_called_once_with(
         api_key=_FAKE_DG_KEY,
         model=_FAKE_DG_MODEL,
         language=_FAKE_DG_LANG,
+        smart_format=True,
+        numerals=True,
+        endpointing_ms=400,
     )
     mock_tts.assert_called_once()
     tts_kwargs = mock_tts.call_args.kwargs
