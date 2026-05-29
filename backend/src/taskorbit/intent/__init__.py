@@ -1,13 +1,33 @@
 """Intent detection — maps a user prompt to a task workflow.
 
 MockIntentDetector uses keyword-based routing across two predefined intents.
-Real NLP-based routing lands in a later sprint.
+IntentRouter replaces it with LLM-based classification and a confidence gate.
 """
 
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any, Callable, Coroutine
+
+if TYPE_CHECKING:
+    from taskorbit.types import LLMConfig, Message
+
+logger = logging.getLogger(__name__)
+
+CONFIDENCE_THRESHOLD = 0.7
+
+_ROUTING_SYSTEM_PROMPT = """\
+You are an intent classifier for a voice assistant. Given a user message, pick the \
+best-matching intent from the list below and rate your confidence.
+
+Available intents:
+{intents_list}
+
+Respond ONLY with valid JSON: {{"intent": "<name>", "confidence": <0.0-1.0>}}
+If nothing matches, return: {{"intent": null, "confidence": 0.0}}\
+"""
 
 
 @dataclass
@@ -16,6 +36,8 @@ class IntentResult:
     description: str
     required_inputs: list[dict[str, Any]] = field(default_factory=list)
     workflow_steps: list[dict[str, Any]] = field(default_factory=list)
+    confidence: float = 1.0
+    requires_clarification: bool = False
 
 
 # Mirrors schemas/examples/agent-task.example.json — task section.
@@ -75,10 +97,98 @@ _DISSATISFACTION_KEYWORDS = frozenset(
 
 
 class MockIntentDetector:
-    """Keyword-based intent detector used until real NLP routing is implemented."""
+    """Keyword-based intent detector kept for tests and local fallback."""
 
     def detect(self, prompt: str) -> IntentResult:
         lowered = prompt.lower()
         if any(kw in lowered for kw in _DISSATISFACTION_KEYWORDS):
             return _CUSTOMER_DISSATISFACTION_INQUIRY
         return _BOOK_SERVICE_APPOINTMENT
+
+
+# ---------------------------------------------------------------------------
+# LLM-based intent router
+# ---------------------------------------------------------------------------
+
+LLMCallable = Callable[
+    [str, list[Any], Any],
+    Coroutine[Any, Any, str],
+]
+
+# Add new intents here — IntentRouter picks them up automatically.
+_KNOWN_INTENTS: dict[str, IntentResult] = {
+    _BOOK_SERVICE_APPOINTMENT.name: _BOOK_SERVICE_APPOINTMENT,
+    _CUSTOMER_DISSATISFACTION_INQUIRY.name: _CUSTOMER_DISSATISFACTION_INQUIRY,
+}
+
+_CLARIFICATION_REPLY = (
+    "I want to make sure I help you with the right thing — could you tell me a bit more "
+    "about what you're looking for?"
+)
+
+_FALLBACK_RESULT = IntentResult(
+    name="unknown",
+    description="No matching intent found.",
+    confidence=0.0,
+    requires_clarification=True,
+)
+
+
+class IntentRouter:
+    """LLM-based intent router with confidence gating.
+
+    Replaces MockIntentDetector in the orchestration pipeline. Coworkers can
+    extend _KNOWN_INTENTS above to add new routing targets without touching
+    this class.
+    """
+
+    def __init__(self, threshold: float = CONFIDENCE_THRESHOLD) -> None:
+        self._threshold = threshold
+        self._fallback = MockIntentDetector()
+
+    async def detect(
+        self,
+        prompt: str,
+        messages: list[Message],
+        llm_fn: LLMCallable,
+        llm_config: LLMConfig,
+    ) -> IntentResult:
+        """Classify *prompt* and return an IntentResult.
+
+        Sets ``requires_clarification=True`` when confidence is below the
+        threshold or when the LLM returns no matching intent.
+        """
+        intents_list = "\n".join(
+            f"- {name}: {result.description}" for name, result in _KNOWN_INTENTS.items()
+        )
+        system_prompt = _ROUTING_SYSTEM_PROMPT.format(intents_list=intents_list)
+
+        # Send only the current user turn so the classifier stays focused.
+        from taskorbit.types import Message as Msg, MessageRole
+
+        classification_messages: list[Msg] = [
+            Msg(role=MessageRole.USER, content=prompt)
+        ]
+
+        try:
+            raw = await llm_fn(system_prompt, classification_messages, llm_config)
+            parsed = json.loads(raw)
+            intent_name: str | None = parsed.get("intent")
+            confidence: float = float(parsed.get("confidence", 0.0))
+        except Exception as exc:
+            logger.warning("intent_router_parse_error", extra={"error": str(exc)})
+            # Fallback to keyword matching so the call never silently drops.
+            fallback = self._fallback.detect(prompt)
+            fallback.confidence = 0.5
+            return fallback
+
+        if not intent_name or intent_name not in _KNOWN_INTENTS:
+            return _FALLBACK_RESULT
+
+        result = _KNOWN_INTENTS[intent_name]
+        result.confidence = confidence
+
+        if confidence < self._threshold:
+            result.requires_clarification = True
+
+        return result

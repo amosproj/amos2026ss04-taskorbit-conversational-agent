@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 from taskorbit.config import Settings, get_settings
 from taskorbit.integrations.llm.errors import LLMConfigError
-from taskorbit.intent import MockIntentDetector
+from taskorbit.intent import IntentRouter
 from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import get_metrics
 from taskorbit.types import (
@@ -48,7 +48,7 @@ class ConversationOrchestrator:
 
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
-        self._intent_detector = MockIntentDetector()
+        self._intent_router = IntentRouter()
 
     async def process_message(self, request: ConversationRequest) -> ConversationResponse:
         """Main entry point called by the API layer and agent workers."""
