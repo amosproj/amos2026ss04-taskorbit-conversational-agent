@@ -152,11 +152,17 @@ class AgentRegistry:
     """
 
     _REGISTRY: list[tuple[tuple[str, ...], type[BaseAgent]]] = [
-        (("support", "technical", "tech"), TechnicalSupportAgent),
-        (("sales", "lead", "qualification"), SalesAgent),
-        (("inquiry", "faq", "general"), GeneralInquiryAgent),
-        (("appointment", "reschedule", "cancel", "booking"), AppointmentManagementAgent),
-        (("dissatisfaction", "complaint", "unhappy"), CustomerDissatisfactionAgent),
+        (("support", "technical", "tech", "helpdesk", "troubleshoot"), TechnicalSupportAgent),
+        (("sales", "lead", "qualification", "onboard", "new-customer"), SalesAgent),
+        (("inquiry", "faq", "general", "info", "question"), GeneralInquiryAgent),
+        (
+            ("appointment", "reschedule", "cancel", "booking", "schedule", "rebook"),
+            AppointmentManagementAgent,
+        ),
+        (
+            ("dissatisfaction", "complaint", "unhappy", "frustrated", "refund", "escalat"),
+            CustomerDissatisfactionAgent,
+        ),
     ]
 
     _DEFAULT: type[BaseAgent] = SalesAgent

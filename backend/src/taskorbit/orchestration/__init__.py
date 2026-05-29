@@ -75,13 +75,26 @@ class ConversationOrchestrator:
                 conversation_id=request.conversation_id,
             )
 
+            # Short-circuit: ask for clarification instead of guessing
+            if intent.requires_clarification:
+                from taskorbit.intent import _CLARIFICATION_REPLY
+                from taskorbit.types import ConversationStatus
+
+                return ConversationResponse(
+                    conversation_id=request.conversation_id,
+                    reply=self._make_assistant_message(_CLARIFICATION_REPLY),
+                    status=ConversationStatus.CLARIFICATION,
+                    selected_intent=intent.name,
+                    selected_agent="",
+                )
+
             # 2. Select agent based on detected intent, not config.id
             from taskorbit.agents import AgentRegistry
 
             agent = AgentRegistry.create_by_name(intent.agent_name, request.agent_config, self)
             logger.info(
                 "agent_selected",
-                agent=type(agent).__name__,
+                agent=agent.agent_name,
                 conversation_id=request.conversation_id,
             )
 
@@ -99,9 +112,12 @@ class ConversationOrchestrator:
                 conversation_id=request.conversation_id,
             )
 
-            # 4. Build system prompt augmented with slot collection progress
+            # 4. Build system prompt using the routed agent's persona
+            agent_config_for_prompt = request.agent_config.model_copy(
+                update={"name": f"{request.agent_config.name} ({agent.agent_name})"}
+            )
             system_prompt = self._build_system_prompt(
-                request.agent_config, active_tool, slot_result
+                agent_config_for_prompt, active_tool, slot_result
             )
 
             # 5. Call LLM with a timeout from settings — measure latency
@@ -149,7 +165,7 @@ class ConversationOrchestrator:
                 conversation_id=request.conversation_id,
                 reply=self._make_assistant_message(llm_text),
                 selected_intent=intent.name,
-                selected_agent=request.agent_config.name,
+                selected_agent=agent.agent_name,
                 status=response_status,
                 extracted_slots=slot_result.to_dict() if slot_result.is_complete else {},
                 missing_slots=slot_result.missing,

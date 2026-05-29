@@ -119,6 +119,39 @@ _TECHNICAL_SUPPORT_KEYWORDS = frozenset(
     ]
 )
 
+_GENERAL_INQUIRY_KEYWORDS = frozenset(
+    [
+        "question",
+        "info",
+        "information",
+        "how does",
+        "what is",
+        "tell me",
+        "explain",
+        "faq",
+        "policy",
+        "price",
+        "pricing",
+        "hours",
+        "contact",
+    ]
+)
+
+_APPOINTMENT_MANAGEMENT_KEYWORDS = frozenset(
+    [
+        "reschedule",
+        "rebook",
+        "cancel appointment",
+        "cancel booking",
+        "change appointment",
+        "move appointment",
+        "check appointment",
+        "appointment status",
+        "existing booking",
+        "my booking",
+    ]
+)
+
 _TECHNICAL_SUPPORT_REQUEST = IntentResult(
     name="technical_support_request",
     description="Help a caller troubleshoot a technical issue or get direct technical assistance.",
@@ -141,10 +174,14 @@ class MockIntentDetector:
 
     def detect(self, prompt: str) -> IntentResult:
         lowered = prompt.lower()
+        if any(kw in lowered for kw in _APPOINTMENT_MANAGEMENT_KEYWORDS):
+            return _KNOWN_INTENTS["appointment_management"]
         if any(kw in lowered for kw in _TECHNICAL_SUPPORT_KEYWORDS):
             return _TECHNICAL_SUPPORT_REQUEST
         if any(kw in lowered for kw in _DISSATISFACTION_KEYWORDS):
             return _CUSTOMER_DISSATISFACTION_INQUIRY
+        if any(kw in lowered for kw in _GENERAL_INQUIRY_KEYWORDS):
+            return _KNOWN_INTENTS["general_inquiry"]
         return _BOOK_SERVICE_APPOINTMENT
 
 
@@ -246,9 +283,7 @@ class IntentRouter:
         except Exception as exc:
             logger.warning("intent_router_parse_error", extra={"error": str(exc)})
             # Fallback to keyword matching so the call never silently drops.
-            fallback = self._fallback.detect(prompt)
-            fallback.confidence = 0.5
-            return fallback
+            return replace(self._fallback.detect(prompt), confidence=0.5)
 
         if not intent_name or intent_name not in _KNOWN_INTENTS:
             return replace(_FALLBACK_RESULT, confidence=0.0, requires_clarification=True)
