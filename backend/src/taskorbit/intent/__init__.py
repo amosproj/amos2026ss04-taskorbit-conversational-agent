@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable, Coroutine
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -120,6 +120,30 @@ LLMCallable = Callable[
 _KNOWN_INTENTS: dict[str, IntentResult] = {
     _BOOK_SERVICE_APPOINTMENT.name: _BOOK_SERVICE_APPOINTMENT,
     _CUSTOMER_DISSATISFACTION_INQUIRY.name: _CUSTOMER_DISSATISFACTION_INQUIRY,
+    "general_inquiry": IntentResult(
+        name="general_inquiry",
+        description="Answer general questions about products, services, or policies without collecting structured data.",
+        workflow_steps=[
+            {"id": "greet", "action": "send_first_message"},
+            {"id": "answer", "action": "respond_to_query"},
+            {"id": "handoff_or_end", "action": "transfer_or_end_call"},
+        ],
+    ),
+    "appointment_management": IntentResult(
+        name="appointment_management",
+        description="Reschedule, cancel, or check the status of an existing appointment.",
+        required_inputs=[
+            {"name": "caller_name", "type": "string", "required": True},
+            {"name": "booking_reference", "type": "string", "required": True},
+            {"name": "requested_action", "type": "string", "required": True},
+        ],
+        workflow_steps=[
+            {"id": "greet", "action": "send_first_message"},
+            {"id": "collect-data", "action": "extract_required_fields", "tool": "extract_data"},
+            {"id": "confirm", "action": "confirm_action"},
+            {"id": "end", "action": "end_call", "tool": "end_call"},
+        ],
+    ),
 }
 
 _CLARIFICATION_REPLY = (
@@ -183,12 +207,10 @@ class IntentRouter:
             return fallback
 
         if not intent_name or intent_name not in _KNOWN_INTENTS:
-            return _FALLBACK_RESULT
+            return replace(_FALLBACK_RESULT, confidence=0.0, requires_clarification=True)
 
-        result = _KNOWN_INTENTS[intent_name]
-        result.confidence = confidence
-
-        if confidence < self._threshold:
-            result.requires_clarification = True
-
-        return result
+        return replace(
+            _KNOWN_INTENTS[intent_name],
+            confidence=confidence,
+            requires_clarification=confidence < self._threshold,
+        )
