@@ -65,7 +65,7 @@ _BOOK_SERVICE_APPOINTMENT = IntentResult(
 _CUSTOMER_DISSATISFACTION_INQUIRY = IntentResult(
     name="customer_dissatisfaction_inquiry",
     description="Capture a customer complaint, affected service, and preferred resolution channel.",
-    agent_name="technical_support",
+    agent_name="customer_dissatisfaction",
     required_inputs=[
         {"name": "caller_name", "type": "string", "required": True},
         {"name": "email_address", "type": "email", "required": True},
@@ -99,12 +99,50 @@ _DISSATISFACTION_KEYWORDS = frozenset(
     ]
 )
 
+_TECHNICAL_SUPPORT_KEYWORDS = frozenset(
+    [
+        "technical",
+        "tech support",
+        "support",
+        "not working",
+        "error",
+        "bug",
+        "crash",
+        "fix",
+        "troubleshoot",
+        "help with",
+        "device",
+        "software",
+        "hardware",
+        "install",
+        "setup",
+    ]
+)
+
+_TECHNICAL_SUPPORT_REQUEST = IntentResult(
+    name="technical_support_request",
+    description="Help a caller troubleshoot a technical issue or get direct technical assistance.",
+    agent_name="technical_support",
+    required_inputs=[
+        {"name": "caller_name", "type": "string", "required": True},
+        {"name": "issue_description", "type": "string", "required": True},
+    ],
+    workflow_steps=[
+        {"id": "greet", "action": "send_first_message"},
+        {"id": "collect-data", "action": "extract_required_fields", "tool": "extract_data"},
+        {"id": "diagnose", "action": "troubleshoot_issue"},
+        {"id": "end", "action": "end_call", "tool": "end_call"},
+    ],
+)
+
 
 class MockIntentDetector:
     """Keyword-based intent detector kept for tests and local fallback."""
 
     def detect(self, prompt: str) -> IntentResult:
         lowered = prompt.lower()
+        if any(kw in lowered for kw in _TECHNICAL_SUPPORT_KEYWORDS):
+            return _TECHNICAL_SUPPORT_REQUEST
         if any(kw in lowered for kw in _DISSATISFACTION_KEYWORDS):
             return _CUSTOMER_DISSATISFACTION_INQUIRY
         return _BOOK_SERVICE_APPOINTMENT
@@ -123,6 +161,7 @@ LLMCallable = Callable[
 _KNOWN_INTENTS: dict[str, IntentResult] = {
     _BOOK_SERVICE_APPOINTMENT.name: _BOOK_SERVICE_APPOINTMENT,
     _CUSTOMER_DISSATISFACTION_INQUIRY.name: _CUSTOMER_DISSATISFACTION_INQUIRY,
+    _TECHNICAL_SUPPORT_REQUEST.name: _TECHNICAL_SUPPORT_REQUEST,
     "general_inquiry": IntentResult(
         name="general_inquiry",
         description="Answer general questions about products, services, or policies without collecting structured data.",

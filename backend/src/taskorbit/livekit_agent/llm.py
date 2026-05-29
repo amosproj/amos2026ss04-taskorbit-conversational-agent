@@ -61,7 +61,7 @@ def _default_agent_config() -> AgentConfig:
         persona_constraints=PersonaConstraints(
             scope=(
                 "TechStore customer service: account setup, order tracking, "
-                "returns, and product questions."
+                "returns, product questions, and technical support."
             ),
             out_of_scope=[
                 "medical advice",

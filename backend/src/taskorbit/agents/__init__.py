@@ -121,6 +121,23 @@ class AppointmentManagementAgent(BaseAgent):
         return self.config.tools
 
 
+class CustomerDissatisfactionAgent(BaseAgent):
+    """Handles complaints, negative experiences, and escalation requests.
+
+    Focuses on emotional resolution: acknowledging the complaint, capturing
+    the issue and preferred resolution channel, and logging a formal ticket.
+    Can transfer to TechnicalSupportAgent when the root cause is technical.
+    """
+
+    agent_name = "customer_dissatisfaction"
+
+    async def handle_message(self, request: ConversationRequest) -> ConversationResponse:
+        return await self.orchestrator.process_message(request)
+
+    def get_task_definitions(self) -> list[ToolDefinition]:
+        return self.config.tools
+
+
 # ---------------------------------------------------------------------------
 # Registry / constructor
 # ---------------------------------------------------------------------------
@@ -139,6 +156,7 @@ class AgentRegistry:
         (("sales", "lead", "qualification"), SalesAgent),
         (("inquiry", "faq", "general"), GeneralInquiryAgent),
         (("appointment", "reschedule", "cancel", "booking"), AppointmentManagementAgent),
+        (("dissatisfaction", "complaint", "unhappy"), CustomerDissatisfactionAgent),
     ]
 
     _DEFAULT: type[BaseAgent] = SalesAgent
