@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -106,33 +106,28 @@ class PersonaConstraints(BaseModel):
 class ContextLimitConfig(BaseModel):
     """Configuration for conversation history limits and truncation.
 
-    Controls how many messages the agent remembers before automatically
-    removing oldest messages (FIFO). The system prompt is always protected
-    and never truncated.
+    Controls how many messages the agent remembers before the oldest are
+    automatically removed (FIFO). The system prompt is always protected and
+    never truncated.
 
-    Attributes:
-        type: Strategy for limiting context—either "message_count" (number of
-              messages to retain) or "token_threshold" (approximate token limit).
-        value: The limit value (e.g., 50 messages or 4000 tokens).
-               Defaults to 50 messages for message_count strategy.
+    Only ``"message_count"`` is supported in this sprint. Token-threshold
+    truncation and summarisation are tracked as follow-up work — see the
+    "Context-limit follow-up" issue.
 
     Example:
         Keep the last 50 messages:
         ContextLimitConfig(type="message_count", value=50)
-
-        Keep messages up to ~4000 tokens:
-        ContextLimitConfig(type="token_threshold", value=4000)
     """
 
-    type: str = Field(
+    type: Literal["message_count"] = Field(
         default="message_count",
-        description='Either "message_count" or "token_threshold"',
+        description='Truncation strategy. Only "message_count" is enforced today.',
     )
     value: int = Field(
         default=50,
         ge=10,
         le=500,
-        description="Limit value: 10-500 messages, or token count",
+        description="Maximum non-system messages to retain (10-500).",
     )
 
 

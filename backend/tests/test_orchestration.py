@@ -308,9 +308,9 @@ def test_truncate_messages_does_not_log_when_under_limit() -> None:
         mock_logger.info.assert_not_called()
 
 
-def test_truncate_messages_token_threshold_is_noop_for_now() -> None:
-    """token_threshold is accepted by the schema but not yet enforced — pass-through."""
-    orch = ConversationOrchestrator()
-    msgs = _conversation(100)
-    result = orch._truncate_messages(msgs, ContextLimitConfig(type="token_threshold", value=100))
-    assert result == msgs
+def test_context_limit_rejects_unsupported_strategy() -> None:
+    """Only 'message_count' is enforced this sprint; the schema rejects others."""
+    import pydantic
+
+    with pytest.raises(pydantic.ValidationError):
+        ContextLimitConfig(type="token_threshold", value=100)  # type: ignore[arg-type]
