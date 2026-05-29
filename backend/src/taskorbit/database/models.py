@@ -80,11 +80,26 @@ class User(Base):
 
 
 class AgentConfiguration(Base):
+    """Agent configuration — used both as admin-created configs and per-user copies.
+
+    Per-user copies (cloned from DefaultAgentTemplate) carry user_id, template_id,
+    is_default, and is_customized. Admin-created configs leave those fields NULL.
+    """
+
     __tablename__ = "agent_configurations"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False, index=True)
     config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    # Per-user fields — NULL for admin-created configs
+    user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    template_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("default_agent_templates.id", ondelete="SET NULL"), nullable=True
+    )
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_customized: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), onupdate=func.now()
@@ -94,8 +109,8 @@ class AgentConfiguration(Base):
 class DefaultAgentTemplate(Base):
     """Canonical set of standard agents seeded once at deploy time.
 
-    Every new user gets a copy of every active template in user_agents on
-    registration. Templates are never owned by a user — they are global.
+    Every new user gets a copy in agent_configurations on registration.
+    Templates are never owned by a user — they are global.
     """
 
     __tablename__ = "default_agent_templates"
@@ -105,32 +120,3 @@ class DefaultAgentTemplate(Base):
     config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-    user_agents: Mapped[list[UserAgent]] = relationship(back_populates="template")
-
-
-class UserAgent(Base):
-    """Per-user agent instance cloned from a DefaultAgentTemplate on registration.
-
-    Users can rename or customise their copy without affecting other users.
-    template_id is nullable so users can also create fully custom agents.
-    """
-
-    __tablename__ = "user_agents"
-
-    id: Mapped[str] = mapped_column(String, primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    template_id: Mapped[str | None] = mapped_column(
-        String, ForeignKey("default_agent_templates.id", ondelete="SET NULL"), nullable=True
-    )
-    name: Mapped[str] = mapped_column(String, nullable=False)
-    config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
-    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), onupdate=func.now()
-    )
-
-    template: Mapped[DefaultAgentTemplate | None] = relationship(back_populates="user_agents")

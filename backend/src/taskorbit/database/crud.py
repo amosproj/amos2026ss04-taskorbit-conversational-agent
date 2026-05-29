@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from taskorbit.logging.setup import get_logger
 
-from .models import AgentConfiguration, ConversationMessage, DefaultAgentTemplate, User, UserAgent
+from .models import AgentConfiguration, ConversationMessage, DefaultAgentTemplate, User
 
 logger = get_logger(__name__)
 
@@ -339,11 +339,13 @@ async def get_default_agent_template(
         return None
 
 
-# ============ USER AGENTS CRUD ============
+# ============ USER AGENTS CRUD (stored in agent_configurations) ============
 
 
-async def create_user_agents_from_templates(db: AsyncSession, user_id: int) -> list[UserAgent]:
-    """Clone all active default templates into user_agents for a new user.
+async def create_user_agents_from_templates(
+    db: AsyncSession, user_id: int
+) -> list[AgentConfiguration]:
+    """Clone all active default templates into agent_configurations for a new user.
 
     The first template is marked is_default=True. Safe to call once per user
     on registration.
@@ -354,15 +356,16 @@ async def create_user_agents_from_templates(db: AsyncSession, user_id: int) -> l
             logger.warning("create_user_agents_from_templates_no_templates", user_id=user_id)
             return []
 
-        agents: list[UserAgent] = []
+        agents: list[AgentConfiguration] = []
         for i, tpl in enumerate(templates):
-            agent = UserAgent(
+            agent = AgentConfiguration(
                 id=uuid4().hex,
                 user_id=user_id,
                 template_id=tpl.id,
                 name=tpl.name,
                 config=tpl.config,
                 is_default=(i == 0),
+                is_customized=False,
             )
             db.add(agent)
             agents.append(agent)
@@ -371,11 +374,7 @@ async def create_user_agents_from_templates(db: AsyncSession, user_id: int) -> l
         for agent in agents:
             await db.refresh(agent)
 
-        logger.info(
-            "user_agents_created_from_templates",
-            user_id=user_id,
-            count=len(agents),
-        )
+        logger.info("user_agents_created_from_templates", user_id=user_id, count=len(agents))
         return agents
     except SQLAlchemyError as e:
         logger.error("create_user_agents_from_templates_failed", user_id=user_id, error=str(e))
@@ -383,12 +382,12 @@ async def create_user_agents_from_templates(db: AsyncSession, user_id: int) -> l
         return []
 
 
-async def list_user_agents(db: AsyncSession, user_id: int) -> list[UserAgent]:
+async def list_user_agents(db: AsyncSession, user_id: int) -> list[AgentConfiguration]:
     try:
         result = await db.execute(
-            select(UserAgent)
-            .where(UserAgent.user_id == user_id)
-            .order_by(UserAgent.is_default.desc(), UserAgent.created_at)
+            select(AgentConfiguration)
+            .where(AgentConfiguration.user_id == user_id)
+            .order_by(AgentConfiguration.is_default.desc(), AgentConfiguration.created_at)
         )
         return list(result.scalars().all())
     except SQLAlchemyError as e:
@@ -396,10 +395,15 @@ async def list_user_agents(db: AsyncSession, user_id: int) -> list[UserAgent]:
         return []
 
 
-async def get_user_agent(db: AsyncSession, agent_id: str, user_id: int) -> UserAgent | None:
+async def get_user_agent(
+    db: AsyncSession, agent_id: str, user_id: int
+) -> AgentConfiguration | None:
     try:
         result = await db.execute(
-            select(UserAgent).where(UserAgent.id == agent_id, UserAgent.user_id == user_id)
+            select(AgentConfiguration).where(
+                AgentConfiguration.id == agent_id,
+                AgentConfiguration.user_id == user_id,
+            )
         )
         return result.scalar_one_or_none()
     except SQLAlchemyError as e:
@@ -414,7 +418,7 @@ async def update_user_agent(
     name: str | None = None,
     config: dict | None = None,
     is_default: bool | None = None,
-) -> UserAgent | None:
+) -> AgentConfiguration | None:
     try:
         agent = await get_user_agent(db, agent_id, user_id)
         if not agent:
@@ -455,51 +459,47 @@ async def copy_on_write_user_agent(
     template_id: str,
     name: str | None = None,
     config_updates: dict | None = None,
-) -> UserAgent | None:
-    """Clone a default template into user_agents and apply updates — copy-on-write.
+) -> AgentConfiguration | None:
+    """Clone a default template into agent_configurations and apply updates.
 
-    Rules:
     - If the user already has a copy of this template → update that copy.
-    - If not → clone the template and apply the updates to the new copy.
-    - The default_agent_templates row is never modified.
+    - If not → clone the template, mark is_customized=True, apply updates.
+    - default_agent_templates is never modified.
     """
     try:
-        # Check if the user already owns a copy of this template.
         result = await db.execute(
-            select(UserAgent).where(
-                UserAgent.user_id == user_id,
-                UserAgent.template_id == template_id,
+            select(AgentConfiguration).where(
+                AgentConfiguration.user_id == user_id,
+                AgentConfiguration.template_id == template_id,
             )
         )
         existing = result.scalar_one_or_none()
 
         if existing:
-            # Update the existing user copy.
             if name is not None:
                 existing.name = name
             if config_updates is not None:
-                merged = {**existing.config, **config_updates}
-                existing.config = merged
+                existing.config = {**existing.config, **config_updates}
+            existing.is_customized = True
             existing.updated_at = datetime.now()
             await db.commit()
             await db.refresh(existing)
             logger.info("user_agent_updated", agent_id=existing.id, user_id=user_id)
             return existing
 
-        # No copy yet — fetch the template and clone it.
         template = await get_default_agent_template(db, template_id)
         if not template:
             logger.warning("copy_on_write_template_not_found", template_id=template_id)
             return None
 
-        cloned_config = {**template.config, **(config_updates or {})}
-        agent = UserAgent(
+        agent = AgentConfiguration(
             id=uuid4().hex,
             user_id=user_id,
             template_id=template_id,
             name=name or template.name,
-            config=cloned_config,
+            config={**template.config, **(config_updates or {})},
             is_default=False,
+            is_customized=True,
         )
         db.add(agent)
         await db.commit()
@@ -543,7 +543,7 @@ async def list_user_agents_merged(db: AsyncSession, user_id: int) -> list[dict]:
                 "name": agent.name,
                 "config": agent.config,
                 "is_default": agent.is_default,
-                "is_customized": True,
+                "is_customized": agent.is_customized,
                 "created_at": agent.created_at,
                 "updated_at": agent.updated_at,
             }
