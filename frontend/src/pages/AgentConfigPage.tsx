@@ -217,8 +217,10 @@ export function AgentConfigPage() {
         <AdvancedSection
           language={agent.language}
           vad={agent.vad}
+          contextLimit={agent.context_limit}
           onLanguageChange={(language) => setAgent({ ...agent, language })}
           onVadChange={(vad) => setAgent({ ...agent, vad })}
+          onContextLimitChange={(context_limit) => setAgent({ ...agent, context_limit })}
         />
 
         <div className="sticky bottom-4 z-10 mt-2 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background/90 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70">
