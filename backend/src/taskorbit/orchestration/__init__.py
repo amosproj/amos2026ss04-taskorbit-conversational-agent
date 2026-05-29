@@ -32,6 +32,7 @@ from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import get_metrics
 from taskorbit.types import (
     AgentConfig,
+    ContextLimitConfig,
     ConversationRequest,
     ConversationResponse,
     LLMConfig,
@@ -100,10 +101,15 @@ class ConversationOrchestrator:
                 request.agent_config, active_tool, slot_result
             )
 
+            # 4b. Truncate conversation history if context limit is configured
+            truncated_messages = self._truncate_messages(
+                request.messages, request.agent_config.context_limit
+            )
+
             # 5. Call LLM with a timeout from settings — measure latency
             _llm_start = time.perf_counter()
             llm_text = await asyncio.wait_for(
-                self._call_llm(system_prompt, request.messages, request.agent_config.llm),
+                self._call_llm(system_prompt, truncated_messages, request.agent_config.llm),
                 timeout=self._settings.llm_timeout_seconds,
             )
             _llm_elapsed = time.perf_counter() - _llm_start
@@ -239,6 +245,63 @@ class ConversationOrchestrator:
                 refusal_template_set=bool(agent_config.persona_constraints.refusal_template),
             )
         return prompt
+
+    def _truncate_messages(
+        self,
+        messages: list[Message],
+        context_limit: ContextLimitConfig | None,
+    ) -> list[Message]:
+        """Truncate conversation history based on context limit configuration.
+
+        Implements FIFO (First In, First Out) message removal strategy while
+        protecting the system prompt. If no context_limit is configured,
+        returns all messages unchanged.
+
+        Args:
+            messages: Full conversation history (may include system, user, assistant)
+            context_limit: Configuration specifying max messages or token threshold,
+                          or None to disable truncation.
+
+        Returns:
+            Truncated message list with system prompt always preserved.
+            System messages are never removed; oldest non-system messages are
+            dropped first when the limit is exceeded.
+
+        Example:
+            Given 100 messages and context_limit=50:
+            - Separate system msgs and other msgs
+            - Keep only last 50 non-system msgs
+            - Return system_msgs + last_50_other_msgs (total ~51)
+        """
+        if not context_limit or context_limit.type not in ["message_count", "token_threshold"]:
+            return messages
+
+        # Separate system messages (always protected) from conversation messages
+        system_msgs = [m for m in messages if m.role == MessageRole.SYSTEM]
+        other_msgs = [m for m in messages if m.role != MessageRole.SYSTEM]
+
+        # For now, implement message_count strategy only
+        # (token_threshold would require tokenizer, deferred to future sprint)
+        if context_limit.type == "message_count":
+            limit = context_limit.value
+            if len(other_msgs) > limit:
+                # FIFO: keep only the last N messages (oldest are discarded)
+                trimmed_other = other_msgs[-limit:]
+                original_count = len(other_msgs)
+                dropped_count = original_count - len(trimmed_other)
+
+                logger.info(
+                    "message_truncation_applied",
+                    original_count=original_count,
+                    trimmed_count=len(trimmed_other),
+                    dropped_count=dropped_count,
+                    system_msgs_protected=len(system_msgs),
+                )
+                return system_msgs + trimmed_other
+
+        # If token_threshold or other strategies: return unchanged
+        # (Token counting deferred to future sprint as it requires tiktoken)
+        return messages
 
     async def _extract_slots(
         self,
