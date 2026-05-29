@@ -16,119 +16,12 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
+from taskorbit.database.seed_data import DEFAULT_AGENT_TEMPLATES
+
 revision: str = "b1c2d3e4f5a6"
 down_revision: str | Sequence[str] | None = "a0bc296ebba8"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
-
-# ---------------------------------------------------------------------------
-# Default agent seed data
-# Each config matches the AgentConfig shape: id, name, persona, greeting,
-# stt, llm, tts, tools, persona_constraints.
-# ---------------------------------------------------------------------------
-
-_DEFAULT_STT = {"provider": "deepgram", "language": "en-US", "model": "nova-3"}
-_DEFAULT_LLM = {"provider": "openai", "model": "gpt-4o-mini"}
-_DEFAULT_TTS = {
-    "provider": "elevenlabs",
-    "voice_id": "21m00Tcm4TlvDq8ikWAM",
-    "model": "eleven_multilingual_v2",
-}
-
-_SEED_TEMPLATES = [
-    {
-        "id": "sales-agent",
-        "name": "Sales Agent",
-        "config": {
-            "id": "sales-agent",
-            "name": "Sales Agent",
-            "persona": (
-                "A friendly and professional sales agent. "
-                "You qualify leads, gather customer needs, and guide prospects "
-                "through the buying process."
-            ),
-            "greeting": (
-                "Hi! I'm your Sales Agent. I'm here to help you find the right "
-                "solution for your needs. What can I help you with today?"
-            ),
-            "stt": _DEFAULT_STT,
-            "llm": _DEFAULT_LLM,
-            "tts": _DEFAULT_TTS,
-            "tools": [],
-            "persona_constraints": None,
-        },
-        "is_active": True,
-    },
-    {
-        "id": "technical-support-agent",
-        "name": "Technical Support Agent",
-        "config": {
-            "id": "technical-support-agent",
-            "name": "Technical Support Agent",
-            "persona": (
-                "A knowledgeable technical support specialist. "
-                "You diagnose issues, walk customers through troubleshooting steps, "
-                "and escalate when needed."
-            ),
-            "greeting": (
-                "Hello! I'm your Technical Support Agent. "
-                "Tell me what issue you're experiencing and I'll help you resolve it."
-            ),
-            "stt": _DEFAULT_STT,
-            "llm": _DEFAULT_LLM,
-            "tts": _DEFAULT_TTS,
-            "tools": [],
-            "persona_constraints": None,
-        },
-        "is_active": True,
-    },
-    {
-        "id": "general-inquiry-agent",
-        "name": "General Inquiry Agent",
-        "config": {
-            "id": "general-inquiry-agent",
-            "name": "General Inquiry Agent",
-            "persona": (
-                "A helpful general-purpose assistant. "
-                "You answer frequently asked questions, provide product information, "
-                "and direct customers to the right resource."
-            ),
-            "greeting": (
-                "Hi there! I'm here to answer any questions you have. "
-                "What would you like to know?"
-            ),
-            "stt": _DEFAULT_STT,
-            "llm": _DEFAULT_LLM,
-            "tts": _DEFAULT_TTS,
-            "tools": [],
-            "persona_constraints": None,
-        },
-        "is_active": True,
-    },
-    {
-        "id": "appointment-management-agent",
-        "name": "Appointment Management Agent",
-        "config": {
-            "id": "appointment-management-agent",
-            "name": "Appointment Management Agent",
-            "persona": (
-                "A professional scheduling assistant. "
-                "You help customers book, reschedule, and cancel appointments efficiently."
-            ),
-            "greeting": (
-                "Hello! I'm your Appointment Agent. "
-                "I can help you schedule, reschedule, or cancel an appointment. "
-                "How can I assist you today?"
-            ),
-            "stt": _DEFAULT_STT,
-            "llm": _DEFAULT_LLM,
-            "tts": _DEFAULT_TTS,
-            "tools": [],
-            "persona_constraints": None,
-        },
-        "is_active": True,
-    },
-]
 
 
 def upgrade() -> None:
@@ -194,7 +87,7 @@ def upgrade() -> None:
                 "config": t["config"],
                 "is_active": t["is_active"],
             }
-            for t in _SEED_TEMPLATES
+            for t in DEFAULT_AGENT_TEMPLATES
         ],
     )
 
