@@ -523,15 +523,14 @@ async def copy_on_write_user_agent(
 
 
 async def list_user_agents_merged(db: AsyncSession, user_id: int) -> list[dict]:
-    """Return all agents for a user — their customised copies + uncustomised templates.
+    """Return all agents for a user — their customised copies AND all templates.
 
-    Each entry carries an extra key ``is_customized`` so the frontend knows
-    whether the user has already edited that agent.
+    Built-in templates always appear regardless of whether the user has a copy.
+    Customised copies appear in addition, marked is_customized=True.
+    The frontend uses is_customized to split the list into two sections.
     """
     user_agents = await list_user_agents(db, user_id)
     templates = await list_default_agent_templates(db, active_only=True)
-
-    customised_template_ids = {a.template_id for a in user_agents if a.template_id}
 
     merged: list[dict] = []
 
@@ -550,20 +549,19 @@ async def list_user_agents_merged(db: AsyncSession, user_id: int) -> list[dict]:
             }
         )
 
-    # Templates the user hasn't touched yet.
+    # All built-in templates — always included so the list never shrinks.
     for tpl in templates:
-        if tpl.id not in customised_template_ids:
-            merged.append(
-                {
-                    "id": tpl.id,
-                    "template_id": tpl.id,
-                    "name": tpl.name,
-                    "config": tpl.config,
-                    "is_default": False,
-                    "is_customized": False,
-                    "created_at": tpl.created_at,
-                    "updated_at": None,
-                }
-            )
+        merged.append(
+            {
+                "id": tpl.id,
+                "template_id": tpl.id,
+                "name": tpl.name,
+                "config": tpl.config,
+                "is_default": False,
+                "is_customized": False,
+                "created_at": tpl.created_at,
+                "updated_at": None,
+            }
+        )
 
     return merged

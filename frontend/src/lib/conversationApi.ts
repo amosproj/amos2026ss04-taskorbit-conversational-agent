@@ -57,6 +57,9 @@ type ConversationResponse = {
   tool_invoked: BackendTool | null;
   requires_confirmation: boolean;
   confirmation_prompt: string;
+  status: "success" | "clarification" | "ended" | "error";
+  selected_intent: string;
+  selected_agent: string;
 };
 
 type ConversationsResponse = {

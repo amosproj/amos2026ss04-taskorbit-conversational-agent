@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
 import { JOHN_DOE_AGENT } from "@/lib/mockAgents";
+import { backendToFrontendAgent, fetchUserAgents } from "@/lib/userAgentsApi";
 import type { AgentConfig } from "@/types/agentConfig";
 
 /**
@@ -63,6 +64,26 @@ export function ActiveAgentProvider({ children }: { children: ReactNode }) {
   const [loadedConfigId, setLoadedConfigId] = useState<string | null>(() => {
     return readFromStorage()?.loadedConfigId ?? null;
   });
+
+  // On mount: load the default user agent from the backend if localStorage
+  // has no saved choice. Falls back silently to JOHN_DOE_AGENT if the API
+  // is unreachable (e.g. backend not running locally).
+  useEffect(() => {
+    if (readFromStorage()) return; // user already has a saved choice
+    const controller = new AbortController();
+    fetchUserAgents(controller.signal)
+      .then((entries) => {
+        const defaultEntry = entries.find((e) => e.is_default) ?? entries[0];
+        if (defaultEntry) {
+          setAgent(backendToFrontendAgent(defaultEntry));
+          setLoadedConfigId(`ua:${defaultEntry.template_id ?? defaultEntry.id}`);
+        }
+      })
+      .catch(() => {
+        // Backend unavailable — keep JOHN_DOE_AGENT as fallback.
+      });
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     try {

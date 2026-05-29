@@ -34,7 +34,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from taskorbit.database import get_session
-from taskorbit.database.crud import get_user
+from taskorbit.database.crud import get_user_by_email
 from taskorbit.logging.setup import get_logger
 
 logger = get_logger(__name__)
@@ -43,7 +43,7 @@ logger = get_logger(__name__)
 # Hardcoded dev user — swap this entire function for JWT logic when ready.
 # ---------------------------------------------------------------------------
 
-_DEV_USER_ID = 1
+_DEV_USER_EMAIL = "dev@taskorbit.local"
 
 
 async def get_current_user_id(
@@ -51,13 +51,16 @@ async def get_current_user_id(
 ) -> int:
     """Return the current user's ID.
 
-    STUB: always returns the seeded dev user (id=1).
+    STUB: looks up the seeded dev user by email (avoids fragile id=1 assumption).
     Replace with JWT token validation when auth is implemented.
     """
-    user = await get_user(db, _DEV_USER_ID)
-    if not user or not user.is_active:
-        logger.warning("dev_user_not_found_or_inactive", user_id=_DEV_USER_ID)
-        from fastapi import HTTPException
+    from fastapi import HTTPException
 
-        raise HTTPException(status_code=401, detail="Dev user not found — run seed script first")
+    user = await get_user_by_email(db, _DEV_USER_EMAIL)
+    if not user or not user.is_active:
+        logger.warning("dev_user_not_found_or_inactive", email=_DEV_USER_EMAIL)
+        raise HTTPException(
+            status_code=401,
+            detail="Dev user not found — run: poetry run python scripts/seed_defaults.py",
+        )
     return user.id
