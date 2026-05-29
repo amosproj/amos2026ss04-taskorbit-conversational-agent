@@ -61,10 +61,18 @@ class ConversationOrchestrator:
             if not last_user or not last_user.content.strip():
                 raise ValueError("No user message content found in request.")
 
-            # 1. Detect intent (mocked)
-            intent = self._intent_detector.detect(last_user.content)
+            # 1. Detect intent via LLM-based router
+            intent = await self._intent_router.detect(
+                last_user.content,
+                request.messages,
+                self._call_llm,
+                request.agent_config.llm,
+            )
             logger.info(
-                "intent_detected", intent=intent.name, conversation_id=request.conversation_id
+                "intent_detected",
+                intent=intent.name,
+                confidence=intent.confidence,
+                conversation_id=request.conversation_id,
             )
 
             # 2. Select agent — local import avoids circular dependency with agents/__init__.py
