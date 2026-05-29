@@ -142,9 +142,15 @@ async def test_process_message_sets_selected_intent(mock_llm: AsyncMock) -> None
 @patch.object(ConversationOrchestrator, "_call_llm", new_callable=AsyncMock)
 async def test_process_message_sets_selected_agent_name(mock_llm: AsyncMock) -> None:
     mock_llm.return_value = "[Mocked LLM] Hello"
-    request = _make_request()
-    response = await ConversationOrchestrator().process_message(request)
-    assert response.selected_agent == request.agent_config.name
+    response = await ConversationOrchestrator().process_message(_make_request())
+    # selected_agent now reflects the routed agent_name, not the config display name
+    assert response.selected_agent in (
+        "sales",
+        "technical_support",
+        "general_inquiry",
+        "appointment_management",
+        "customer_dissatisfaction",
+    )
 
 
 @patch.object(ConversationOrchestrator, "_call_llm", new_callable=AsyncMock)
