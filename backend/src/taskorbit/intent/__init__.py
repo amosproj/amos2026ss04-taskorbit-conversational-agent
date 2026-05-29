@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Coroutine
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from taskorbit.types import LLMConfig, Message
@@ -164,11 +165,10 @@ class IntentRouter:
         system_prompt = _ROUTING_SYSTEM_PROMPT.format(intents_list=intents_list)
 
         # Send only the current user turn so the classifier stays focused.
-        from taskorbit.types import Message as Msg, MessageRole
+        from taskorbit.types import Message as Msg
+        from taskorbit.types import MessageRole
 
-        classification_messages: list[Msg] = [
-            Msg(role=MessageRole.USER, content=prompt)
-        ]
+        classification_messages: list[Msg] = [Msg(role=MessageRole.USER, content=prompt)]
 
         try:
             raw = await llm_fn(system_prompt, classification_messages, llm_config)
