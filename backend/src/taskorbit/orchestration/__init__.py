@@ -113,16 +113,28 @@ class ConversationOrchestrator:
             _llm_elapsed = time.perf_counter() - _llm_start
             get_metrics().pipeline_latency_seconds.labels(stage="llm_call").observe(_llm_elapsed)
 
-            # 5b. Execute DataExtractionTool when all required slots are filled
-            if slot_result.is_complete and intent.required_inputs:
-                from taskorbit.tools.data_extraction import DataExtractionTool
+            # 5b. Dispatch active tool when slots are complete
+            from taskorbit.types import ConversationStatus, ToolType
 
-                await DataExtractionTool().execute(slot_result.to_dict())
+            tool_data: dict[str, Any] = {}
+            response_status = ConversationStatus.SUCCESS
+
+            if active_tool and slot_result.is_complete and intent.required_inputs:
+                tool_data = await self._dispatch_tool(active_tool, slot_result.to_dict())
                 logger.info(
-                    "data_extraction_complete",
-                    slots=list(slot_result.filled.keys()),
+                    "tool_dispatch_complete",
+                    tool_type=active_tool.type,
                     conversation_id=request.conversation_id,
                 )
+                if active_tool.type == ToolType.END_CALL:
+                    response_status = ConversationStatus.ENDED
+                elif active_tool.type == ToolType.AGENT_TRANSFER:
+                    logger.info(
+                        "agent_handoff",
+                        from_agent=request.agent_config.name,
+                        to_agent=tool_data.get("transferred_to"),
+                        conversation_id=request.conversation_id,
+                    )
 
             _total_elapsed = time.perf_counter() - _pipeline_start
             get_metrics().pipeline_latency_seconds.labels(stage="total").observe(_total_elapsed)
@@ -138,7 +150,7 @@ class ConversationOrchestrator:
                 reply=self._make_assistant_message(llm_text),
                 selected_intent=intent.name,
                 selected_agent=request.agent_config.name,
-                status="success",
+                status=response_status,
                 extracted_slots=slot_result.to_dict() if slot_result.is_complete else {},
                 missing_slots=slot_result.missing,
             )
@@ -312,9 +324,43 @@ class ConversationOrchestrator:
         """Execute a tool after the user has confirmed (if required).
 
         Delegates to the concrete BaseTool implementation in taskorbit.tools.
-        Returns the tool's result payload.
+        Returns the tool's result payload, or empty dict on failure.
         """
-        raise NotImplementedError
+        from taskorbit.tools import ToolResult
+        from taskorbit.tools.agent_transfer import AgentTransferTool
+        from taskorbit.tools.data_extraction import DataExtractionTool
+        from taskorbit.tools.end_call import EndCallTool
+        from taskorbit.types import ToolType
+
+        dispatch: dict[ToolType, type] = {
+            ToolType.DATA_EXTRACTION: DataExtractionTool,
+            ToolType.AGENT_TRANSFER: AgentTransferTool,
+            ToolType.END_CALL: EndCallTool,
+        }
+
+        tool_cls = dispatch.get(tool.type)
+        if tool_cls is None:
+            logger.warning("unknown_tool_type", tool_type=tool.type, tool_id=tool.id)
+            return {}
+
+        result: ToolResult = await tool_cls().execute(context)
+
+        if not result.success:
+            logger.warning(
+                "tool_execution_failed",
+                tool_id=tool.id,
+                tool_type=tool.type,
+                error=result.error,
+            )
+            return {}
+
+        logger.info(
+            "tool_executed",
+            tool_id=tool.id,
+            tool_type=tool.type,
+            data=result.data,
+        )
+        return result.data
 
     def _make_assistant_message(self, content: str) -> Message:
         return Message(role=MessageRole.ASSISTANT, content=content)
