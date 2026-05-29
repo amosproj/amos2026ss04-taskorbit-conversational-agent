@@ -447,3 +447,123 @@ async def delete_user_agent(db: AsyncSession, agent_id: str, user_id: int) -> bo
         logger.error("delete_user_agent_failed", agent_id=agent_id, error=str(e))
         await db.rollback()
         return False
+
+
+async def copy_on_write_user_agent(
+    db: AsyncSession,
+    user_id: int,
+    template_id: str,
+    name: str | None = None,
+    config_updates: dict | None = None,
+) -> UserAgent | None:
+    """Clone a default template into user_agents and apply updates — copy-on-write.
+
+    Rules:
+    - If the user already has a copy of this template → update that copy.
+    - If not → clone the template and apply the updates to the new copy.
+    - The default_agent_templates row is never modified.
+    """
+    try:
+        # Check if the user already owns a copy of this template.
+        result = await db.execute(
+            select(UserAgent).where(
+                UserAgent.user_id == user_id,
+                UserAgent.template_id == template_id,
+            )
+        )
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            # Update the existing user copy.
+            if name is not None:
+                existing.name = name
+            if config_updates is not None:
+                merged = {**existing.config, **config_updates}
+                existing.config = merged
+            existing.updated_at = datetime.now()
+            await db.commit()
+            await db.refresh(existing)
+            logger.info("user_agent_updated", agent_id=existing.id, user_id=user_id)
+            return existing
+
+        # No copy yet — fetch the template and clone it.
+        template = await get_default_agent_template(db, template_id)
+        if not template:
+            logger.warning("copy_on_write_template_not_found", template_id=template_id)
+            return None
+
+        cloned_config = {**template.config, **(config_updates or {})}
+        agent = UserAgent(
+            id=uuid4().hex,
+            user_id=user_id,
+            template_id=template_id,
+            name=name or template.name,
+            config=cloned_config,
+            is_default=False,
+        )
+        db.add(agent)
+        await db.commit()
+        await db.refresh(agent)
+        logger.info(
+            "user_agent_cloned_from_template",
+            agent_id=agent.id,
+            template_id=template_id,
+            user_id=user_id,
+        )
+        return agent
+    except SQLAlchemyError as e:
+        logger.error(
+            "copy_on_write_user_agent_failed",
+            template_id=template_id,
+            user_id=user_id,
+            error=str(e),
+        )
+        await db.rollback()
+        return None
+
+
+async def list_user_agents_merged(db: AsyncSession, user_id: int) -> list[dict]:
+    """Return all agents for a user — their customised copies + uncustomised templates.
+
+    Each entry carries an extra key ``is_customized`` so the frontend knows
+    whether the user has already edited that agent.
+    """
+    user_agents = await list_user_agents(db, user_id)
+    templates = await list_default_agent_templates(db, active_only=True)
+
+    customised_template_ids = {a.template_id for a in user_agents if a.template_id}
+
+    merged: list[dict] = []
+
+    # User's customised copies first.
+    for agent in user_agents:
+        merged.append(
+            {
+                "id": agent.id,
+                "template_id": agent.template_id,
+                "name": agent.name,
+                "config": agent.config,
+                "is_default": agent.is_default,
+                "is_customized": True,
+                "created_at": agent.created_at,
+                "updated_at": agent.updated_at,
+            }
+        )
+
+    # Templates the user hasn't touched yet.
+    for tpl in templates:
+        if tpl.id not in customised_template_ids:
+            merged.append(
+                {
+                    "id": tpl.id,
+                    "template_id": tpl.id,
+                    "name": tpl.name,
+                    "config": tpl.config,
+                    "is_default": False,
+                    "is_customized": False,
+                    "created_at": tpl.created_at,
+                    "updated_at": None,
+                }
+            )
+
+    return merged
