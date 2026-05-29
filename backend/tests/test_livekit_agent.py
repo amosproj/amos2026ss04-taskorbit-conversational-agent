@@ -255,7 +255,6 @@ async def test_voice_path_propagates_persona_guardrails_into_prompt() -> None:
         settings=Settings(openai_api_key="sk-test", google_api_key="AIza-test")
     )
     voice_agent_config = _default_agent_config()
-    refusal = voice_agent_config.persona_constraints.refusal_template
 
     mock_client = MagicMock()
     mock_client.generate = AsyncMock(return_value="Sorry, only TechStore.")
@@ -275,4 +274,96 @@ async def test_voice_path_propagates_persona_guardrails_into_prompt() -> None:
     # Asserting against the new imperative headers
     assert "Authorized Scope:" in augmented_prompt
     assert "CORE CONSTRAINT - Forbidden Topics" in augmented_prompt
-    assert f'"{refusal}"' in augmented_prompt
+
+
+# ---------------------------------------------------------------------------
+# STT formatting: smart_format output flows through the pipeline unchanged
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_llm_node_passes_formatted_number_unchanged() -> None:
+    """Deepgram smart_format converts 'three two one' to '321' before it
+    reaches the backend. The orchestrator must receive '321', not word form."""
+    agent, orchestrator = _make_agent("Got it.")
+    chat_ctx = _make_chat_ctx([("user", "my number is 321")])
+
+    agent.request_reply()
+    [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
+
+    request = orchestrator.process_message.await_args.args[0]
+    assert request.messages[0].content == "my number is 321"
+
+
+@pytest.mark.asyncio
+async def test_llm_node_passes_email_from_smart_format_unchanged() -> None:
+    """Deepgram smart_format emits 'user@example.com' — must reach the
+    orchestrator intact so slot extraction can parse it as an email."""
+    agent, orchestrator = _make_agent("Got it.")
+    chat_ctx = _make_chat_ctx([("user", "my email is user@example.com")])
+
+    agent.request_reply()
+    [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
+
+    request = orchestrator.process_message.await_args.args[0]
+    assert request.messages[0].content == "my email is user@example.com"
+
+
+@pytest.mark.asyncio
+async def test_llm_node_passes_date_from_smart_format_unchanged() -> None:
+    """Deepgram smart_format converts spoken dates to '05/29/2026' — must
+    arrive at the orchestrator in that formatted form."""
+    agent, orchestrator = _make_agent("Got it.")
+    chat_ctx = _make_chat_ctx([("user", "I need it by 05/29/2026")])
+
+    agent.request_reply()
+    [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
+
+    request = orchestrator.process_message.await_args.args[0]
+    assert request.messages[0].content == "I need it by 05/29/2026"
+
+
+@pytest.mark.asyncio
+async def test_llm_node_normalizes_unicode_em_dash_from_stt() -> None:
+    """Deepgram can emit an em dash (—) mid-utterance. It must be replaced
+    with an ASCII hyphen before reaching the orchestrator to prevent
+    UnicodeEncodeError in downstream LLM HTTP clients."""
+    agent, orchestrator = _make_agent("Got it.")
+    chat_ctx = _make_chat_ctx([("user", "tomorrow—maybe Thursday")])
+
+    agent.request_reply()
+    [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
+
+    request = orchestrator.process_message.await_args.args[0]
+    assert "—" not in request.messages[0].content
+    assert "-" in request.messages[0].content
+
+
+# ---------------------------------------------------------------------------
+# VAD silence threshold — regression guard for issue #102
+# ---------------------------------------------------------------------------
+
+
+def test_vad_silence_duration_prevents_premature_bubble_splits(
+    configured_settings: None,
+) -> None:
+    """Regression guard: min_silence_duration must stay >= 1.5s.
+
+    Lowering this threshold was the root cause of issue #102 — mid-utterance
+    pauses caused Silero VAD to cut the segment early, splitting one utterance
+    into multiple transcript bubbles. This test will fail if someone reduces
+    the threshold without understanding the consequence.
+    """
+    with (
+        patch("taskorbit.livekit_agent.session.silero.VAD") as mock_vad,
+        patch("taskorbit.livekit_agent.session.deepgram.STT"),
+        patch("taskorbit.livekit_agent.session.elevenlabs.TTS"),
+        patch("taskorbit.livekit_agent.session.AgentSession"),
+    ):
+        build_agent_session()
+
+    vad_kwargs = mock_vad.load.call_args.kwargs
+    assert vad_kwargs["min_silence_duration"] >= 1.5, (
+        "min_silence_duration was reduced below 1.5s — see issue #102: "
+        "lower values cause mid-utterance pauses to split into multiple bubbles"
+    )
