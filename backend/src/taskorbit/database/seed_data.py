@@ -1,6 +1,6 @@
-"""Default agent template seed data.
+"""Default seed data: agent templates and a dummy dev user.
 
-This module is the single source of truth for default agent configurations.
+This module is the single source of truth for default seed data.
 It is imported by:
   - The Alembic migration (b1c2d3e4f5a6) for the initial bulk insert
   - Tests that need realistic agent configs without hitting the DB
@@ -114,5 +114,22 @@ DEFAULT_AGENT_TEMPLATES: list[dict] = [
             "tools": [],
             "persona_constraints": None,
         },
+    },
+]
+
+# ---------------------------------------------------------------------------
+# Dummy dev user
+# DEV ONLY — do not use in production.
+# Plain-text password: Test1234!
+# hashed_password is a SHA-256 placeholder. Replace with a proper bcrypt hash
+# once a password hashing library (e.g. passlib[bcrypt]) is added as a dep.
+# ---------------------------------------------------------------------------
+
+DEFAULT_USERS: list[dict] = [
+    {
+        "username": "dev_user",
+        "email": "dev@taskorbit.local",
+        "hashed_password": "sha256:0fadf52a4580cfebb99e61162139af3d3a6403c1d36b83e4962b721d1c8cbd0b",
+        "is_active": True,
     },
 ]

@@ -16,7 +16,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-from taskorbit.database.seed_data import DEFAULT_AGENT_TEMPLATES
+from taskorbit.database.seed_data import DEFAULT_AGENT_TEMPLATES, DEFAULT_USERS
 
 revision: str = "b1c2d3e4f5a6"
 down_revision: str | Sequence[str] | None = "a0bc296ebba8"
@@ -88,6 +88,27 @@ def upgrade() -> None:
                 "is_active": t["is_active"],
             }
             for t in DEFAULT_AGENT_TEMPLATES
+        ],
+    )
+
+    # Seed dummy dev user — DEV ONLY, plain-text password: Test1234!
+    users_table = sa.table(
+        "users",
+        sa.column("username", sa.String),
+        sa.column("email", sa.String),
+        sa.column("hashed_password", sa.String),
+        sa.column("is_active", sa.Boolean),
+    )
+    op.bulk_insert(
+        users_table,
+        [
+            {
+                "username": u["username"],
+                "email": u["email"],
+                "hashed_password": u["hashed_password"],
+                "is_active": u["is_active"],
+            }
+            for u in DEFAULT_USERS
         ],
     )
 
