@@ -35,6 +35,7 @@ If nothing matches, return: {{"intent": null, "confidence": 0.0}}\
 class IntentResult:
     name: str
     description: str
+    agent_name: str = ""  # maps to BaseAgent.agent_name in AgentRegistry
     required_inputs: list[dict[str, Any]] = field(default_factory=list)
     workflow_steps: list[dict[str, Any]] = field(default_factory=list)
     confidence: float = 1.0
@@ -45,6 +46,7 @@ class IntentResult:
 _BOOK_SERVICE_APPOINTMENT = IntentResult(
     name="book_service_appointment",
     description="Collect caller details and request a preferred appointment date for a plumbing service.",
+    agent_name="sales",
     required_inputs=[
         {"name": "caller_name", "type": "string", "required": True},
         {"name": "email_address", "type": "email", "required": True},
@@ -63,6 +65,7 @@ _BOOK_SERVICE_APPOINTMENT = IntentResult(
 _CUSTOMER_DISSATISFACTION_INQUIRY = IntentResult(
     name="customer_dissatisfaction_inquiry",
     description="Capture a customer complaint, affected service, and preferred resolution channel.",
+    agent_name="technical_support",
     required_inputs=[
         {"name": "caller_name", "type": "string", "required": True},
         {"name": "email_address", "type": "email", "required": True},
@@ -123,6 +126,7 @@ _KNOWN_INTENTS: dict[str, IntentResult] = {
     "general_inquiry": IntentResult(
         name="general_inquiry",
         description="Answer general questions about products, services, or policies without collecting structured data.",
+        agent_name="general_inquiry",
         workflow_steps=[
             {"id": "greet", "action": "send_first_message"},
             {"id": "answer", "action": "respond_to_query"},
@@ -132,6 +136,7 @@ _KNOWN_INTENTS: dict[str, IntentResult] = {
     "appointment_management": IntentResult(
         name="appointment_management",
         description="Reschedule, cancel, or check the status of an existing appointment.",
+        agent_name="appointment_management",
         required_inputs=[
             {"name": "caller_name", "type": "string", "required": True},
             {"name": "booking_reference", "type": "string", "required": True},

@@ -10,9 +10,16 @@ AgentRegistry.create() is the single constructor for all agent types.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from typing import TYPE_CHECKING
 
+from taskorbit.logging.setup import get_logger
 from taskorbit.types import AgentConfig, ConversationRequest, ConversationResponse, ToolDefinition
+
+logger = get_logger(__name__)
+
+# Tracks how many times each agent type has been invoked this process lifetime.
+_agent_call_counts: dict[str, int] = defaultdict(int)
 
 if TYPE_CHECKING:
     from taskorbit.orchestration import ConversationOrchestrator
@@ -149,8 +156,47 @@ class AgentRegistry:
         agent_id = config.id.lower()
         for keywords, agent_cls in cls._REGISTRY:
             if any(kw in agent_id for kw in keywords):
+                _agent_call_counts[agent_cls.agent_name] += 1
+                count = _agent_call_counts[agent_cls.agent_name]
+                print(f"[AgentRegistry] {agent_cls.agent_name} called (total: {count})", flush=True)
+                logger.info("agent_selected", agent=agent_cls.agent_name, total_calls=count)
                 return agent_cls(config, orchestrator)
+
+        _agent_call_counts[cls._DEFAULT.agent_name] += 1
+        count = _agent_call_counts[cls._DEFAULT.agent_name]
+        print(
+            f"[AgentRegistry] {cls._DEFAULT.agent_name} called (default) (total: {count})",
+            flush=True,
+        )
+        logger.info(
+            "agent_selected", agent=cls._DEFAULT.agent_name, total_calls=count, via="default"
+        )
         return cls._DEFAULT(config, orchestrator)
+
+    @classmethod
+    def create_by_name(
+        cls,
+        agent_name: str,
+        config: AgentConfig,
+        orchestrator: ConversationOrchestrator,
+    ) -> BaseAgent:
+        """Construct an agent directly by agent_name (e.g. from an IntentResult).
+
+        Falls back to the default agent if agent_name is empty or unrecognised.
+        """
+        for _, agent_cls in cls._REGISTRY:
+            if agent_cls.agent_name == agent_name:
+                _agent_call_counts[agent_cls.agent_name] += 1
+                count = _agent_call_counts[agent_cls.agent_name]
+                print(
+                    f"[AgentRegistry] {agent_cls.agent_name} called via intent (total: {count})",
+                    flush=True,
+                )
+                logger.info(
+                    "agent_selected", agent=agent_cls.agent_name, total_calls=count, via="intent"
+                )
+                return agent_cls(config, orchestrator)
+        return cls.create(config, orchestrator)
 
     # Keep the old name available so existing call sites don't break.
     @classmethod

@@ -75,14 +75,10 @@ class ConversationOrchestrator:
                 conversation_id=request.conversation_id,
             )
 
-            # 2. Select agent — local import avoids circular dependency with agents/__init__.py
-            # NOTE: The agent object is currently a no-op placeholder. The orchestrator
-            # still drives the pipeline directly from AgentConfig. Wiring the agent
-            # logic (e.g. handle_message) will land when real intent routing replaces
-            # MockIntentDetector.
+            # 2. Select agent based on detected intent, not config.id
             from taskorbit.agents import AgentRegistry
 
-            agent = AgentRegistry.get_agent(request.agent_config, self)
+            agent = AgentRegistry.create_by_name(intent.agent_name, request.agent_config, self)
             logger.info(
                 "agent_selected",
                 agent=type(agent).__name__,
