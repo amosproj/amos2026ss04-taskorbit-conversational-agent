@@ -103,6 +103,39 @@ class PersonaConstraints(BaseModel):
     refusal_template: str | None = None
 
 
+class ContextLimitConfig(BaseModel):
+    """Configuration for conversation history limits and truncation.
+
+    Controls how many messages the agent remembers before automatically
+    removing oldest messages (FIFO). The system prompt is always protected
+    and never truncated.
+
+    Attributes:
+        type: Strategy for limiting context—either "message_count" (number of
+              messages to retain) or "token_threshold" (approximate token limit).
+        value: The limit value (e.g., 50 messages or 4000 tokens).
+               Defaults to 50 messages for message_count strategy.
+
+    Example:
+        Keep the last 50 messages:
+        ContextLimitConfig(type="message_count", value=50)
+
+        Keep messages up to ~4000 tokens:
+        ContextLimitConfig(type="token_threshold", value=4000)
+    """
+
+    type: str = Field(
+        default="message_count",
+        description='Either "message_count" or "token_threshold"',
+    )
+    value: int = Field(
+        default=50,
+        ge=10,
+        le=500,
+        description="Limit value: 10-500 messages, or token count",
+    )
+
+
 class AgentConfig(BaseModel):
     id: str
     name: str
@@ -113,6 +146,7 @@ class AgentConfig(BaseModel):
     tts: TTSConfig = Field(default_factory=TTSConfig)
     tools: list[ToolDefinition] = Field(default_factory=list)
     persona_constraints: PersonaConstraints | None = None
+    context_limit: ContextLimitConfig | None = None
 
 
 # ---------------------------------------------------------------------------
