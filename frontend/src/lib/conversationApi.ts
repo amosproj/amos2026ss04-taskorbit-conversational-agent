@@ -31,6 +31,11 @@ type BackendPersonaConstraints = {
   refusal_template?: string;
 };
 
+type BackendContextLimit = {
+  type: "message_count";
+  value: number;
+};
+
 type BackendAgentConfig = {
   id: string;
   name: string;
@@ -41,6 +46,7 @@ type BackendAgentConfig = {
   tts: { provider: string; voice_id: string; model: string };
   tools: BackendTool[];
   persona_constraints?: BackendPersonaConstraints;
+  context_limit?: BackendContextLimit;
 };
 
 type BackendMessage = { role: "user" | "assistant" | "system"; content: string };
@@ -104,6 +110,9 @@ function adaptAgentConfig(agent: AgentConfig): BackendAgentConfig {
   };
   if (agent.persona_constraints) {
     out.persona_constraints = agent.persona_constraints;
+  }
+  if (agent.context_limit) {
+    out.context_limit = agent.context_limit;
   }
   return out;
 }
