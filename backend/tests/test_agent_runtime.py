@@ -10,9 +10,13 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
-from taskorbit.agents import AgentRegistry
-from taskorbit.agents.sales import SalesAgent
-from taskorbit.agents.technical_support import TechnicalSupportAgent
+from taskorbit.agents import (
+    AgentRegistry,
+    AppointmentManagementAgent,
+    GeneralInquiryAgent,
+    SalesAgent,
+    TechnicalSupportAgent,
+)
 from taskorbit.intent import MockIntentDetector
 from taskorbit.orchestration import ConversationOrchestrator
 from taskorbit.types import (
@@ -211,3 +215,98 @@ async def test_process_message_empty_content_returns_error() -> None:
     )
     response = await ConversationOrchestrator().process_message(request)
     assert response.status == "error"
+
+
+# ---------------------------------------------------------------------------
+# AgentRegistry — GeneralInquiryAgent
+# ---------------------------------------------------------------------------
+
+
+def test_registry_returns_general_inquiry_agent_for_inquiry_id() -> None:
+    config = _make_config("general-inquiry-bot")
+    agent = AgentRegistry.create(config, ConversationOrchestrator())
+    assert isinstance(agent, GeneralInquiryAgent)
+
+
+def test_registry_returns_general_inquiry_agent_for_faq_id() -> None:
+    config = _make_config("faq-agent")
+    agent = AgentRegistry.create(config, ConversationOrchestrator())
+    assert isinstance(agent, GeneralInquiryAgent)
+
+
+def test_registry_returns_general_inquiry_agent_for_general_id() -> None:
+    config = _make_config("general-assistant")
+    agent = AgentRegistry.create(config, ConversationOrchestrator())
+    assert isinstance(agent, GeneralInquiryAgent)
+
+
+def test_general_inquiry_agent_name() -> None:
+    config = _make_config("general-inquiry-bot")
+    agent = AgentRegistry.create(config, ConversationOrchestrator())
+    assert agent.agent_name == "general_inquiry"
+
+
+def test_general_inquiry_agent_returns_config_tools() -> None:
+    config = _make_config("general-inquiry-bot")
+    agent = AgentRegistry.create(config, ConversationOrchestrator())
+    assert agent.get_task_definitions() == config.tools
+
+
+# ---------------------------------------------------------------------------
+# AgentRegistry — AppointmentManagementAgent
+# ---------------------------------------------------------------------------
+
+
+def test_registry_returns_appointment_agent_for_appointment_id() -> None:
+    config = _make_config("appointment-manager")
+    agent = AgentRegistry.create(config, ConversationOrchestrator())
+    assert isinstance(agent, AppointmentManagementAgent)
+
+
+def test_registry_returns_appointment_agent_for_reschedule_id() -> None:
+    config = _make_config("reschedule-bot")
+    agent = AgentRegistry.create(config, ConversationOrchestrator())
+    assert isinstance(agent, AppointmentManagementAgent)
+
+
+def test_registry_returns_appointment_agent_for_cancel_id() -> None:
+    config = _make_config("cancel-booking-agent")
+    agent = AgentRegistry.create(config, ConversationOrchestrator())
+    assert isinstance(agent, AppointmentManagementAgent)
+
+
+def test_registry_returns_appointment_agent_for_booking_id() -> None:
+    config = _make_config("booking-management")
+    agent = AgentRegistry.create(config, ConversationOrchestrator())
+    assert isinstance(agent, AppointmentManagementAgent)
+
+
+def test_appointment_agent_name() -> None:
+    config = _make_config("appointment-manager")
+    agent = AgentRegistry.create(config, ConversationOrchestrator())
+    assert agent.agent_name == "appointment_management"
+
+
+def test_appointment_agent_returns_config_tools() -> None:
+    config = _make_config("appointment-manager")
+    agent = AgentRegistry.create(config, ConversationOrchestrator())
+    assert agent.get_task_definitions() == config.tools
+
+
+# ---------------------------------------------------------------------------
+# AgentRegistry — create() vs get_agent() consistency
+# ---------------------------------------------------------------------------
+
+
+def test_create_and_get_agent_return_same_type() -> None:
+    config = _make_config("technical-support-bot")
+    orchestrator = ConversationOrchestrator()
+    assert type(AgentRegistry.create(config, orchestrator)) is type(
+        AgentRegistry.get_agent(config, orchestrator)
+    )
+
+
+def test_registry_default_falls_back_to_sales_agent() -> None:
+    config = _make_config("unknown-xyz-agent")
+    agent = AgentRegistry.create(config, ConversationOrchestrator())
+    assert isinstance(agent, SalesAgent)
