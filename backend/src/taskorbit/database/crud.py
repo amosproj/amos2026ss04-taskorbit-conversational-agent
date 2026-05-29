@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from taskorbit.logging.setup import get_logger
 
-from .models import AgentConfiguration, ConversationMessage, User
+from .models import AgentConfiguration, ConversationMessage, DefaultAgentTemplate, User, UserAgent
 
 logger = get_logger(__name__)
 
@@ -306,4 +306,144 @@ def delete_agent_configuration(db: Session, config_id: str) -> bool:
     except SQLAlchemyError as e:
         logger.error("delete_agent_configuration_failed", error=str(e))
         db.rollback()
+        return False
+
+
+# ============ DEFAULT AGENT TEMPLATES CRUD ============
+
+
+async def list_default_agent_templates(
+    db: AsyncSession, active_only: bool = True
+) -> list[DefaultAgentTemplate]:
+    try:
+        query = select(DefaultAgentTemplate)
+        if active_only:
+            query = query.where(DefaultAgentTemplate.is_active.is_(True))
+        result = await db.execute(query.order_by(DefaultAgentTemplate.name))
+        return list(result.scalars().all())
+    except SQLAlchemyError as e:
+        logger.error("list_default_agent_templates_failed", error=str(e))
+        return []
+
+
+async def get_default_agent_template(
+    db: AsyncSession, template_id: str
+) -> DefaultAgentTemplate | None:
+    try:
+        result = await db.execute(
+            select(DefaultAgentTemplate).where(DefaultAgentTemplate.id == template_id)
+        )
+        return result.scalar_one_or_none()
+    except SQLAlchemyError as e:
+        logger.error("get_default_agent_template_failed", template_id=template_id, error=str(e))
+        return None
+
+
+# ============ USER AGENTS CRUD ============
+
+
+async def create_user_agents_from_templates(db: AsyncSession, user_id: int) -> list[UserAgent]:
+    """Clone all active default templates into user_agents for a new user.
+
+    The first template is marked is_default=True. Safe to call once per user
+    on registration.
+    """
+    try:
+        templates = await list_default_agent_templates(db, active_only=True)
+        if not templates:
+            logger.warning("create_user_agents_from_templates_no_templates", user_id=user_id)
+            return []
+
+        agents: list[UserAgent] = []
+        for i, tpl in enumerate(templates):
+            agent = UserAgent(
+                id=uuid4().hex,
+                user_id=user_id,
+                template_id=tpl.id,
+                name=tpl.name,
+                config=tpl.config,
+                is_default=(i == 0),
+            )
+            db.add(agent)
+            agents.append(agent)
+
+        await db.commit()
+        for agent in agents:
+            await db.refresh(agent)
+
+        logger.info(
+            "user_agents_created_from_templates",
+            user_id=user_id,
+            count=len(agents),
+        )
+        return agents
+    except SQLAlchemyError as e:
+        logger.error("create_user_agents_from_templates_failed", user_id=user_id, error=str(e))
+        await db.rollback()
+        return []
+
+
+async def list_user_agents(db: AsyncSession, user_id: int) -> list[UserAgent]:
+    try:
+        result = await db.execute(
+            select(UserAgent)
+            .where(UserAgent.user_id == user_id)
+            .order_by(UserAgent.is_default.desc(), UserAgent.created_at)
+        )
+        return list(result.scalars().all())
+    except SQLAlchemyError as e:
+        logger.error("list_user_agents_failed", user_id=user_id, error=str(e))
+        return []
+
+
+async def get_user_agent(db: AsyncSession, agent_id: str, user_id: int) -> UserAgent | None:
+    try:
+        result = await db.execute(
+            select(UserAgent).where(UserAgent.id == agent_id, UserAgent.user_id == user_id)
+        )
+        return result.scalar_one_or_none()
+    except SQLAlchemyError as e:
+        logger.error("get_user_agent_failed", agent_id=agent_id, error=str(e))
+        return None
+
+
+async def update_user_agent(
+    db: AsyncSession,
+    agent_id: str,
+    user_id: int,
+    name: str | None = None,
+    config: dict | None = None,
+    is_default: bool | None = None,
+) -> UserAgent | None:
+    try:
+        agent = await get_user_agent(db, agent_id, user_id)
+        if not agent:
+            return None
+        if name is not None:
+            agent.name = name
+        if config is not None:
+            agent.config = config
+        if is_default is not None:
+            agent.is_default = is_default
+        agent.updated_at = datetime.now()
+        await db.commit()
+        await db.refresh(agent)
+        return agent
+    except SQLAlchemyError as e:
+        logger.error("update_user_agent_failed", agent_id=agent_id, error=str(e))
+        await db.rollback()
+        return None
+
+
+async def delete_user_agent(db: AsyncSession, agent_id: str, user_id: int) -> bool:
+    try:
+        agent = await get_user_agent(db, agent_id, user_id)
+        if not agent:
+            return False
+        await db.delete(agent)
+        await db.commit()
+        return True
+    except SQLAlchemyError as e:
+        logger.error("delete_user_agent_failed", agent_id=agent_id, error=str(e))
+        await db.rollback()
         return False

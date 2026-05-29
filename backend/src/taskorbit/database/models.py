@@ -89,3 +89,48 @@ class AgentConfiguration(Base):
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), onupdate=func.now()
     )
+
+
+class DefaultAgentTemplate(Base):
+    """Canonical set of standard agents seeded once at deploy time.
+
+    Every new user gets a copy of every active template in user_agents on
+    registration. Templates are never owned by a user — they are global.
+    """
+
+    __tablename__ = "default_agent_templates"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user_agents: Mapped[list[UserAgent]] = relationship(back_populates="template")
+
+
+class UserAgent(Base):
+    """Per-user agent instance cloned from a DefaultAgentTemplate on registration.
+
+    Users can rename or customise their copy without affecting other users.
+    template_id is nullable so users can also create fully custom agents.
+    """
+
+    __tablename__ = "user_agents"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    template_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("default_agent_templates.id", ondelete="SET NULL"), nullable=True
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), onupdate=func.now()
+    )
+
+    template: Mapped[DefaultAgentTemplate | None] = relationship(back_populates="user_agents")
