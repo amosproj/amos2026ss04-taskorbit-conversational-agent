@@ -166,6 +166,7 @@ class ConversationOrchestrator:
                 status=response_status,
                 extracted_slots=slot_result.to_dict() if slot_result.is_complete else {},
                 missing_slots=slot_result.missing,
+                tool_invoked=active_tool if tool_data else None,
             )
 
         except LLMConfigError as exc:
