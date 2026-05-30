@@ -175,14 +175,14 @@ class MockIntentDetector:
     def detect(self, prompt: str) -> IntentResult:
         lowered = prompt.lower()
         if any(kw in lowered for kw in _APPOINTMENT_MANAGEMENT_KEYWORDS):
-            return _KNOWN_INTENTS["appointment_management"]
+            return replace(_KNOWN_INTENTS["appointment_management"])
         if any(kw in lowered for kw in _TECHNICAL_SUPPORT_KEYWORDS):
-            return _TECHNICAL_SUPPORT_REQUEST
+            return replace(_TECHNICAL_SUPPORT_REQUEST)
         if any(kw in lowered for kw in _DISSATISFACTION_KEYWORDS):
-            return _CUSTOMER_DISSATISFACTION_INQUIRY
+            return replace(_CUSTOMER_DISSATISFACTION_INQUIRY)
         if any(kw in lowered for kw in _GENERAL_INQUIRY_KEYWORDS):
-            return _KNOWN_INTENTS["general_inquiry"]
-        return _BOOK_SERVICE_APPOINTMENT
+            return replace(_KNOWN_INTENTS["general_inquiry"])
+        return replace(_BOOK_SERVICE_APPOINTMENT)
 
 
 # ---------------------------------------------------------------------------
