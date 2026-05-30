@@ -112,12 +112,9 @@ class ConversationOrchestrator:
                 conversation_id=request.conversation_id,
             )
 
-            # 4. Build system prompt using the routed agent's persona
-            agent_config_for_prompt = request.agent_config.model_copy(
-                update={"name": f"{request.agent_config.name} ({agent.agent_name})"}
-            )
+            # 4. Build system prompt using the routed agent's role
             system_prompt = self._build_system_prompt(
-                agent_config_for_prompt, active_tool, slot_result
+                request.agent_config, active_tool, slot_result, routed_agent=agent
             )
 
             # 5. Call LLM with a timeout from settings — measure latency
@@ -243,6 +240,7 @@ class ConversationOrchestrator:
         agent_config: AgentConfig,
         active_tool: ToolDefinition | None,
         slot_result: Any | None = None,
+        routed_agent: Any | None = None,
     ) -> str:
         """Construct a system prompt (LLM context) for the current task."""
         from taskorbit.integrations.llm.prompts import with_persona_guardrails
@@ -251,6 +249,10 @@ class ConversationOrchestrator:
             f"You are {agent_config.name}.",
             f"Persona: {agent_config.persona}",
         ]
+        if routed_agent is not None and routed_agent.agent_name != "base":
+            lines.append(
+                f"Role: You are currently acting as the {routed_agent.agent_name.replace('_', ' ')} specialist."
+            )
         if active_tool:
             lines.append(f"Current task: {active_tool.name} - {active_tool.description}")
             if active_tool.parameters:

@@ -173,6 +173,17 @@ class MockIntentDetector:
     """Keyword-based intent detector kept for tests and local fallback."""
 
     def detect(self, prompt: str) -> IntentResult:
+        """Return a fresh IntentResult copy — never mutates shared module-level objects.
+
+        Keyword priority order (first match wins — add new checks carefully):
+          1. Appointment management — checked first because its keywords
+             (reschedule, rebook) are specific and don't overlap with others.
+          2. Technical support — broad but distinct from complaint language.
+          3. Customer dissatisfaction — shares some words with technical (e.g.
+             "problem") so must come after technical to avoid mis-routing.
+          4. General inquiry — catch-all for info/FAQ requests.
+          5. Book service appointment — default when nothing else matches.
+        """
         lowered = prompt.lower()
         if any(kw in lowered for kw in _APPOINTMENT_MANAGEMENT_KEYWORDS):
             return replace(_KNOWN_INTENTS["appointment_management"])
