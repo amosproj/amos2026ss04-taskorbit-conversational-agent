@@ -115,6 +115,28 @@ DEFAULT_AGENT_TEMPLATES: list[dict] = [
             "persona_constraints": None,
         },
     },
+    {
+        "id": "customer-dissatisfaction-agent",
+        "name": "Customer Dissatisfaction Agent",
+        "is_active": True,
+        "config": {
+            "id": "customer-dissatisfaction-agent",
+            "name": "Customer Dissatisfaction Agent",
+            "persona": (
+                "An empathetic customer service specialist focused on complaint resolution. "
+                "You acknowledge issues, capture the details, and arrange the preferred resolution channel."
+            ),
+            "greeting": (
+                "I'm sorry to hear you're having a frustrating experience. "
+                "I'm here to help resolve this — could you tell me what happened?"
+            ),
+            "stt": _DEFAULT_STT,
+            "llm": _DEFAULT_LLM,
+            "tts": _DEFAULT_TTS,
+            "tools": [],
+            "persona_constraints": None,
+        },
+    },
 ]
 
 # ---------------------------------------------------------------------------
