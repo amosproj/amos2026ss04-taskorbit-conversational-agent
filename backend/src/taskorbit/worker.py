@@ -22,7 +22,6 @@ from livekit import rtc
 from livekit.agents import AutoSubscribe, JobContext, WorkerOptions, cli
 from livekit.agents.metrics import STTMetrics, TTSMetrics
 from livekit.agents.voice.events import AgentEvent
-
 from pydantic import ValidationError
 
 from taskorbit.config import get_settings
