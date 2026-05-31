@@ -22,11 +22,13 @@ from livekit import rtc
 from livekit.agents import AutoSubscribe, JobContext, WorkerOptions, cli
 from livekit.agents.metrics import STTMetrics, TTSMetrics
 from livekit.agents.voice.events import AgentEvent
+from pydantic import ValidationError
 
 from taskorbit.config import get_settings
 from taskorbit.livekit_agent import build_agent_session, build_default_agent
 from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import configure_default_metrics, get_metrics
+from taskorbit.types import AgentConfig
 
 logger = get_logger(__name__)
 
@@ -43,21 +45,40 @@ async def entrypoint(ctx: JobContext) -> None:
 
     cfg = get_settings()
 
-    # Read the greeting from participant metadata so we can speak it through
-    # the session — same TTS/WebRTC pipeline as every other agent turn, so
-    # the voice is identical. The frontend used to call ElevenLabs directly
-    # for the greeting which produced a different audio path (plain MP3
-    # playback vs WebRTC Opus), making the voices sound different.
+    # Read participant metadata and parse it into an AgentConfig so the
+    # voice path uses the user's saved configuration instead of the
+    # hardcoded fallback in ``_default_agent_config`` (#100). The frontend
+    # serialises this via ``buildLiveKitWorkerMetadata`` and the backend
+    # embeds it in ``RoomAgentDispatch.metadata`` on the JWT.
+    #
+    # ``greeting`` is still extracted separately because ``session.say()``
+    # below speaks it through the same TTS/WebRTC pipeline as every other
+    # agent turn — the frontend used to call ElevenLabs directly which
+    # produced a different audio path (plain MP3 vs WebRTC Opus).
     greeting: str = ""
+    agent_config: AgentConfig | None = None
     try:
         participant = await ctx.wait_for_participant()
         meta = json.loads(participant.metadata or "{}")
         greeting = str(meta.get("greeting") or "")
+        try:
+            agent_config = AgentConfig.model_validate(meta)
+            logger.info(
+                "worker_agent_config_loaded_from_metadata",
+                agent_id=agent_config.id,
+                agent_name=agent_config.name,
+            )
+        except ValidationError as exc:
+            logger.warning(
+                "worker_agent_config_parse_failed",
+                error=str(exc),
+                fallback="_default_agent_config",
+            )
     except Exception:  # noqa: BLE001
         pass
 
     session = build_agent_session(settings=cfg)
-    agent = build_default_agent(settings=cfg)
+    agent = build_default_agent(settings=cfg, agent_config=agent_config)
 
     @session.on("metrics_collected")
     def _on_metrics(ev: AgentEvent) -> None:
