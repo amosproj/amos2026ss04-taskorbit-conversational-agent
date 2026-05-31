@@ -6,6 +6,10 @@
  * Tool definitions are omitted for now — the echo orchestrator ignores them
  * and serialising Meisterwerk tools into backend ToolDefinition rows is a
  * separate ticket.
+ *
+ * `persona_constraints` is included so #69 guardrails apply to the voice
+ * path too; before #100 the worker discarded the whole metadata and used
+ * a hardcoded default agent, so guardrails never reached voice sessions.
  */
 
 import type { AgentConfig } from "@/types/agentConfig";
@@ -32,5 +36,6 @@ export function buildLiveKitWorkerMetadata(agent: AgentConfig): Record<string, u
       model: agent.tts.model,
     },
     tools: [],
+    persona_constraints: agent.persona_constraints ?? null,
   };
 }
