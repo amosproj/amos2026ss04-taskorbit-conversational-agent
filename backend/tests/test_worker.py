@@ -603,7 +603,6 @@ async def test_entrypoint_falls_back_when_metadata_malformed(configured_settings
     assert mock_build.call_args.kwargs.get("agent_config") is None
 
 
-
 @pytest.mark.asyncio
 async def test_commit_turn_cancels_stale_task(configured_settings: None) -> None:
     """A second commit_turn arriving before the first completes must cancel the
