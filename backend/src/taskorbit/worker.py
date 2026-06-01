@@ -22,11 +22,13 @@ from livekit import rtc
 from livekit.agents import AutoSubscribe, JobContext, WorkerOptions, cli
 from livekit.agents.metrics import STTMetrics, TTSMetrics
 from livekit.agents.voice.events import AgentEvent
+from pydantic import ValidationError
 
 from taskorbit.config import get_settings
 from taskorbit.livekit_agent import build_agent_session, build_default_agent
 from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import configure_default_metrics, get_metrics
+from taskorbit.types import AgentConfig
 
 logger = get_logger(__name__)
 
@@ -47,32 +49,42 @@ async def entrypoint(ctx: JobContext) -> None:
 
     cfg = get_settings()
 
-    # Read the greeting from participant metadata so we can speak it through
-    # the session — same TTS/WebRTC pipeline as every other agent turn, so
-    # the voice is identical. The frontend used to call ElevenLabs directly
-    # for the greeting which produced a different audio path (plain MP3
-    # playback vs WebRTC Opus), making the voices sound different.
+    # Read participant metadata and parse it into an AgentConfig so the
+    # voice path uses the user's saved configuration instead of the
+    # hardcoded fallback in ``_default_agent_config`` (#100). The frontend
+    # serialises this via ``buildLiveKitWorkerMetadata`` and the backend
+    # embeds it in ``RoomAgentDispatch.metadata`` on the JWT. Carrying the
+    # full agent (including tools) is what enables voice-side agent_transfer
+    # dispatch for the mid-call handoff (AC7 of #8).
     #
-    # AC7 of #8: when the FE attaches the full agent config (incl tools), we
-    # synthesise an AgentConfig from it so the voice path's orchestrator sees
-    # the same agent_transfer/data_extraction tools as the text path. Without
-    # this, the worker falls back to _default_agent_config() which has no
-    # tools and the dispatch pipeline never fires on voice.
+    # ``greeting`` is still extracted separately because ``session.say()``
+    # below speaks it through the same TTS/WebRTC pipeline as every other
+    # agent turn; the frontend used to call ElevenLabs directly which
+    # produced a different audio path (plain MP3 vs WebRTC Opus).
     greeting: str = ""
-    agent_config_from_meta = None
+    agent_config: AgentConfig | None = None
     try:
         participant = await ctx.wait_for_participant()
         meta = json.loads(participant.metadata or "{}")
         greeting = str(meta.get("greeting") or "")
-        if meta.get("name") and meta.get("persona"):
-            from taskorbit.types import AgentConfig as _AgentConfig
-
-            agent_config_from_meta = _AgentConfig.model_validate(meta)
+        try:
+            agent_config = AgentConfig.model_validate(meta)
+            logger.info(
+                "worker_agent_config_loaded_from_metadata",
+                agent_id=agent_config.id,
+                agent_name=agent_config.name,
+            )
+        except ValidationError as exc:
+            logger.warning(
+                "worker_agent_config_parse_failed",
+                error=str(exc),
+                fallback="_default_agent_config",
+            )
     except Exception:  # noqa: BLE001
         pass
 
     session = build_agent_session(settings=cfg)
-    agent = build_default_agent(settings=cfg, agent_config=agent_config_from_meta)
+    agent = build_default_agent(settings=cfg, agent_config=agent_config)
 
     @session.on("metrics_collected")
     def _on_metrics(ev: AgentEvent) -> None:

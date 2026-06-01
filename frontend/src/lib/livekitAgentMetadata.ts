@@ -1,12 +1,16 @@
 /**
  * Maps the UI `AgentConfig` into the JSON shape the voice worker expects on
- * the LiveKit JWT (`POST /v1/livekit/token` → `metadata`), which must match
- * the backend `AgentConfig` Pydantic model (id, name, persona, greeting, …).
+ * the LiveKit JWT (`POST /v1/livekit/token` -> `metadata`), which must match
+ * the backend `AgentConfig` Pydantic model (id, name, persona, greeting, ...).
+ *
+ * `persona_constraints` is included so #69 guardrails apply to the voice
+ * path too; before #100 the worker discarded the whole metadata and used
+ * a hardcoded default agent, so guardrails never reached voice sessions.
  *
  * Tools are serialised into the backend `ToolDefinition` wire shape (same
  * adapter used by conversationApi.ts) so the voice path's orchestrator can
  * dispatch agent_transfer / data_extraction the same way the text path does.
- * AC7 of #8 — voice handoff continuity.
+ * AC7 of #8, voice handoff continuity.
  */
 
 import type { AgentConfig, ToolDefinition as FrontendTool } from "@/types/agentConfig";
@@ -59,5 +63,6 @@ export function buildLiveKitWorkerMetadata(agent: AgentConfig): Record<string, u
       model: agent.tts.model,
     },
     tools: agent.tools.map(adaptTool),
+    persona_constraints: agent.persona_constraints ?? null,
   };
 }

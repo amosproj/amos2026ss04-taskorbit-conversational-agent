@@ -26,6 +26,7 @@ from livekit.plugins.elevenlabs import VoiceSettings
 from taskorbit.config import Settings, get_settings
 from taskorbit.livekit_agent.llm import OrchestratorAgent
 from taskorbit.orchestration import ConversationOrchestrator
+from taskorbit.types import AgentConfig
 
 
 def build_agent_session(
@@ -96,16 +97,18 @@ def build_default_agent(
     *,
     orchestrator: ConversationOrchestrator | None = None,
     settings: Settings | None = None,
-    agent_config: Any | None = None,
+    agent_config: AgentConfig | None = None,
 ) -> OrchestratorAgent:
     """Build the ``OrchestratorAgent`` paired with this session.
 
     Kept separate from ``build_agent_session`` because ``session.start``
     expects the agent as a parameter, not as a constructor argument.
 
-    ``agent_config`` (AgentConfig) is forwarded to OrchestratorAgent so the
-    voice path uses the user's chosen agent (with tools) instead of the
-    no-tools default. AC7 of #8.
+    Pass ``agent_config`` when the caller has parsed it from participant
+    metadata (#100) so the voice path uses the user's saved configuration
+    instead of the hardcoded ``_default_agent_config`` fallback. With the
+    full agent (including tools) the orchestrator can also dispatch the
+    agent_transfer tool on voice, enabling mid-call handoff (AC7 of #8).
     """
     return OrchestratorAgent(
         orchestrator=orchestrator or ConversationOrchestrator(settings=settings),
