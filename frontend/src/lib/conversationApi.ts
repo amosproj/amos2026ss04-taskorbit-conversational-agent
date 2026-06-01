@@ -51,7 +51,7 @@ type ConversationRequest = {
   messages: BackendMessage[];
 };
 
-type ConversationResponse = {
+export type ConversationResponse = {
   conversation_id: string;
   reply: { role: string; content: string; timestamp: string | null };
   tool_invoked: BackendTool | null;
@@ -128,7 +128,7 @@ export async function sendMessage(
   transcript: LiveTranscriptTurn[],
   conversationId: string,
   signal?: AbortSignal,
-): Promise<string> {
+): Promise<ConversationResponse> {
   // STEP A: Map transcript -> backend Message[]
   const messages: BackendMessage[] = transcript.map((turn) => ({
     role: turn.role === "user" ? "user" : "assistant",
@@ -155,7 +155,7 @@ export async function sendMessage(
   }
 
   const data: ConversationResponse = await res.json();
-  return data.reply.content;
+  return data;
 }
 
 /**

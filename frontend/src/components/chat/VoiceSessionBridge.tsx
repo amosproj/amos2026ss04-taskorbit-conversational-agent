@@ -12,6 +12,7 @@
 import { useVoiceAssistant } from "@livekit/components-react";
 import { useCallback, useEffect, useRef } from "react";
 
+import { useAgentHandoff } from "@/hooks/useAgentHandoff";
 import { type TranscriptionSegment, useAgentTranscription } from "@/hooks/useAgentTranscription";
 import { useConnectionStatus } from "@/hooks/useConnectionStatus";
 import type { CallStatus } from "@/types/callState";
@@ -20,9 +21,10 @@ type Props = {
   status: CallStatus;
   onPhase: (phase: CallStatus) => void;
   onSegment: (segment: TranscriptionSegment) => void;
+  onHandoff?: (agentName: string) => void;
 };
 
-export function VoiceSessionBridge({ status, onPhase, onSegment }: Props) {
+export function VoiceSessionBridge({ status, onPhase, onSegment, onHandoff }: Props) {
   const connection = useConnectionStatus();
   const { state: agentState } = useVoiceAssistant();
 
@@ -73,6 +75,14 @@ export function VoiceSessionBridge({ status, onPhase, onSegment }: Props) {
     [onSegment],
   );
   useAgentTranscription(handleSegment);
+
+  const handleHandoff = useCallback(
+    (agentName: string) => {
+      onHandoff?.(agentName);
+    },
+    [onHandoff],
+  );
+  useAgentHandoff(handleHandoff);
 
   return null;
 }

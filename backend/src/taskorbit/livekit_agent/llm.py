@@ -170,6 +170,11 @@ class OrchestratorAgent(Agent):
         self._conversation_id = conversation_id
         self._reply_requested: bool = False
         self._t_commit: float | None = None
+        # Voice-path handoff hook (#8 Task 6): the most recent agent_transfer
+        # target surfaced by the orchestrator. A future LiveKit data-channel
+        # handler can read this to notify the client that the active agent
+        # changed mid-call without dropping the room.
+        self._pending_handoff_target: str | None = None
 
     def request_reply(self, t_commit: float | None = None) -> None:
         """Signal that the next ``llm_node`` call should actually produce a reply.
@@ -227,6 +232,27 @@ class OrchestratorAgent(Agent):
         get_metrics().voice_pipeline_requests_total.labels(
             handler="/v1/conversations/process", status=status
         ).inc()
+
+        # Surface agent_transfer for the voice path (#8 Task 6 AC7). The
+        # worker reads self._pending_handoff_target after generate_reply()
+        # completes and publishes it on the taskorbit.agent_handoff topic
+        # so the FE swaps the active agent without dropping the LiveKit room.
+        from taskorbit.types import ToolType as _ToolType
+
+        if (
+            response.tool_invoked is not None
+            and response.tool_invoked.type == _ToolType.AGENT_TRANSFER
+        ):
+            targets = response.tool_invoked.parameters.get("targets") or []
+            if targets:
+                self._pending_handoff_target = str(targets[0])
+                log.info(
+                    "voice_agent_handoff_pending",
+                    target=self._pending_handoff_target,
+                    selected_agent=response.selected_agent,
+                    conversation_id=self._conversation_id,
+                )
+
         text = response.reply.content or ""
 
         if self._t_commit is not None:

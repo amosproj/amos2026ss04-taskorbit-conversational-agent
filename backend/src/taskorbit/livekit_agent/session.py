@@ -96,12 +96,18 @@ def build_default_agent(
     *,
     orchestrator: ConversationOrchestrator | None = None,
     settings: Settings | None = None,
+    agent_config: Any | None = None,
 ) -> OrchestratorAgent:
     """Build the ``OrchestratorAgent`` paired with this session.
 
     Kept separate from ``build_agent_session`` because ``session.start``
     expects the agent as a parameter, not as a constructor argument.
+
+    ``agent_config`` (AgentConfig) is forwarded to OrchestratorAgent so the
+    voice path uses the user's chosen agent (with tools) instead of the
+    no-tools default. AC7 of #8.
     """
     return OrchestratorAgent(
         orchestrator=orchestrator or ConversationOrchestrator(settings=settings),
+        agent_config=agent_config,
     )

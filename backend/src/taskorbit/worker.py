@@ -37,6 +37,10 @@ _DEEPGRAM_FLUSH_DELAY_S: float = 0.3
 # Packets with any other `type` value are silently discarded.
 _RECOGNISED_MSG_TYPES: frozenset[str] = frozenset({"commit_turn", "interrupt_playback"})
 
+# Topic the FE subscribes to via useAgentHandoff to swap the active agent
+# card mid-call without dropping the LiveKit room. #8 Task 6 AC7.
+_HANDOFF_TOPIC: str = "taskorbit.agent_handoff"
+
 
 async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
@@ -48,16 +52,27 @@ async def entrypoint(ctx: JobContext) -> None:
     # the voice is identical. The frontend used to call ElevenLabs directly
     # for the greeting which produced a different audio path (plain MP3
     # playback vs WebRTC Opus), making the voices sound different.
+    #
+    # AC7 of #8: when the FE attaches the full agent config (incl tools), we
+    # synthesise an AgentConfig from it so the voice path's orchestrator sees
+    # the same agent_transfer/data_extraction tools as the text path. Without
+    # this, the worker falls back to _default_agent_config() which has no
+    # tools and the dispatch pipeline never fires on voice.
     greeting: str = ""
+    agent_config_from_meta = None
     try:
         participant = await ctx.wait_for_participant()
         meta = json.loads(participant.metadata or "{}")
         greeting = str(meta.get("greeting") or "")
+        if meta.get("name") and meta.get("persona"):
+            from taskorbit.types import AgentConfig as _AgentConfig
+
+            agent_config_from_meta = _AgentConfig.model_validate(meta)
     except Exception:  # noqa: BLE001
         pass
 
     session = build_agent_session(settings=cfg)
-    agent = build_default_agent(settings=cfg)
+    agent = build_default_agent(settings=cfg, agent_config=agent_config_from_meta)
 
     @session.on("metrics_collected")
     def _on_metrics(ev: AgentEvent) -> None:
@@ -96,10 +111,18 @@ async def entrypoint(ctx: JobContext) -> None:
         # the last word(s) of the utterance may be missing from the reply.
         try:
             await asyncio.sleep(_DEEPGRAM_FLUSH_DELAY_S)
-            result = session.generate_reply()
-            if asyncio.iscoroutine(result):
-                await result
-            _turn_elapsed = time.perf_counter() - turn_start
+            # generate_reply() returns a SpeechHandle synchronously; the actual
+            # llm_node + orchestrator work happens in the background. We must
+            # wait_for_playout() so the orchestrator finishes stashing the
+            # pending handoff target before we read it below — otherwise the
+            # publish fires before the stash, and the handoff is silently lost.
+            handle = session.generate_reply()
+            if asyncio.iscoroutine(handle):
+                handle = await handle
+            try:
+                await handle.wait_for_playout()
+            except Exception:  # noqa: BLE001
+                pass
             _turn_elapsed = time.perf_counter() - turn_start
             get_metrics().pipeline_latency_seconds.labels(stage="worker_turn").observe(
                 _turn_elapsed
@@ -108,6 +131,23 @@ async def entrypoint(ctx: JobContext) -> None:
                 "worker_generate_reply_triggered",
                 turn_latency_ms=round(_turn_elapsed * 1000, 1),
             )
+
+            # AC7: now that the orchestrator has finished (wait_for_playout
+            # above), the pending target is set if an agent_transfer dispatched
+            # this turn. Publish on the FE-subscribed topic so the client
+            # swaps the active agent card without dropping the LiveKit room.
+            pending = agent._pending_handoff_target
+            if pending:
+                try:
+                    payload = json.dumps({"type": "agent_handoff", "target": pending})
+                    await ctx.room.local_participant.publish_data(
+                        payload, reliable=True, topic=_HANDOFF_TOPIC
+                    )
+                    logger.info("worker_handoff_published", target=pending, topic=_HANDOFF_TOPIC)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("worker_handoff_publish_failed", error=str(exc))
+                finally:
+                    agent._pending_handoff_target = None
         except Exception as exc:  # noqa: BLE001
             logger.warning("worker_generate_reply_failed", error=str(exc))
 
