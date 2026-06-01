@@ -121,7 +121,6 @@ async def entrypoint(ctx: JobContext) -> None:
             if asyncio.iscoroutine(result):
                 await result
             _turn_elapsed = time.perf_counter() - turn_start
-            _turn_elapsed = time.perf_counter() - turn_start
             get_metrics().pipeline_latency_seconds.labels(stage="worker_turn").observe(
                 _turn_elapsed
             )
@@ -164,11 +163,20 @@ async def entrypoint(ctx: JobContext) -> None:
             except Exception as exc:  # noqa: BLE001
                 logger.warning("worker_interrupt_failed", error=str(exc))
 
-    await session.start(agent, room=ctx.room)
+    try:
+        await session.start(agent, room=ctx.room)
 
-    if greeting:
-        session.say(greeting)
-        logger.info("worker_greeting_spoken", length=len(greeting))
+        if greeting:
+            session.say(greeting)
+            logger.info("worker_greeting_spoken", length=len(greeting))
+    finally:
+        if reply_task and not reply_task.done():
+            reply_task.cancel()
+            try:
+                await reply_task
+            except asyncio.CancelledError:
+                pass
+        await session.aclose()
 
 
 def run_worker() -> None:
