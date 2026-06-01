@@ -69,7 +69,8 @@ export type VoiceCallApi = {
 };
 
 const CONNECTING_TIMEOUT_MS = 800;
-const INACTIVITY_TIMEOUT_MS = 7 * 60 * 1000;
+const INACTIVITY_TIMEOUT_MS =
+  Number(import.meta.env.VITE_INACTIVITY_TIMEOUT_MINUTES ?? 7) * 60 * 1000;
 const SESSION_MAX_MS = Number(import.meta.env.VITE_SESSION_MAX_MINUTES ?? 30) * 60 * 1000;
 
 function generateConversationId(): string {
