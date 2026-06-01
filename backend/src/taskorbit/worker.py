@@ -58,7 +58,7 @@ async def entrypoint(ctx: JobContext) -> None:
     greeting: str = ""
     agent_config: AgentConfig | None = None
     try:
-        participant = await ctx.wait_for_participant()
+        participant = await asyncio.wait_for(ctx.wait_for_participant(), timeout=30.0)
         meta = json.loads(participant.metadata or "{}")
         greeting = str(meta.get("greeting") or "")
         try:
@@ -151,6 +151,8 @@ async def entrypoint(ctx: JobContext) -> None:
             return
         if msg_type == "commit_turn":
             t_now = time.perf_counter()
+            if reply_task and not reply_task.done():
+                reply_task.cancel()
             agent.request_reply(t_commit=t_now)
             reply_task = asyncio.create_task(_commit_and_reply(t_now))
         elif msg_type == "interrupt_playback":
@@ -176,7 +178,10 @@ async def entrypoint(ctx: JobContext) -> None:
                 await reply_task
             except asyncio.CancelledError:
                 pass
-        await session.aclose()
+        try:
+            await session.aclose()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("worker_session_close_failed", error=str(exc))
 
 
 def run_worker() -> None:
