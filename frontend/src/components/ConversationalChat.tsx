@@ -20,6 +20,22 @@ import { sendMessage, getConversations } from "@/lib/conversationApi";
 import { playSynthesizedSpeech } from "@/lib/ttsApi";
 import type { ConfirmationPromptState } from "@/types/callState";
 
+function SessionEndedBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  useEffect(() => {
+    const id = window.setTimeout(onDismiss, 5_000);
+    return () => window.clearTimeout(id);
+  }, [onDismiss]);
+
+  return (
+    <div
+      role="status"
+      className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-lg border border-amber-500 bg-amber-50 px-4 py-3 text-sm text-amber-800 shadow-md dark:bg-amber-950 dark:text-amber-200"
+    >
+      {message}
+    </div>
+  );
+}
+
 const mockConfirmationPrompt: ConfirmationPromptState = {
   id: "demo-confirmation",
   tool_name: "collect_user_info",
@@ -394,6 +410,13 @@ export function ConversationalChat() {
         >
           {call.micError}
         </div>
+      )}
+
+      {call.sessionEndReason !== null && (
+        <SessionEndedBanner
+          message={call.sessionEndReason}
+          onDismiss={call.clearSessionEndReason}
+        />
       )}
     </main>
   );

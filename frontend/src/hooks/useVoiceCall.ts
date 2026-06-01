@@ -32,6 +32,8 @@ export type VoiceCallApi = {
   conversationId: string;
   livekitCredentials: LiveKitCredentials | null;
   micError: string | null;
+  sessionEndReason: string | null;
+  clearSessionEndReason: () => void;
 
   /** Begin a new call: fetch token, transition to `connecting`. */
   start: (options?: VoiceCallStartOptions) => void;
@@ -67,6 +69,8 @@ export type VoiceCallApi = {
 };
 
 const CONNECTING_TIMEOUT_MS = 800;
+const INACTIVITY_TIMEOUT_MS = 7 * 60 * 1000;
+const SESSION_MAX_MS = Number(import.meta.env.VITE_SESSION_MAX_MINUTES ?? 30) * 60 * 1000;
 
 function generateConversationId(): string {
   return `conv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -86,8 +90,11 @@ export function useVoiceCall(): VoiceCallApi {
   const [conversationId, setConversationId] = useState<string>("");
   const [livekitCredentials, setLivekitCredentials] = useState<LiveKitCredentials | null>(null);
   const [micError, setMicError] = useState<string | null>(null);
+  const [sessionEndReason, setSessionEndReason] = useState<string | null>(null);
 
   const timerRef = useRef<number | null>(null);
+  const sessionTimerRef = useRef<number | null>(null);
+  const inactivityTimerRef = useRef<number | null>(null);
   const statusRef = useRef<CallStatus>(status);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -98,6 +105,8 @@ export function useVoiceCall(): VoiceCallApi {
   useEffect(() => {
     return () => {
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+      if (sessionTimerRef.current !== null) window.clearTimeout(sessionTimerRef.current);
+      if (inactivityTimerRef.current !== null) window.clearTimeout(inactivityTimerRef.current);
       abortRef.current?.abort();
     };
   }, []);
@@ -108,6 +117,36 @@ export function useVoiceCall(): VoiceCallApi {
       timerRef.current = null;
     }
   }, []);
+
+  const clearSessionTimers = useCallback(() => {
+    if (sessionTimerRef.current !== null) {
+      window.clearTimeout(sessionTimerRef.current);
+      sessionTimerRef.current = null;
+    }
+    if (inactivityTimerRef.current !== null) {
+      window.clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = null;
+    }
+  }, []);
+
+  const clearSessionEndReason = useCallback(() => setSessionEndReason(null), []);
+
+  // Inline restart body to avoid a circular dependency between restart ↔ handleSessionTimeout.
+  const handleSessionTimeout = useCallback(
+    (reason: string) => {
+      clearTimer();
+      clearSessionTimers();
+      abortRef.current?.abort();
+      setSessionEndReason(reason);
+      setTranscript([]);
+      setConversationId("");
+      setConfirmation(null);
+      setLivekitCredentials(null);
+      setMicError(null);
+      setStatus("idle");
+    },
+    [clearTimer, clearSessionTimers],
+  );
 
   const appendUserTurn = useCallback((text: string) => {
     setTranscript((t) => [...t, { id: generateId("u"), role: "user", text }]);
@@ -171,6 +210,7 @@ export function useVoiceCall(): VoiceCallApi {
   const start = useCallback(
     (options?: VoiceCallStartOptions) => {
       clearTimer();
+      clearSessionTimers();
       abortRef.current?.abort();
 
       const newConvId = generateConversationId();
@@ -181,6 +221,7 @@ export function useVoiceCall(): VoiceCallApi {
       setConfirmation(null);
       setLivekitCredentials(null);
       setMicError(null);
+      setSessionEndReason(null);
       setStatus("connecting");
 
       const controller = new AbortController();
@@ -207,20 +248,32 @@ export function useVoiceCall(): VoiceCallApi {
         if (statusRef.current !== "connecting") return;
         setStatus("idle_in_call");
       }, CONNECTING_TIMEOUT_MS);
+
+      sessionTimerRef.current = window.setTimeout(() => {
+        handleSessionTimeout("Session time limit reached. Your session has been closed.");
+      }, SESSION_MAX_MS);
+
+      inactivityTimerRef.current = window.setTimeout(() => {
+        handleSessionTimeout(
+          "Session closed due to inactivity (no speech detected for 7 minutes).",
+        );
+      }, INACTIVITY_TIMEOUT_MS);
     },
-    [clearTimer],
+    [clearTimer, clearSessionTimers, handleSessionTimeout],
   );
 
   const end = useCallback(() => {
     clearTimer();
+    clearSessionTimers();
     abortRef.current?.abort();
     setConfirmation(null);
     setLivekitCredentials(null);
     setStatus("ended");
-  }, [clearTimer]);
+  }, [clearTimer, clearSessionTimers]);
 
   const restart = useCallback(() => {
     clearTimer();
+    clearSessionTimers();
     abortRef.current?.abort();
     setTranscript([]);
     setConversationId("");
@@ -228,20 +281,35 @@ export function useVoiceCall(): VoiceCallApi {
     setLivekitCredentials(null);
     setMicError(null);
     setStatus("idle");
-  }, [clearTimer]);
+  }, [clearTimer, clearSessionTimers]);
 
-  const setPhase = useCallback((phase: CallStatus) => {
-    // Don't override idle/ended/awaiting_confirmation from inside the room —
-    // those are owned by the lifecycle layer.
-    if (
-      statusRef.current === "idle" ||
-      statusRef.current === "ended" ||
-      statusRef.current === "awaiting_confirmation"
-    ) {
-      return;
-    }
-    setStatus(phase);
-  }, []);
+  const setPhase = useCallback(
+    (phase: CallStatus) => {
+      // Don't override idle/ended/awaiting_confirmation from inside the room —
+      // those are owned by the lifecycle layer.
+      if (
+        statusRef.current === "idle" ||
+        statusRef.current === "ended" ||
+        statusRef.current === "awaiting_confirmation"
+      ) {
+        return;
+      }
+      // Any active phase (user speaking, agent thinking/speaking) resets the
+      // inactivity countdown so silence-only periods are what trigger the timeout.
+      if (phase === "recording" || phase === "thinking" || phase === "speaking") {
+        if (inactivityTimerRef.current !== null) {
+          window.clearTimeout(inactivityTimerRef.current);
+        }
+        inactivityTimerRef.current = window.setTimeout(() => {
+          handleSessionTimeout(
+            "Session closed due to inactivity (no speech detected for 7 minutes).",
+          );
+        }, INACTIVITY_TIMEOUT_MS);
+      }
+      setStatus(phase);
+    },
+    [handleSessionTimeout],
+  );
 
   const triggerConfirmation = useCallback(
     (prompt: ConfirmationPromptState) => {
@@ -277,6 +345,8 @@ export function useVoiceCall(): VoiceCallApi {
     conversationId,
     livekitCredentials,
     micError,
+    sessionEndReason,
+    clearSessionEndReason,
     start,
     end,
     restart,
