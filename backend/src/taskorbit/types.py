@@ -141,6 +141,7 @@ class ConversationResponse(BaseModel):
     confirmation_prompt: str = ""  # e.g. "I'll save your contact info. OK?"
     selected_intent: str = ""
     selected_agent: str = ""
+    intent_confidence: float = 0.0
     status: ConversationStatus = ConversationStatus.SUCCESS
     error: str = ""
     extracted_slots: dict[str, Any] = Field(default_factory=dict)

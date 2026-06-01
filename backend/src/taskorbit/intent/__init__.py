@@ -294,7 +294,13 @@ class IntentRouter:
         except Exception as exc:
             logger.warning("intent_router_parse_error", extra={"error": str(exc)})
             # Fallback to keyword matching so the call never silently drops.
-            return replace(self._fallback.detect(prompt), confidence=0.5)
+            # confidence=0.5 is below the threshold so requires_clarification is set
+            # consistently — prevents silent mis-routing when the LLM is unavailable.
+            return replace(
+                self._fallback.detect(prompt),
+                confidence=0.5,
+                requires_clarification=0.5 < self._threshold,
+            )
 
         if not intent_name or intent_name not in _KNOWN_INTENTS:
             return replace(_FALLBACK_RESULT, confidence=0.0, requires_clarification=True)

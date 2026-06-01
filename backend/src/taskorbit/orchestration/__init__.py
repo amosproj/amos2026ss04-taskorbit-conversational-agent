@@ -86,6 +86,7 @@ class ConversationOrchestrator:
                     status=ConversationStatus.CLARIFICATION,
                     selected_intent=intent.name,
                     selected_agent="",
+                    intent_confidence=intent.confidence,
                 )
 
             # 2. Select agent based on detected intent, not config.id
@@ -176,6 +177,7 @@ class ConversationOrchestrator:
                 reply=self._make_assistant_message(llm_text),
                 selected_intent=intent.name,
                 selected_agent=agent.agent_name,
+                intent_confidence=intent.confidence,
                 status=response_status,
                 extracted_slots=slot_result.to_dict() if slot_result.is_complete else {},
                 missing_slots=slot_result.missing,
