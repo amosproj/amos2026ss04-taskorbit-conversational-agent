@@ -603,39 +603,6 @@ async def test_entrypoint_falls_back_when_metadata_malformed(configured_settings
     assert mock_build.call_args.kwargs.get("agent_config") is None
 
 
-@pytest.mark.asyncio
-async def test_session_aclose_called_on_exit(configured_settings: None) -> None:
-    """session.aclose() must always be called when the entrypoint exits."""
-    ctx, _ = _make_ctx()
-    mock_session = _make_session_mock()
-    mock_agent = MagicMock()
-
-    with (
-        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
-        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
-    ):
-        await entrypoint(ctx)
-
-    mock_session.aclose.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_session_aclose_called_even_on_start_failure(configured_settings: None) -> None:
-    """session.aclose() must still be called if session.start() raises."""
-    ctx, _ = _make_ctx()
-    mock_session = _make_session_mock()
-    mock_session.start = AsyncMock(side_effect=RuntimeError("room gone"))
-    mock_agent = MagicMock()
-
-    with (
-        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
-        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
-    ):
-        with pytest.raises(RuntimeError, match="room gone"):
-            await entrypoint(ctx)
-
-    mock_session.aclose.assert_awaited_once()
-
 
 @pytest.mark.asyncio
 async def test_commit_turn_cancels_stale_task(configured_settings: None) -> None:

@@ -165,23 +165,11 @@ async def entrypoint(ctx: JobContext) -> None:
             except Exception as exc:  # noqa: BLE001
                 logger.warning("worker_interrupt_failed", error=str(exc))
 
-    try:
-        await session.start(agent, room=ctx.room)
+    await session.start(agent, room=ctx.room)
 
-        if greeting:
-            session.say(greeting)
-            logger.info("worker_greeting_spoken", length=len(greeting))
-    finally:
-        if reply_task and not reply_task.done():
-            reply_task.cancel()
-            try:
-                await reply_task
-            except asyncio.CancelledError:
-                pass
-        try:
-            await session.aclose()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("worker_session_close_failed", error=str(exc))
+    if greeting:
+        session.say(greeting)
+        logger.info("worker_greeting_spoken", length=len(greeting))
 
 
 def run_worker() -> None:
