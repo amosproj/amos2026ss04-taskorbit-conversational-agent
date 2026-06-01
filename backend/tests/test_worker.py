@@ -71,8 +71,12 @@ def _make_ctx() -> tuple[MagicMock, dict[str, object]]:
 
         return decorator
 
+    participant = MagicMock()
+    participant.metadata = ""
+
     ctx = MagicMock()
     ctx.connect = AsyncMock()
+    ctx.wait_for_participant = AsyncMock(return_value=participant)
     ctx.room.on.side_effect = fake_room_on
     return ctx, registered
 
@@ -597,3 +601,88 @@ async def test_entrypoint_falls_back_when_metadata_malformed(configured_settings
         await entrypoint(ctx)
 
     assert mock_build.call_args.kwargs.get("agent_config") is None
+
+
+@pytest.mark.asyncio
+async def test_session_aclose_called_on_exit(configured_settings: None) -> None:
+    """session.aclose() must always be called when the entrypoint exits."""
+    ctx, _ = _make_ctx()
+    mock_session = _make_session_mock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+    ):
+        await entrypoint(ctx)
+
+    mock_session.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_session_aclose_called_even_on_start_failure(configured_settings: None) -> None:
+    """session.aclose() must still be called if session.start() raises."""
+    ctx, _ = _make_ctx()
+    mock_session = _make_session_mock()
+    mock_session.start = AsyncMock(side_effect=RuntimeError("room gone"))
+    mock_agent = MagicMock()
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+    ):
+        with pytest.raises(RuntimeError, match="room gone"):
+            await entrypoint(ctx)
+
+    mock_session.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_commit_turn_cancels_stale_task(configured_settings: None) -> None:
+    """A second commit_turn arriving before the first completes must cancel the
+    first task so generate_reply() is only called once (for the latest turn)."""
+    ctx, registered = _make_ctx()
+    mock_session = _make_session_mock()
+    mock_session.generate_reply = MagicMock(return_value=None)
+    mock_agent = MagicMock()
+
+    small_delay = 0.05
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+        patch("taskorbit.worker._DEEPGRAM_FLUSH_DELAY_S", small_delay),
+    ):
+        await entrypoint(ctx)
+
+        handler = registered["data_received"]
+
+        # First commit_turn — task starts sleeping on the flush delay.
+        handler(_data_packet(json.dumps({"type": "commit_turn"}).encode()))
+        await asyncio.sleep(0)  # let first task start
+
+        # Second commit_turn arrives before flush delay expires — cancels the first.
+        handler(_data_packet(json.dumps({"type": "commit_turn"}).encode()))
+        await asyncio.sleep(small_delay * 2)  # let both tasks settle
+
+    # generate_reply should only have been called once (by the second task).
+    mock_session.generate_reply.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_participant_wait_timeout_continues_with_defaults(configured_settings: None) -> None:
+    """If wait_for_participant times out, the worker must continue with agent_config=None
+    rather than hanging, and still call session.start()."""
+    ctx, _ = _make_ctx()
+    ctx.wait_for_participant = AsyncMock(side_effect=asyncio.TimeoutError)
+    mock_session = _make_session_mock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent) as mock_build,
+    ):
+        await entrypoint(ctx)
+
+    assert mock_build.call_args.kwargs.get("agent_config") is None
+    mock_session.start.assert_awaited_once()
