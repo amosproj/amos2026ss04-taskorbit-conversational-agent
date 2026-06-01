@@ -198,9 +198,7 @@ export function ConversationalChat() {
             if (targetId) {
               try {
                 const entries = await fetchUserAgents(controller.signal);
-                const match = entries.find(
-                  (e) => e.template_id === targetId || e.id === targetId,
-                );
+                const match = entries.find((e) => e.template_id === targetId || e.id === targetId);
                 if (match) {
                   const next = backendToFrontendAgent(match);
                   setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
