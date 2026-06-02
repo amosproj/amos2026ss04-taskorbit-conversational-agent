@@ -26,7 +26,13 @@ type Props = {
   onAgentRouted?: (agentName: string) => void;
 };
 
-export function VoiceSessionBridge({ status, onPhase, onSegment, onHandoff, onAgentRouted }: Props) {
+export function VoiceSessionBridge({
+  status,
+  onPhase,
+  onSegment,
+  onHandoff,
+  onAgentRouted,
+}: Props) {
   const connection = useConnectionStatus();
   const { state: agentState } = useVoiceAssistant();
 

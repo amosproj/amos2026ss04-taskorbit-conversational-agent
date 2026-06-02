@@ -64,6 +64,7 @@ class ConversationOrchestrator:
             # 1. Detect intent — reuse locked intent when set, but still run the
             # classifier to allow genuine topic changes to break the lock.
             from dataclasses import replace as _replace
+
             from taskorbit.intent import _KNOWN_INTENTS
 
             if request.current_intent_name and request.current_intent_name in _KNOWN_INTENTS:
@@ -205,9 +206,7 @@ class ConversationOrchestrator:
                     (i for i, t in enumerate(all_tools) if t.id == active_tool.id), -1
                 )
                 next_tool = (
-                    all_tools[current_idx + 1]
-                    if 0 <= current_idx < len(all_tools) - 1
-                    else None
+                    all_tools[current_idx + 1] if 0 <= current_idx < len(all_tools) - 1 else None
                 )
                 next_active_tool_id = next_tool.id if next_tool else None
             else:

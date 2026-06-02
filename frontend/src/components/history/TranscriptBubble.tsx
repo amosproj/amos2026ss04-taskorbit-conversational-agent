@@ -30,14 +30,9 @@ function SystemMarker({ text }: { text: string }) {
 
 export function TranscriptBubble({ turn, history = false }: Props) {
   const isUser = turn.role === "user";
+  const isSystemMarker = !isUser && turn.text.startsWith("[") && turn.text.endsWith("]");
 
-  if (!isUser && turn.text.startsWith("[") && turn.text.endsWith("]")) {
-    return <SystemMarker text={turn.text} />;
-  }
-
-  // Once we see isFinal=false the turn is being streamed (LiveKit stream or
-  // playWithWordSync timestamps). Text is already arriving at the right time
-  // so we show it directly — the timer would only add unwanted delay.
+  // All hooks must run unconditionally before any early return.
   const wasStreamedRef = useRef(false);
   if (turn.isFinal === false) wasStreamedRef.current = true;
   const isStreaming = wasStreamedRef.current;
@@ -51,7 +46,15 @@ export function TranscriptBubble({ turn, history = false }: Props) {
   // Timer fallback: only for non-user, non-history, non-streaming turns where
   // the full sentence arrives in one shot (e.g. TTS fetch failed → full text).
   useEffect(() => {
-    if (history || isUser || isStreaming || turn.isFinal === undefined || !turn.text) return;
+    if (
+      isSystemMarker ||
+      history ||
+      isUser ||
+      isStreaming ||
+      turn.isFinal === undefined ||
+      !turn.text
+    )
+      return;
     if (countRef.current >= wordsRef.current.length) return;
 
     let count = countRef.current;
@@ -63,7 +66,11 @@ export function TranscriptBubble({ turn, history = false }: Props) {
     }, MS_PER_WORD);
 
     return () => clearInterval(id);
-  }, [turn.text, isUser, isStreaming, turn.isFinal, history]);
+  }, [turn.text, isUser, isStreaming, turn.isFinal, history, isSystemMarker]);
+
+  if (isSystemMarker) {
+    return <SystemMarker text={turn.text} />;
+  }
 
   const displayText = (() => {
     if (isUser || history) return turn.text;
