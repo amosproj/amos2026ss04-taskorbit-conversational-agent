@@ -239,7 +239,9 @@ def test_default_agent_config_has_persona_guardrails() -> None:
 
 
 @pytest.mark.asyncio
-async def test_voice_path_propagates_persona_guardrails_into_prompt() -> None:
+async def test_voice_path_propagates_persona_guardrails_into_prompt(
+    mock_good_intent: object,
+) -> None:
     """End-to-end voice path: the guardrail text reaches the LLM client.
 
     Mirrors test_persona_guardrails_flow_through_to_llm_prompt for the
