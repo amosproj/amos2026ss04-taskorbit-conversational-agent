@@ -185,8 +185,8 @@ class MockIntentDetector:
           5. Book service appointment — default when nothing else matches.
         """
         lowered = prompt.lower()
-        if any(kw in lowered for kw in _APPOINTMENT_MANAGEMENT_KEYWORDS):
-            return replace(_KNOWN_INTENTS["appointment_management"])
+        # if any(kw in lowered for kw in _APPOINTMENT_MANAGEMENT_KEYWORDS):
+        #     return replace(_KNOWN_INTENTS["appointment_management"])
         if any(kw in lowered for kw in _TECHNICAL_SUPPORT_KEYWORDS):
             return replace(_TECHNICAL_SUPPORT_REQUEST)
         if any(kw in lowered for kw in _DISSATISFACTION_KEYWORDS):
@@ -220,22 +220,22 @@ _KNOWN_INTENTS: dict[str, IntentResult] = {
             {"id": "handoff_or_end", "action": "transfer_or_end_call"},
         ],
     ),
-    "appointment_management": IntentResult(
-        name="appointment_management",
-        description="Reschedule, cancel, or check the status of an existing appointment.",
-        agent_name="appointment_management",
-        required_inputs=[
-            {"name": "caller_name", "type": "string", "required": True},
-            {"name": "booking_reference", "type": "string", "required": True},
-            {"name": "requested_action", "type": "string", "required": True},
-        ],
-        workflow_steps=[
-            {"id": "greet", "action": "send_first_message"},
-            {"id": "collect-data", "action": "extract_required_fields", "tool": "extract_data"},
-            {"id": "confirm", "action": "confirm_action"},
-            {"id": "end", "action": "end_call", "tool": "end_call"},
-        ],
-    ),
+    # "appointment_management": IntentResult(
+    #     name="appointment_management",
+    #     description="Reschedule, cancel, or check the status of an existing appointment.",
+    #     agent_name="appointment_management",
+    #     required_inputs=[
+    #         {"name": "caller_name", "type": "string", "required": True},
+    #         {"name": "booking_reference", "type": "string", "required": True},
+    #         {"name": "requested_action", "type": "string", "required": True},
+    #     ],
+    #     workflow_steps=[
+    #         {"id": "greet", "action": "send_first_message"},
+    #         {"id": "collect-data", "action": "extract_required_fields", "tool": "extract_data"},
+    #         {"id": "confirm", "action": "confirm_action"},
+    #         {"id": "end", "action": "end_call", "tool": "end_call"},
+    #     ],
+    # ),
 }
 
 _CLARIFICATION_REPLY = (

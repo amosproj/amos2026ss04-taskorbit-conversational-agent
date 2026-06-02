@@ -1,3 +1,4 @@
+import { ArrowRightLeft } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
@@ -14,10 +15,12 @@ type Props = {
 
 function SystemMarker({ text }: { text: string }) {
   const label = text.slice(1, -1); // strip surrounding [ ]
+  const isTransfer = label.toLowerCase().startsWith("transferred");
   return (
-    <li className="flex items-center gap-3 py-1">
+    <li className="flex items-center gap-3 py-2">
       <span className="h-px flex-1 bg-border" />
-      <span className="rounded-full border border-primary/30 bg-primary/10 px-3 py-0.5 text-xs font-medium text-primary">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/60 px-3 py-1 text-xs font-medium text-muted-foreground">
+        {isTransfer && <ArrowRightLeft aria-hidden className="size-3 shrink-0" />}
         {label}
       </span>
       <span className="h-px flex-1 bg-border" />
