@@ -210,3 +210,138 @@ def test_build_system_prompt_empty_constraints_object_is_noop() -> None:
         _agent_with_constraints(PersonaConstraints()), active_tool=None
     )
     assert prompt == "You are John.\nPersona: TechStore customer support."
+
+
+# ---------------------------------------------------------------------------
+# Routing pipeline (#8 Task 7)
+# ---------------------------------------------------------------------------
+
+
+def _intent_result(
+    name: str = "book_service_appointment",
+    agent_name: str = "sales",
+    confidence: float = 0.9,
+    requires_clarification: bool = False,
+    required_inputs: list[dict[str, Any]] | None = None,
+) -> Any:
+    from taskorbit.intent import IntentResult
+
+    return IntentResult(
+        name=name,
+        description="test",
+        agent_name=agent_name,
+        required_inputs=required_inputs or [],
+        confidence=confidence,
+        requires_clarification=requires_clarification,
+    )
+
+
+@pytest.mark.asyncio
+async def test_clarification_short_circuits_pipeline() -> None:
+    """Low confidence intent skips LLM call and returns CLARIFICATION status."""
+    from taskorbit.intent import _CLARIFICATION_REPLY
+
+    orch = ConversationOrchestrator()
+    low_conf = _intent_result(confidence=0.3, requires_clarification=True)
+
+    with patch.object(orch._intent_router, "detect", new_callable=AsyncMock) as mock_detect:
+        mock_detect.return_value = low_conf
+        with patch.object(
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock
+        ) as mock_llm:
+            response = await orch.process_message(_make_request("uhh maybe?"))
+
+    assert response.status == "clarification"
+    assert response.selected_agent == ""
+    assert response.reply.content == _CLARIFICATION_REPLY
+    mock_llm.assert_not_called()  # short-circuit means no LLM call
+
+
+@pytest.mark.asyncio
+async def test_routed_agent_matches_intent_agent_name() -> None:
+    """selected_agent in response mirrors intent.agent_name from the router."""
+    orch = ConversationOrchestrator()
+    intent = _intent_result(
+        name="customer_dissatisfaction_inquiry", agent_name="customer_dissatisfaction"
+    )
+
+    with patch.object(orch._intent_router, "detect", new_callable=AsyncMock) as mock_detect:
+        mock_detect.return_value = intent
+        with patch.object(
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+        ):
+            response = await orch.process_message(_make_request("I'm unhappy"))
+
+    assert response.selected_intent == "customer_dissatisfaction_inquiry"
+    assert response.selected_agent == "customer_dissatisfaction"
+
+
+@pytest.mark.asyncio
+async def test_agent_transfer_dispatch_sets_tool_invoked() -> None:
+    """When an agent_transfer tool fires, response.tool_invoked is populated."""
+    from taskorbit.slots.models import SlotExtractionResult, SlotValue
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    orch = ConversationOrchestrator()
+    intent = _intent_result(
+        required_inputs=[{"name": "caller_name", "type": "string", "required": True}]
+    )
+    transfer_tool = ToolDefinition(
+        id="transfer-1",
+        name="agent_transfer",
+        type=ToolType.AGENT_TRANSFER,
+        description="hand off",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={"targets": ["technical_support"]},
+    )
+    slot_result = SlotExtractionResult(
+        filled={"caller_name": SlotValue(name="caller_name", value="Asad", slot_type="string")},
+        missing=[],
+    )
+
+    with (
+        patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
+        patch.object(ConversationOrchestrator, "_select_active_tool", return_value=transfer_tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_extract_slots",
+            new_callable=AsyncMock,
+            return_value=slot_result,
+        ),
+        patch.object(
+            ConversationOrchestrator,
+            "_dispatch_tool",
+            new_callable=AsyncMock,
+            return_value={"transferred_to": "technical_support", "history_preserved": True},
+        ),
+        patch.object(
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+        ),
+    ):
+        response = await orch.process_message(_make_request("transfer me"))
+
+    assert response.tool_invoked is not None
+    assert response.tool_invoked.type == ToolType.AGENT_TRANSFER
+
+
+@pytest.mark.asyncio
+async def test_unknown_intent_falls_back_via_clarification() -> None:
+    """When the LLM returns no matching intent, the router's _FALLBACK_RESULT
+    surfaces as a clarification response — no 500 error, no LLM call for reply."""
+    from taskorbit.intent import _CLARIFICATION_REPLY, _FALLBACK_RESULT
+
+    orch = ConversationOrchestrator()
+
+    with patch.object(
+        orch._intent_router, "detect", new_callable=AsyncMock, return_value=_FALLBACK_RESULT
+    ):
+        with patch.object(
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock
+        ) as mock_llm:
+            response = await orch.process_message(_make_request("blibber blabber"))
+
+    assert response.status == "clarification"
+    assert response.selected_intent == "unknown"
+    assert response.selected_agent == ""
+    assert response.reply.content == _CLARIFICATION_REPLY
+    mock_llm.assert_not_called()

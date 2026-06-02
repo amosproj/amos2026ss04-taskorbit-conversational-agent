@@ -18,6 +18,7 @@ import { useActiveAgent } from "@/components/active-agent-provider";
 import { buildLiveKitWorkerMetadata } from "@/lib/livekitAgentMetadata";
 import { sendMessage, getConversations } from "@/lib/conversationApi";
 import { playSynthesizedSpeech } from "@/lib/ttsApi";
+import { backendToFrontendAgent, fetchUserAgents } from "@/lib/userAgentsApi";
 import type { ConfirmationPromptState } from "@/types/callState";
 
 function SessionEndedBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
@@ -60,7 +61,9 @@ export function ConversationalChat() {
   // Active agent comes from shared context, set on the config page. Before
   // this hook existed, the chat was hardcoded to JOHN_DOE_AGENT — Christoph
   // + Carl reported the bug on Discord 2026-05-24.
-  const { agent } = useActiveAgent();
+  // setActiveAgent is used below to swap the displayed agent when the backend
+  // signals an agent_transfer via response.tool_invoked (#8 Task 6).
+  const { agent, setActiveAgent } = useActiveAgent();
   const appName = import.meta.env.VITE_APP_NAME ?? "TaskOrbit";
 
   const call = useVoiceCall();
@@ -189,18 +192,48 @@ export function ConversationalChat() {
 
       void Promise.resolve().then(async () => {
         try {
-          const reply = await sendMessage(
+          const response = await sendMessage(
             agent,
             [{ id: "tmp", role: "user", text }],
             call.conversationId,
             controller.signal,
           );
-          call.appendAssistantTurn(reply);
-          const speakable = reply.trim().length > 0 && !reply.startsWith("[Connection error");
+          const replyText = response.reply.content;
+          call.appendAssistantTurn(replyText);
+
+          // Agent handoff (#8 Task 6): backend's IntentRouter / dispatch decided
+          // to transfer the conversation. Swap the displayed agent and add a
+          // transcript marker so the user sees the switch.
+          // NOTE: backend currently exposes only the agent's configured targets
+          // in tool_invoked.parameters; the actual transferred_to id from
+          // ToolResult.data is not propagated (orchestration/__init__.py:169).
+          // First target works for single-target configs (e.g. JOHN_DOE_AGENT).
+          if (response.tool_invoked?.type === "agent_transfer") {
+            const targets = (response.tool_invoked.parameters as { targets?: string[] })?.targets;
+            const targetId = targets?.[0];
+            if (targetId) {
+              try {
+                const entries = await fetchUserAgents(controller.signal);
+                const match = entries.find((e) => e.template_id === targetId || e.id === targetId);
+                if (match) {
+                  const next = backendToFrontendAgent(match);
+                  setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
+                  call.appendAssistantTurn(`[Transferred to ${next.name}]`);
+                }
+              } catch (transferErr) {
+                if ((transferErr as Error).name !== "AbortError") {
+                  console.warn("[ConversationalChat] agent transfer lookup failed", transferErr);
+                }
+              }
+            }
+          }
+
+          const speakable =
+            replyText.trim().length > 0 && !replyText.startsWith("[Connection error");
           if (speakable) {
             call.setPhase("speaking");
             try {
-              await playSynthesizedSpeech(reply, { signal: controller.signal });
+              await playSynthesizedSpeech(replyText, { signal: controller.signal });
             } catch (audioErr) {
               if ((audioErr as Error).name !== "AbortError") {
                 console.warn("[ConversationalChat] ElevenLabs playback failed", audioErr);
@@ -215,7 +248,7 @@ export function ConversationalChat() {
         }
       });
     },
-    [agent, call],
+    [agent, call, setActiveAgent],
   );
 
   const handleRoomError = useCallback(
@@ -225,6 +258,17 @@ export function ConversationalChat() {
           "Microphone access was denied. Please allow microphone access to use voice.",
         );
       }
+    },
+    [call],
+  );
+
+  // AC7: when the voice worker publishes an agent_handoff packet (after
+  // the orchestrator dispatched agent_transfer mid-call), useAgentHandoff
+  // already swapped the active agent. Surface the same transcript marker
+  // the text path renders so the user sees the switch.
+  const handleVoiceHandoff = useCallback(
+    (agentName: string) => {
+      call.appendAssistantTurn(`[Transferred to ${agentName}]`);
     },
     [call],
   );
@@ -396,6 +440,7 @@ export function ConversationalChat() {
             status={call.status}
             onPhase={call.setPhase}
             onSegment={handleSegment}
+            onHandoff={handleVoiceHandoff}
           />
           {body}
         </LiveKitRoom>

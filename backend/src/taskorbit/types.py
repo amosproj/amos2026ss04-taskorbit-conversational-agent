@@ -30,6 +30,13 @@ class ToolType(str, Enum):
     END_CALL = "end_call"
 
 
+class ConversationStatus(str, Enum):
+    SUCCESS = "success"
+    CLARIFICATION = "clarification"
+    ENDED = "ended"
+    ERROR = "error"
+
+
 class STTProvider(str, Enum):
     DEEPGRAM = "deepgram"
 
@@ -134,7 +141,7 @@ class ConversationResponse(BaseModel):
     confirmation_prompt: str = ""  # e.g. "I'll save your contact info. OK?"
     selected_intent: str = ""
     selected_agent: str = ""
-    status: str = "success"
+    status: ConversationStatus = ConversationStatus.SUCCESS
     error: str = ""
     extracted_slots: dict[str, Any] = Field(default_factory=dict)
     missing_slots: list[str] = Field(default_factory=list)

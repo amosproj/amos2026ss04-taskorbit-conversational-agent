@@ -12,15 +12,13 @@ class EndCallTool(BaseTool):
     tool_type = ToolType.END_CALL
 
     async def execute(self, parameters: dict[str, Any]) -> ToolResult:
+        """Signal that the conversation is complete.
+
+        The LiveKit session teardown is handled by the worker/frontend after
+        it receives status="ended" in the ConversationResponse. This tool
+        only produces the signal — it does not close the room itself.
         """
-        TO-DO:
-        Terminate the call/livekit session
-        """
-        raise NotImplementedError
+        return ToolResult(success=True, data={"ended": True})
 
     def validate_parameters(self, parameters: dict[str, Any]) -> bool:
-        """
-        TO-DO:
-        Schema validation
-        """
-        raise NotImplementedError
+        return True
