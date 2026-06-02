@@ -41,6 +41,17 @@ type Persisted = {
   loadedConfigId: string | null;
 };
 
+function normalizeStoredAgent(agent: AgentConfig): AgentConfig {
+  return {
+    ...agent,
+    instructions: agent.instructions ?? "",
+    first_message: agent.first_message ?? { type: "text", message: "", prompt: "" },
+    tools: agent.tools ?? [],
+    variables: agent.variables ?? {},
+    engine: agent.engine ?? {},
+  };
+}
+
 function readFromStorage(): Persisted | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -48,7 +59,7 @@ function readFromStorage(): Persisted | null {
     const parsed = JSON.parse(raw) as Partial<Persisted>;
     if (!parsed.agent) return null;
     return {
-      agent: parsed.agent,
+      agent: normalizeStoredAgent(parsed.agent),
       loadedConfigId: parsed.loadedConfigId ?? null,
     };
   } catch {

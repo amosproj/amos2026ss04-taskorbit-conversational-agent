@@ -6,7 +6,7 @@
  * (instructions, first_message, agent_id).
  */
 
-import type { AgentConfig } from "@/types/agentConfig";
+import type { AgentConfig, ToolDefinition } from "@/types/agentConfig";
 
 // ---------------------------------------------------------------------------
 // Wire types (backend shape)
@@ -29,12 +29,17 @@ type BackendAgentConfig = {
   stt: { provider: string; language?: string; model: string };
   llm: { provider: string; model: string };
   tts: { provider: string; voice_id: string; model: string };
-  tools: unknown[];
+  tools: ToolDefinition[];
+  variables?: Record<string, string>;
+  engine?: Record<string, unknown>;
   persona_constraints?: {
     scope?: string;
     out_of_scope?: string[];
     refusal_template?: string;
   } | null;
+  confirmations?: AgentConfig["confirmations"];
+  language?: AgentConfig["language"];
+  vad?: AgentConfig["vad"];
 };
 
 // ---------------------------------------------------------------------------
@@ -43,23 +48,27 @@ type BackendAgentConfig = {
 
 export function backendToFrontendAgent(entry: UserAgentEntry): AgentConfig {
   const c = entry.config;
-  return {
+  const agent: AgentConfig = {
     agent_id: c.id,
     name: c.name,
-    instructions: c.persona,
-    first_message: { type: "text", message: c.greeting, prompt: "" },
+    instructions: c.persona ?? "",
+    first_message: { type: "text", message: c.greeting ?? "", prompt: "" },
     stt: { provider: c.stt.provider as "deepgram", model: c.stt.model },
     llm: { provider: (c.llm.provider ?? "openai") as "openai" | "gemini", model: c.llm.model },
     tts: { provider: c.tts.provider as "elevenlabs", voice_id: c.tts.voice_id, model: c.tts.model },
-    tools: [],
-    variables: {},
-    engine: {},
+    tools: Array.isArray(c.tools) ? (c.tools as ToolDefinition[]) : [],
+    variables: c.variables ?? {},
+    engine: c.engine ?? {},
     persona_constraints: c.persona_constraints ?? undefined,
   };
+  if (c.confirmations) agent.confirmations = c.confirmations;
+  if (c.language) agent.language = c.language;
+  if (c.vad) agent.vad = c.vad;
+  return agent;
 }
 
 function frontendToBackendConfig(agent: AgentConfig): BackendAgentConfig {
-  return {
+  const config: BackendAgentConfig = {
     id: agent.agent_id,
     name: agent.name,
     persona: agent.instructions,
@@ -67,9 +76,15 @@ function frontendToBackendConfig(agent: AgentConfig): BackendAgentConfig {
     stt: { provider: agent.stt.provider, language: "multi", model: agent.stt.model },
     llm: { provider: agent.llm.provider, model: agent.llm.model },
     tts: { provider: agent.tts.provider, voice_id: agent.tts.voice_id, model: agent.tts.model },
-    tools: [],
+    tools: agent.tools,
+    variables: agent.variables,
+    engine: agent.engine,
     persona_constraints: agent.persona_constraints ?? null,
   };
+  if (agent.confirmations) config.confirmations = agent.confirmations;
+  if (agent.language) config.language = agent.language;
+  if (agent.vad) config.vad = agent.vad;
+  return config;
 }
 
 // ---------------------------------------------------------------------------

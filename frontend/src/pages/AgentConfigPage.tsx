@@ -123,7 +123,16 @@ export function AgentConfigPage() {
   const loadById = async (id: string) => {
     try {
       const saved = await loadAgentConfig(id);
-      setActiveAgent(saved.config as unknown as AgentConfig, saved.id);
+      const raw = saved.config as unknown as AgentConfig;
+      const normalized: AgentConfig = {
+        ...raw,
+        instructions: raw.instructions ?? "",
+        first_message: raw.first_message ?? { type: "text", message: "", prompt: "" },
+        tools: raw.tools ?? [],
+        variables: raw.variables ?? {},
+        engine: raw.engine ?? {},
+      };
+      setActiveAgent(normalized, saved.id);
       setShowErrors(false);
       toast.success("Configuration loaded.", {
         description: `Loaded "${saved.name}".`,
@@ -173,7 +182,10 @@ export function AgentConfigPage() {
     if (activeUserAgentId) {
       try {
         const saved = await customizeUserAgent(activeUserAgentId, agent);
-        setActiveAgent(backendToFrontendAgent(saved), `ua:${activeUserAgentId}`);
+        const newUaId = saved.template_id ?? saved.id;
+        setActiveAgent(backendToFrontendAgent(saved), `ua:${newUaId}`);
+        setActiveUserAgentId(newUaId);
+        setIsLoadedBuiltIn(false);
         toast.success("Agent saved.", { description: `Saved "${saved.name}".` });
         const updated = await fetchUserAgents();
         setUserAgents(updated);

@@ -24,12 +24,15 @@ type Props = {
   showErrors?: boolean;
 };
 
+const EMPTY_FIRST_MESSAGE: FirstMessage = { type: "text", message: "", prompt: "" };
+
 export function InstructionsSection({ value, onChange, showErrors }: Props) {
   const idInstructions = useId();
   const idFirstMessage = useId();
   const idFirstPrompt = useId();
 
-  const instructionsInvalid = showErrors && !value.instructions.trim();
+  const firstMessage = value.first_message ?? EMPTY_FIRST_MESSAGE;
+  const instructionsInvalid = showErrors && !(value.instructions ?? "").trim();
 
   return (
     <Card>
@@ -69,16 +72,16 @@ export function InstructionsSection({ value, onChange, showErrors }: Props) {
             <FieldLabel htmlFor={idFirstMessage}>
               <span>Greeting message</span>
               <Badge variant="secondary" className="ml-2 font-normal">
-                {value.first_message.type}
+                {firstMessage.type}
               </Badge>
             </FieldLabel>
             <Textarea
               id={idFirstMessage}
-              value={value.first_message.message}
+              value={firstMessage.message}
               onChange={(e) =>
                 onChange({
                   ...value,
-                  first_message: { ...value.first_message, message: e.target.value },
+                  first_message: { ...firstMessage, message: e.target.value },
                 })
               }
               rows={3}
@@ -93,11 +96,11 @@ export function InstructionsSection({ value, onChange, showErrors }: Props) {
             <FieldLabel htmlFor={idFirstPrompt}>Prompt (reserved)</FieldLabel>
             <Input
               id={idFirstPrompt}
-              value={value.first_message.prompt}
+              value={firstMessage.prompt}
               onChange={(e) =>
                 onChange({
                   ...value,
-                  first_message: { ...value.first_message, prompt: e.target.value },
+                  first_message: { ...firstMessage, prompt: e.target.value },
                 })
               }
               disabled
