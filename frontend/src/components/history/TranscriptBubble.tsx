@@ -12,8 +12,25 @@ type Props = {
   history?: boolean;
 };
 
+function SystemMarker({ text }: { text: string }) {
+  const label = text.slice(1, -1); // strip surrounding [ ]
+  return (
+    <li className="flex items-center gap-3 py-1">
+      <span className="h-px flex-1 bg-border" />
+      <span className="rounded-full border border-primary/30 bg-primary/10 px-3 py-0.5 text-xs font-medium text-primary">
+        {label}
+      </span>
+      <span className="h-px flex-1 bg-border" />
+    </li>
+  );
+}
+
 export function TranscriptBubble({ turn, history = false }: Props) {
   const isUser = turn.role === "user";
+
+  if (!isUser && turn.text.startsWith("[") && turn.text.endsWith("]")) {
+    return <SystemMarker text={turn.text} />;
+  }
 
   // Once we see isFinal=false the turn is being streamed (LiveKit stream or
   // playWithWordSync timestamps). Text is already arriving at the right time

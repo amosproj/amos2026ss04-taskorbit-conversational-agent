@@ -372,14 +372,21 @@ class ConversationOrchestrator:
         self,
         messages: list[Message],
         agent: BaseAgent,
+        active_tool_id: str | None = None,
     ) -> ToolDefinition | None:
         """Decide which tool should be in scope for this turn, if any.
 
-        Returns first tool from the agent's own task definitions.
-        Real selection based on conversation history lands in a later sprint.
+        Uses active_tool_id to resume a previously selected tool across turns.
+        Falls back to the first tool in the agent's list when no id is provided.
         """
         tools = agent.get_task_definitions()
-        return tools[0] if tools else None
+        if not tools:
+            return None
+        if active_tool_id:
+            match = next((t for t in tools if t.id == active_tool_id), None)
+            if match:
+                return match
+        return tools[0]
 
     async def _call_llm(
         self,

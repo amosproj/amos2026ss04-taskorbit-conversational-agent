@@ -369,17 +369,11 @@ export function ConversationalChat() {
                   : "Voice session active · live transcript below."}
               </CardDescription>
             </div>
-            <div className="flex flex-col items-end gap-1">
-              <div className="flex flex-col items-end gap-1">
+            <div className="flex flex-col items-end gap-2">
               <CallStatusIndicator status={call.status} />
               {routedAgent && (
-                <span className="text-xs text-muted-foreground">
-                  {routedAgent.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} Agent
-                </span>
-              )}
-            </div>
-              {routedAgent && (
-                <span className="text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                  <span className="size-1.5 rounded-full bg-primary" />
                   {routedAgent.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} Agent
                 </span>
               )}
@@ -425,15 +419,6 @@ export function ConversationalChat() {
           </CardContent>
         </Card>
       ) : null}
-
-      {routedAgent && (
-        <p className="text-center text-sm text-muted-foreground">
-          Routing to:{" "}
-          <span className="font-medium text-foreground">
-            {routedAgent.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} Agent
-          </span>
-        </p>
-      )}
 
       {call.confirmation !== null ? (
         <ConfirmationPrompt
