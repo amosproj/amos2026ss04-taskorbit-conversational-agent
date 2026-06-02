@@ -13,6 +13,27 @@ from taskorbit.types import LLMConfig, LLMProvider
 from .base import LLMClient
 from .errors import LLMConfigError
 
+# A mismatched provider/model pair (ticket #99) used to reach the concrete
+# client untouched — a Gemini client handed an OpenAI model returns 404 mid
+# voice turn. Fail fast here with a clear error instead. Prefix-based on
+# purpose: it only rejects names that unambiguously belong elsewhere and
+# leaves anything it doesn't recognise to the provider to validate.
+_PROVIDER_MODEL_PREFIXES = {
+    LLMProvider.OPENAI: "gpt-",
+    LLMProvider.GOOGLE: "gemini-",
+}
+
+
+def _guard_provider_model_match(llm_config: LLMConfig) -> None:
+    model = llm_config.model.lower()
+    for provider, prefix in _PROVIDER_MODEL_PREFIXES.items():
+        if model.startswith(prefix) and llm_config.provider != provider:
+            raise LLMConfigError(
+                f"Model {llm_config.model!r} belongs to provider "
+                f"{provider.value!r}, not the selected provider "
+                f"{llm_config.provider.value!r}"
+            )
+
 
 def get_llm_client(
     llm_config: LLMConfig,
@@ -42,6 +63,8 @@ def get_llm_client(
     """
     if settings is None:
         settings = get_settings()
+
+    _guard_provider_model_match(llm_config)
 
     if llm_config.provider == LLMProvider.OPENAI:
         if not settings.openai_api_key:
