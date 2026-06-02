@@ -71,11 +71,13 @@ export function ConversationalChat() {
   // Starts true (no call active). Set false on call start, then back to
   // true once the first speaking→idle_in_call transition is detected.
   const [greetingDone, setGreetingDone] = useState(true);
+  const [routedAgent, setRoutedAgent] = useState<string | null>(null);
   const greetingSeenSpeakingRef = useRef(false);
   const greetingTimeoutRef = useRef<number | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastUserTurnIdRef = useRef<string | null>(null);
+  const lockedIntentRef = useRef<string | null>(null);
   const [previousConversations, setPreviousConversations] = useState<
     Record<string, string | null>[]
   >([]);
@@ -197,7 +199,10 @@ export function ConversationalChat() {
             [{ id: "tmp", role: "user", text }],
             call.conversationId,
             controller.signal,
+            lockedIntentRef.current,
           );
+          lockedIntentRef.current = response.locked_intent_name ?? null;
+          if (response.selected_agent) setRoutedAgent(response.selected_agent);
           const replyText = response.reply.content;
           call.appendAssistantTurn(replyText);
 
@@ -273,6 +278,10 @@ export function ConversationalChat() {
     [call],
   );
 
+  const handleVoiceAgentRouted = useCallback((agentName: string) => {
+    setRoutedAgent(agentName);
+  }, []);
+
   const handleTriggerConfirmation = useCallback(() => {
     call.triggerConfirmation(mockConfirmationPrompt);
   }, [call]);
@@ -293,8 +302,16 @@ export function ConversationalChat() {
     });
   }, [call]);
 
+  const handleRestart = useCallback(() => {
+    lockedIntentRef.current = null;
+    setRoutedAgent(null);
+    call.restart();
+  }, [call]);
+
   const handleStartSession = useCallback(() => {
     // console.log("[greeting] handleStartSession fired");
+    lockedIntentRef.current = null;
+    setRoutedAgent(null);
     call.start({ tokenMetadata: buildLiveKitWorkerMetadata(agent) });
     setGreetingDone(false);
     greetingSeenSpeakingRef.current = false;
@@ -352,7 +369,21 @@ export function ConversationalChat() {
                   : "Voice session active · live transcript below."}
               </CardDescription>
             </div>
-            <CallStatusIndicator status={call.status} />
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex flex-col items-end gap-1">
+              <CallStatusIndicator status={call.status} />
+              {routedAgent && (
+                <span className="text-xs text-muted-foreground">
+                  {routedAgent.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} Agent
+                </span>
+              )}
+            </div>
+              {routedAgent && (
+                <span className="text-xs text-muted-foreground">
+                  {routedAgent.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} Agent
+                </span>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="pt-6">
             <ScrollArea className="h-[min(50vh,28rem)] pr-3">
@@ -395,6 +426,15 @@ export function ConversationalChat() {
         </Card>
       ) : null}
 
+      {routedAgent && (
+        <p className="text-center text-sm text-muted-foreground">
+          Routing to:{" "}
+          <span className="font-medium text-foreground">
+            {routedAgent.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} Agent
+          </span>
+        </p>
+      )}
+
       {call.confirmation !== null ? (
         <ConfirmationPrompt
           prompt={call.confirmation}
@@ -418,7 +458,7 @@ export function ConversationalChat() {
           status={call.status}
           onStart={handleStartSession}
           onSendText={handleSendText}
-          onRestart={call.restart}
+          onRestart={handleRestart}
         />
       )}
     </div>
@@ -441,6 +481,7 @@ export function ConversationalChat() {
             onPhase={call.setPhase}
             onSegment={handleSegment}
             onHandoff={handleVoiceHandoff}
+            onAgentRouted={handleVoiceAgentRouted}
           />
           {body}
         </LiveKitRoom>

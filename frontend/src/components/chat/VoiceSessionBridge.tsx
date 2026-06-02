@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { useAgentHandoff } from "@/hooks/useAgentHandoff";
 import { type TranscriptionSegment, useAgentTranscription } from "@/hooks/useAgentTranscription";
 import { useConnectionStatus } from "@/hooks/useConnectionStatus";
+import { useRoutedAgent } from "@/hooks/useRoutedAgent";
 import type { CallStatus } from "@/types/callState";
 
 type Props = {
@@ -22,9 +23,10 @@ type Props = {
   onPhase: (phase: CallStatus) => void;
   onSegment: (segment: TranscriptionSegment) => void;
   onHandoff?: (agentName: string) => void;
+  onAgentRouted?: (agentName: string) => void;
 };
 
-export function VoiceSessionBridge({ status, onPhase, onSegment, onHandoff }: Props) {
+export function VoiceSessionBridge({ status, onPhase, onSegment, onHandoff, onAgentRouted }: Props) {
   const connection = useConnectionStatus();
   const { state: agentState } = useVoiceAssistant();
 
@@ -83,6 +85,14 @@ export function VoiceSessionBridge({ status, onPhase, onSegment, onHandoff }: Pr
     [onHandoff],
   );
   useAgentHandoff(handleHandoff);
+
+  const handleAgentRouted = useCallback(
+    (agentName: string) => {
+      onAgentRouted?.(agentName);
+    },
+    [onAgentRouted],
+  );
+  useRoutedAgent(handleAgentRouted);
 
   return null;
 }

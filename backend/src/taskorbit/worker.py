@@ -42,6 +42,7 @@ _RECOGNISED_MSG_TYPES: frozenset[str] = frozenset({"commit_turn", "interrupt_pla
 # Topic the FE subscribes to via useAgentHandoff to swap the active agent
 # card mid-call without dropping the LiveKit room. #8 Task 6 AC7.
 _HANDOFF_TOPIC: str = "taskorbit.agent_handoff"
+_ROUTED_AGENT_TOPIC: str = "taskorbit.agent_routed"
 
 
 async def entrypoint(ctx: JobContext) -> None:
@@ -143,6 +144,19 @@ async def entrypoint(ctx: JobContext) -> None:
                 "worker_generate_reply_triggered",
                 turn_latency_ms=round(_turn_elapsed * 1000, 1),
             )
+
+            # Publish the routed agent name after each turn so the frontend
+            # can display which specialist is currently handling the call.
+            if agent._current_routed_agent:
+                try:
+                    payload = json.dumps(
+                        {"type": "agent_routed", "agent": agent._current_routed_agent}
+                    )
+                    await ctx.room.local_participant.publish_data(
+                        payload, reliable=True, topic=_ROUTED_AGENT_TOPIC
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("worker_agent_routed_publish_failed", error=str(exc))
 
             # AC7: now that the orchestrator has finished (wait_for_playout
             # above), the pending target is set if an agent_transfer dispatched

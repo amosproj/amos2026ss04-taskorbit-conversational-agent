@@ -278,7 +278,19 @@ class IntentRouter:
         intents_list = "\n".join(
             f"- {name}: {result.description}" for name, result in _KNOWN_INTENTS.items()
         )
-        system_prompt = _ROUTING_SYSTEM_PROMPT.format(intents_list=intents_list)
+
+        history_block = ""
+        if len(messages) >= 2:
+            recent = messages[-3:] if len(messages) >= 3 else messages[:-1]
+            lines = [
+                f"{m.role.value}: {m.content}"
+                for m in recent
+                if m.role.value in ("user", "assistant")
+            ]
+            if lines:
+                history_block = "\n\nConversation so far:\n" + "\n".join(lines)
+
+        system_prompt = _ROUTING_SYSTEM_PROMPT.format(intents_list=intents_list) + history_block
 
         # Send only the current user turn so the classifier stays focused.
         from taskorbit.types import Message as Msg

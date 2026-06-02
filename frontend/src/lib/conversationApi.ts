@@ -49,6 +49,7 @@ type ConversationRequest = {
   conversation_id: string;
   agent_config: BackendAgentConfig;
   messages: BackendMessage[];
+  current_intent_name?: string | null;
 };
 
 export type ConversationResponse = {
@@ -60,6 +61,8 @@ export type ConversationResponse = {
   status: "success" | "clarification" | "ended" | "error";
   selected_intent: string;
   selected_agent: string;
+  locked_intent_name: string | null;
+  next_active_tool_id: string | null;
 };
 
 type ConversationsResponse = {
@@ -131,6 +134,7 @@ export async function sendMessage(
   transcript: LiveTranscriptTurn[],
   conversationId: string,
   signal?: AbortSignal,
+  lockedIntentName?: string | null,
 ): Promise<ConversationResponse> {
   // STEP A: Map transcript -> backend Message[]
   const messages: BackendMessage[] = transcript.map((turn) => ({
@@ -143,6 +147,7 @@ export async function sendMessage(
     conversation_id: conversationId,
     agent_config: adaptAgentConfig(agent),
     messages,
+    current_intent_name: lockedIntentName ?? null,
   };
 
   const res = await fetch("/api/v1/conversations/process", {
