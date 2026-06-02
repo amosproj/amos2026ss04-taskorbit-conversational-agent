@@ -196,7 +196,7 @@ export function ConversationalChat() {
         try {
           const response = await sendMessage(
             agent,
-            [{ id: "tmp", role: "user", text }],
+            [...call.transcript, { id: "tmp", role: "user", text }],
             call.conversationId,
             controller.signal,
             lockedIntentRef.current,

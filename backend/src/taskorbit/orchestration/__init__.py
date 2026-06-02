@@ -332,10 +332,19 @@ class ConversationOrchestrator:
                 lines.append(f"Available parameters: {active_tool.parameters}")
         if slot_result is not None:
             if slot_result.filled:
-                collected = ", ".join(f"{k}={sv.value}" for k, sv in slot_result.filled.items())
-                lines.append(f"Collected so far: {collected}")
+                lines.append(
+                    "CONFIRMED CUSTOMER DATA — already collected, do NOT ask for these again:"
+                )
+                for name, sv in slot_result.filled.items():
+                    label = name.replace("_", " ").title()
+                    lines.append(f"  - {label}: {sv.value}")
+                lines.append(
+                    "When the user asks about any confirmed data above, "
+                    "answer directly from this list without asking them to provide it again."
+                )
             if slot_result.missing:
-                lines.append(f"Still need from user: {', '.join(slot_result.missing)}")
+                missing_labels = [m.replace("_", " ").title() for m in slot_result.missing]
+                lines.append(f"Still need to collect: {', '.join(missing_labels)}")
         prompt = "\n".join(lines)
         prompt = with_persona_guardrails(prompt, agent_config.persona_constraints)
         if agent_config.persona_constraints is not None:

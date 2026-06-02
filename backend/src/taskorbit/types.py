@@ -132,9 +132,9 @@ class ContextLimitConfig(BaseModel):
     )
     value: int = Field(
         default=50,
-        ge=10,
-        le=500,
-        description="Maximum non-system messages to retain (10-500).",
+        ge=2,
+        le=499,
+        description="Maximum non-system messages to retain (2-499).",
     )
 
 

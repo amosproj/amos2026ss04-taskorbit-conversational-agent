@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from taskorbit.slots.models import SlotExtractionResult, SlotValue
-from taskorbit.types import LLMConfig, Message
+from taskorbit.types import LLMConfig, Message, MessageRole
 
 # Minimum format checks per slot type — rejects clearly malformed values so the
 # agent asks the user to repeat them rather than silently storing garbage.
@@ -47,7 +47,17 @@ class SlotExtractor:
         user to repeat the information.
         """
         system_prompt = self._build_extraction_prompt(required_inputs)
-        raw = await self._llm_fn(system_prompt, messages, self._llm_config)
+        # Append a trigger message so the last thing the LLM sees is an
+        # explicit instruction to output JSON — prevents it from responding
+        # conversationally when the last user turn is a question rather than
+        # a data-providing statement.
+        extraction_messages = messages + [
+            Message(
+                role=MessageRole.USER,
+                content="Based ONLY on the conversation above, extract all provided data and return the JSON object now.",
+            )
+        ]
+        raw = await self._llm_fn(system_prompt, extraction_messages, self._llm_config)
         return self._parse_response(raw, required_inputs)
 
     # ------------------------------------------------------------------
@@ -61,15 +71,16 @@ class SlotExtractor:
         )
         field_names = ", ".join(f'"{f["name"]}"' for f in required_inputs)
         return (
-            "You are a structured data extractor. "
-            "Read the conversation and extract the following fields:\n"
+            "You are a JSON data extraction function. "
+            "Your ONLY output must be a valid JSON object — no prose, no markdown, no conversation.\n\n"
+            "Read the ENTIRE conversation history and extract every field the user has explicitly provided:\n"
             f"{field_lines}\n\n"
-            "Return ONLY valid JSON with exactly these keys: "
-            f"{{{field_names}}}. "
-            "Use null for any field not explicitly and completely stated by the user. "
-            "Do NOT infer, guess, or assume values — if the user gave only partial information "
-            "(e.g. a year but no full date, a city but no street), return null for that field. "
-            "Do not add any explanation or markdown."
+            f"Output format: {{{field_names}}}\n\n"
+            "Rules:\n"
+            "- Use null for any field not yet provided by the user.\n"
+            "- Do NOT infer, guess, or assume values.\n"
+            "- Do NOT respond to questions or continue the conversation.\n"
+            "- Output ONLY the JSON object, nothing else."
         )
 
     def _parse_response(
