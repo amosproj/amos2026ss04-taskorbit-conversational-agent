@@ -371,20 +371,20 @@ function ContextLimitBlock({
             <Input
               id={idValue}
               type="number"
-              min={10}
-              max={500}
-              step={10}
+              min={2}
+              max={499}
+              step={1}
               value={value.value}
               onChange={(e) => {
                 const n = e.target.valueAsNumber;
                 if (!Number.isNaN(n)) {
-                  onChange({ ...value, value: Math.min(500, Math.max(10, n)) });
+                  onChange({ ...value, value: Math.min(499, Math.max(2, n)) });
                 }
               }}
               className="w-32"
             />
             <FieldDescription>
-              Number of user/assistant messages to retain per session (10–500). Default: 50.
+              Number of user/assistant messages to retain per session (2–499). Default: 50.
             </FieldDescription>
           </Field>
         </FieldGroup>
