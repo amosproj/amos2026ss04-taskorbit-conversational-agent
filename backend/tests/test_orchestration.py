@@ -9,6 +9,7 @@ import pytest
 from taskorbit.orchestration import ConversationOrchestrator
 from taskorbit.types import (
     AgentConfig,
+    ContextLimitConfig,
     ConversationRequest,
     Message,
     MessageRole,
@@ -210,6 +211,109 @@ def test_build_system_prompt_empty_constraints_object_is_noop() -> None:
         _agent_with_constraints(PersonaConstraints()), active_tool=None
     )
     assert prompt == "You are John.\nPersona: TechStore customer support."
+
+
+# ---------------------------------------------------------------------------
+# _truncate_messages — conversation-history FIFO cap (LLM memory safeguards)
+# ---------------------------------------------------------------------------
+
+
+def _msg(role: MessageRole, content: str) -> Message:
+    return Message(role=role, content=content)
+
+
+def _conversation(count: int) -> list[Message]:
+    """Build alternating user/assistant turns: u0, a0, u1, a1, ..."""
+    out: list[Message] = []
+    for i in range(count):
+        role = MessageRole.USER if i % 2 == 0 else MessageRole.ASSISTANT
+        out.append(_msg(role, f"msg-{i}"))
+    return out
+
+
+def test_truncate_messages_returns_unchanged_when_no_context_limit() -> None:
+    """No config → full history is passed through verbatim."""
+    orch = ConversationOrchestrator()
+    msgs = _conversation(20)
+    assert orch._truncate_messages(msgs, None) == msgs
+
+
+def test_truncate_messages_returns_unchanged_when_under_limit() -> None:
+    """History smaller than the cap is returned untouched."""
+    orch = ConversationOrchestrator()
+    msgs = _conversation(10)
+    result = orch._truncate_messages(msgs, ContextLimitConfig(type="message_count", value=50))
+    assert result == msgs
+
+
+def test_truncate_messages_drops_oldest_fifo_when_over_limit() -> None:
+    """FIFO: oldest non-system messages are removed first."""
+    orch = ConversationOrchestrator()
+    msgs = _conversation(100)
+    result = orch._truncate_messages(msgs, ContextLimitConfig(type="message_count", value=10))
+    assert len(result) == 10
+    # The first kept message should be msg-90; last should be msg-99.
+    assert result[0].content == "msg-90"
+    assert result[-1].content == "msg-99"
+
+
+def test_truncate_messages_preserves_system_prompt_at_minimum_limit() -> None:
+    """Acceptance criterion: system prompt is NEVER dropped (schema min limit = 10)."""
+    orch = ConversationOrchestrator()
+    system = _msg(MessageRole.SYSTEM, "You are TaskOrbit.")
+    msgs = [system, *_conversation(30)]
+    result = orch._truncate_messages(msgs, ContextLimitConfig(type="message_count", value=10))
+    # System prompt survives + exactly 10 most recent conversation messages kept.
+    assert result[0] is system
+    assert len(result) == 11
+    assert result[1].content == "msg-20"
+    assert result[-1].content == "msg-29"
+
+
+def test_truncate_messages_preserves_multiple_system_messages() -> None:
+    """All system messages are protected regardless of position."""
+    orch = ConversationOrchestrator()
+    sys1 = _msg(MessageRole.SYSTEM, "sys-1")
+    sys2 = _msg(MessageRole.SYSTEM, "sys-2")
+    # 30 non-system messages, split around a second system message.
+    msgs = [sys1, *_conversation(15), sys2, *_conversation(15)]
+    result = orch._truncate_messages(msgs, ContextLimitConfig(type="message_count", value=10))
+    # Both system messages present; only the last 10 non-system kept.
+    system_results = [m for m in result if m.role == MessageRole.SYSTEM]
+    other_results = [m for m in result if m.role != MessageRole.SYSTEM]
+    assert system_results == [sys1, sys2]
+    assert len(other_results) == 10
+
+
+def test_truncate_messages_logs_truncation_event() -> None:
+    """Truncation must emit a structured log line with counts (for observability)."""
+    orch = ConversationOrchestrator()
+    msgs = _conversation(30)
+    with patch("taskorbit.orchestration.logger") as mock_logger:
+        orch._truncate_messages(msgs, ContextLimitConfig(type="message_count", value=10))
+        mock_logger.info.assert_called_once()
+        call_kwargs = mock_logger.info.call_args.kwargs
+        assert mock_logger.info.call_args.args[0] == "message_truncation_applied"
+        assert call_kwargs["original_count"] == 30
+        assert call_kwargs["trimmed_count"] == 10
+        assert call_kwargs["dropped_count"] == 20
+
+
+def test_truncate_messages_does_not_log_when_under_limit() -> None:
+    """No truncation → no log noise."""
+    orch = ConversationOrchestrator()
+    msgs = _conversation(5)
+    with patch("taskorbit.orchestration.logger") as mock_logger:
+        orch._truncate_messages(msgs, ContextLimitConfig(type="message_count", value=50))
+        mock_logger.info.assert_not_called()
+
+
+def test_context_limit_rejects_unsupported_strategy() -> None:
+    """Only 'message_count' is enforced this sprint; the schema rejects others."""
+    import pydantic
+
+    with pytest.raises(pydantic.ValidationError):
+        ContextLimitConfig(type="token_threshold", value=100)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------

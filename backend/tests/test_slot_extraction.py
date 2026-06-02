@@ -401,5 +401,5 @@ class TestOrchestratorSlotIntegration:
         prompt = orchestrator._build_system_prompt(agent_config, None, slot_result)
 
         assert "Test Agent" in prompt
-        assert "caller_name=John Doe" in prompt
-        assert "Still need from user: email_address, phone_number" in prompt
+        assert "- Caller Name: John Doe" in prompt
+        assert "Still need to collect: Email Address, Phone Number" in prompt

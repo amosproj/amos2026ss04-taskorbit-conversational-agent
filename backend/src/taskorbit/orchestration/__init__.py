@@ -32,6 +32,7 @@ from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import get_metrics
 from taskorbit.types import (
     AgentConfig,
+    ContextLimitConfig,
     ConversationRequest,
     ConversationResponse,
     LLMConfig,
@@ -153,10 +154,15 @@ class ConversationOrchestrator:
                 request.agent_config, active_tool, slot_result, routed_agent=agent
             )
 
+            # 4b. Truncate conversation history if context limit is configured
+            truncated_messages = self._truncate_messages(
+                request.messages, request.agent_config.context_limit
+            )
+
             # 5. Call LLM with a timeout from settings — measure latency
             _llm_start = time.perf_counter()
             llm_text = await asyncio.wait_for(
-                self._call_llm(system_prompt, request.messages, request.agent_config.llm),
+                self._call_llm(system_prompt, truncated_messages, request.agent_config.llm),
                 timeout=self._settings.llm_timeout_seconds,
             )
             _llm_elapsed = time.perf_counter() - _llm_start
@@ -326,10 +332,19 @@ class ConversationOrchestrator:
                 lines.append(f"Available parameters: {active_tool.parameters}")
         if slot_result is not None:
             if slot_result.filled:
-                collected = ", ".join(f"{k}={sv.value}" for k, sv in slot_result.filled.items())
-                lines.append(f"Collected so far: {collected}")
+                lines.append(
+                    "CONFIRMED CUSTOMER DATA — already collected, do NOT ask for these again:"
+                )
+                for name, sv in slot_result.filled.items():
+                    label = name.replace("_", " ").title()
+                    lines.append(f"  - {label}: {sv.value}")
+                lines.append(
+                    "When the user asks about any confirmed data above, "
+                    "answer directly from this list without asking them to provide it again."
+                )
             if slot_result.missing:
-                lines.append(f"Still need from user: {', '.join(slot_result.missing)}")
+                missing_labels = [m.replace("_", " ").title() for m in slot_result.missing]
+                lines.append(f"Still need to collect: {', '.join(missing_labels)}")
         prompt = "\n".join(lines)
         prompt = with_persona_guardrails(prompt, agent_config.persona_constraints)
         if agent_config.persona_constraints is not None:
@@ -340,6 +355,40 @@ class ConversationOrchestrator:
                 refusal_template_set=bool(agent_config.persona_constraints.refusal_template),
             )
         return prompt
+
+    def _truncate_messages(
+        self,
+        messages: list[Message],
+        context_limit: ContextLimitConfig | None,
+    ) -> list[Message]:
+        """Cap conversation history at ``context_limit.value`` non-system messages.
+
+        FIFO: when the cap is exceeded, the oldest non-system messages are
+        dropped first. System messages are always preserved regardless of
+        the cap (the foundational system prompt must never be truncated).
+
+        Returns the full history unchanged when no ``context_limit`` is
+        configured or when the history is already within the cap.
+        """
+        if context_limit is None:
+            return messages
+
+        system_msgs = [m for m in messages if m.role == MessageRole.SYSTEM]
+        other_msgs = [m for m in messages if m.role != MessageRole.SYSTEM]
+
+        limit = context_limit.value
+        if len(other_msgs) <= limit:
+            return messages
+
+        trimmed_other = other_msgs[-limit:]
+        logger.info(
+            "message_truncation_applied",
+            original_count=len(other_msgs),
+            trimmed_count=len(trimmed_other),
+            dropped_count=len(other_msgs) - len(trimmed_other),
+            system_msgs_protected=len(system_msgs),
+        )
+        return system_msgs + trimmed_other
 
     async def _extract_slots(
         self,
