@@ -14,13 +14,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import type { AgentConfig } from "@/types/agentConfig";
+import type { AgentConfig, LlmProvider } from "@/types/agentConfig";
 
 type Value = Pick<AgentConfig, "stt" | "tts" | "llm">;
 
 type Props = {
   value: Value;
   onChange: (next: Value) => void;
+};
+
+// Each LLM provider speaks only its own model names; pairing e.g. gemini with
+// gpt-4o-mini reaches the voice path and 404s mid-call (ticket #99). Switching
+// provider resets the model to that provider's default so a mismatch can't be
+// authored in the first place.
+const LLM_MODEL_DEFAULTS: Record<LlmProvider, string> = {
+  openai: "gpt-4o-mini",
+  gemini: "gemini-2.5-flash",
 };
 
 function StageHeader({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
@@ -96,12 +105,13 @@ export function PipelineSection({ value, onChange }: Props) {
               <FieldLabel>Provider</FieldLabel>
               <Select
                 value={value.llm.provider}
-                onValueChange={(v) =>
+                onValueChange={(v) => {
+                  const provider = v as LlmProvider;
                   onChange({
                     ...value,
-                    llm: { ...value.llm, provider: v as "openai" | "gemini" },
-                  })
-                }
+                    llm: { provider, model: LLM_MODEL_DEFAULTS[provider] },
+                  });
+                }}
               >
                 <SelectTrigger>
                   <SelectValue />
