@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Copy, FileDown, Loader2, RefreshCw, RotateCcw, Save, Trash2 } from "lucide-react";
+import { Bot, Copy, FileDown, Loader2, RefreshCw, RotateCcw, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { useActiveAgent } from "@/components/active-agent-provider";
@@ -30,6 +30,12 @@ import {
 } from "@/lib/agentConfigApi";
 import { EMPTY_AGENT, JOHN_DOE_AGENT } from "@/lib/mockAgents";
 import { cn } from "@/lib/utils";
+import {
+  backendToFrontendAgent,
+  customizeUserAgent,
+  fetchUserAgents,
+  type UserAgentEntry,
+} from "@/lib/userAgentsApi";
 import { serializeAgent, type AgentConfig } from "@/types/agentConfig";
 
 function isComplete(agent: AgentConfig) {
@@ -51,6 +57,15 @@ export function AgentConfigPage() {
   const [showErrors, setShowErrors] = useState(false);
   const [savedConfigs, setSavedConfigs] = useState<SavedAgentConfigSummary[]>([]);
   const [isListLoading, setIsListLoading] = useState(false);
+  const [userAgents, setUserAgents] = useState<UserAgentEntry[]>([]);
+  // Tracks whether the currently-loaded agent came from /v1/user-agents.
+  // Format: "ua:<template_id>" — used to route Save → customizeUserAgent.
+  const [activeUserAgentId, setActiveUserAgentId] = useState<string | null>(
+    loadedConfigId?.startsWith("ua:") ? loadedConfigId.slice(3) : null,
+  );
+  // true when the loaded agent is a built-in template (not a user copy).
+  // Update button is hidden for built-in agents — use Save to create a copy.
+  const [isLoadedBuiltIn, setIsLoadedBuiltIn] = useState(false);
 
   // Fetch the saved-config list once on mount + expose a refresh helper.
   // Used by the "Load preset" dropdown and re-called after a successful save
@@ -72,11 +87,29 @@ export function AgentConfigPage() {
   useEffect(() => {
     const controller = new AbortController();
     void refreshList(controller.signal);
+    fetchUserAgents(controller.signal)
+      .then(setUserAgents)
+      .catch(() => {
+        /* backend unavailable — silently skip */
+      });
     return () => controller.abort();
   }, [refreshList]);
 
+  const loadUserAgent = (entry: UserAgentEntry) => {
+    const converted = backendToFrontendAgent(entry);
+    const uaId = entry.template_id ?? entry.id;
+    setActiveAgent(converted, `ua:${uaId}`);
+    setActiveUserAgentId(uaId);
+    setIsLoadedBuiltIn(!entry.is_customized);
+    setShowErrors(false);
+    const label = entry.is_customized ? "My agent loaded." : "Built-in agent loaded.";
+    toast.success(label, { description: `Loaded "${entry.name}". Edit and save to customise.` });
+  };
+
   const reset = () => {
     setActiveAgent(EMPTY_AGENT, null);
+    setActiveUserAgentId(null);
+    setIsLoadedBuiltIn(false);
     setShowErrors(false);
     toast("Reset to empty.");
   };
@@ -90,7 +123,16 @@ export function AgentConfigPage() {
   const loadById = async (id: string) => {
     try {
       const saved = await loadAgentConfig(id);
-      setActiveAgent(saved.config as unknown as AgentConfig, saved.id);
+      const raw = saved.config as unknown as AgentConfig;
+      const normalized: AgentConfig = {
+        ...raw,
+        instructions: raw.instructions ?? "",
+        first_message: raw.first_message ?? { type: "text", message: "", prompt: "" },
+        tools: raw.tools ?? [],
+        variables: raw.variables ?? {},
+        engine: raw.engine ?? {},
+      };
+      setActiveAgent(normalized, saved.id);
       setShowErrors(false);
       toast.success("Configuration loaded.", {
         description: `Loaded "${saved.name}".`,
@@ -136,14 +178,28 @@ export function AgentConfigPage() {
       });
       return;
     }
+    // If a user agent is active, persist via copy-on-write to /v1/user-agents.
+    if (activeUserAgentId) {
+      try {
+        const saved = await customizeUserAgent(activeUserAgentId, agent);
+        const newUaId = saved.template_id ?? saved.id;
+        setActiveAgent(backendToFrontendAgent(saved), `ua:${newUaId}`);
+        setActiveUserAgentId(newUaId);
+        setIsLoadedBuiltIn(false);
+        toast.success("Agent saved.", { description: `Saved "${saved.name}".` });
+        const updated = await fetchUserAgents();
+        setUserAgents(updated);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unknown error.";
+        toast.error("Could not save agent.", { description: message });
+      }
+      return;
+    }
     try {
       const saved = await saveAgentConfig(agent);
       toast.success("Configuration saved.", {
         description: `Saved as "${saved.name}".`,
       });
-      // Refresh so the newly-saved row appears in the dropdown immediately.
-      // Note: deliberately NOT setting loadedConfigId = saved.id — Save always
-      // creates a new row (POST). Smart overwrite arrives with #52 PUT.
       void refreshList();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error.";
@@ -156,6 +212,20 @@ export function AgentConfigPage() {
     if (!isComplete(agent)) {
       setShowErrors(true);
       toast.error("Some required fields are empty.");
+      return;
+    }
+    // User agent update — copy-on-write via /v1/user-agents.
+    if (activeUserAgentId) {
+      try {
+        const saved = await customizeUserAgent(activeUserAgentId, agent);
+        setActiveAgent(backendToFrontendAgent(saved), `ua:${activeUserAgentId}`);
+        toast.success("Agent updated.", { description: `Updated "${saved.name}".` });
+        const updated = await fetchUserAgents();
+        setUserAgents(updated);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unknown error.";
+        toast.error("Could not update agent.", { description: message });
+      }
       return;
     }
     try {
@@ -237,8 +307,56 @@ export function AgentConfigPage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-64">
+                {/* My agents — user copies (is_customized=true) */}
+                {userAgents.filter((e) => e.is_customized).length > 0 ? (
+                  <>
+                    <DropdownMenuLabel className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                      My agents
+                    </DropdownMenuLabel>
+                    {userAgents
+                      .filter((e) => e.is_customized)
+                      .map((entry) => (
+                        <DropdownMenuItem
+                          key={entry.id}
+                          onClick={() => loadUserAgent(entry)}
+                          className={cn(
+                            "flex items-center gap-2",
+                            activeUserAgentId === (entry.template_id ?? entry.id) && "bg-muted",
+                          )}
+                        >
+                          <Bot className="h-3 w-3 shrink-0 text-muted-foreground" />
+                          <span className="truncate">{entry.name}</span>
+                        </DropdownMenuItem>
+                      ))}
+                    <DropdownMenuSeparator />
+                  </>
+                ) : null}
+                {/* Built-in agents — unmodified templates (is_customized=false) */}
+                {userAgents.filter((e) => !e.is_customized).length > 0 ? (
+                  <>
+                    <DropdownMenuLabel className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                      Built-in agents
+                    </DropdownMenuLabel>
+                    {userAgents
+                      .filter((e) => !e.is_customized)
+                      .map((entry) => (
+                        <DropdownMenuItem
+                          key={entry.id}
+                          onClick={() => loadUserAgent(entry)}
+                          className={cn(
+                            "flex items-center gap-2",
+                            activeUserAgentId === (entry.template_id ?? entry.id) && "bg-muted",
+                          )}
+                        >
+                          <Bot className="h-3 w-3 shrink-0 text-muted-foreground" />
+                          <span className="truncate">{entry.name}</span>
+                        </DropdownMenuItem>
+                      ))}
+                    <DropdownMenuSeparator />
+                  </>
+                ) : null}
                 <DropdownMenuLabel className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-                  Built-in
+                  Demo
                 </DropdownMenuLabel>
                 <DropdownMenuItem onClick={loadPreset}>John Doe — TechStore demo</DropdownMenuItem>
                 {savedConfigs.length > 0 ? (
@@ -292,7 +410,7 @@ export function AgentConfigPage() {
               <Copy data-icon="inline-start" />
               Copy JSON
             </Button>
-            {loadedConfigId ? (
+            {loadedConfigId && !isLoadedBuiltIn ? (
               <Button size="sm" onClick={update} type="button">
                 <Save data-icon="inline-start" />
                 Update

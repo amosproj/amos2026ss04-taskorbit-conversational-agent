@@ -55,14 +55,20 @@ type ConversationRequest = {
   conversation_id: string;
   agent_config: BackendAgentConfig;
   messages: BackendMessage[];
+  current_intent_name?: string | null;
 };
 
-type ConversationResponse = {
+export type ConversationResponse = {
   conversation_id: string;
   reply: { role: string; content: string; timestamp: string | null };
   tool_invoked: BackendTool | null;
   requires_confirmation: boolean;
   confirmation_prompt: string;
+  status: "success" | "clarification" | "ended" | "error";
+  selected_intent: string;
+  selected_agent: string;
+  locked_intent_name: string | null;
+  next_active_tool_id: string | null;
 };
 
 type ConversationsResponse = {
@@ -98,13 +104,16 @@ function adaptTool(tool: FrontendTool): BackendTool {
 }
 
 function adaptAgentConfig(agent: AgentConfig): BackendAgentConfig {
+  // Map FE provider id to backend LLMProvider enum, matching the voice
+  // path in livekitAgentMetadata.ts (backend accepts "openai"/"google").
+  const llmProvider = agent.llm.provider === "gemini" ? "google" : "openai";
   const out: BackendAgentConfig = {
     id: agent.agent_id,
     name: agent.name,
     persona: agent.instructions,
     greeting: agent.first_message.message,
     stt: { provider: agent.stt.provider, language: "multi", model: agent.stt.model },
-    llm: { provider: agent.llm.provider, model: agent.llm.model },
+    llm: { provider: llmProvider, model: agent.llm.model },
     tts: { provider: agent.tts.provider, voice_id: agent.tts.voice_id, model: agent.tts.model },
     tools: agent.tools.map(adaptTool),
   };
@@ -134,7 +143,8 @@ export async function sendMessage(
   transcript: LiveTranscriptTurn[],
   conversationId: string,
   signal?: AbortSignal,
-): Promise<string> {
+  lockedIntentName?: string | null,
+): Promise<ConversationResponse> {
   // STEP A: Map transcript -> backend Message[]
   const messages: BackendMessage[] = transcript.map((turn) => ({
     role: turn.role === "user" ? "user" : "assistant",
@@ -146,6 +156,7 @@ export async function sendMessage(
     conversation_id: conversationId,
     agent_config: adaptAgentConfig(agent),
     messages,
+    current_intent_name: lockedIntentName ?? null,
   };
 
   const res = await fetch("/api/v1/conversations/process", {
@@ -161,7 +172,7 @@ export async function sendMessage(
   }
 
   const data: ConversationResponse = await res.json();
-  return data.reply.content;
+  return data;
 }
 
 /**

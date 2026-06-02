@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 from taskorbit.config import Settings, get_settings
 from taskorbit.integrations.llm.errors import LLMConfigError
-from taskorbit.intent import MockIntentDetector
+from taskorbit.intent import IntentRouter
 from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import get_metrics
 from taskorbit.types import (
@@ -49,7 +49,7 @@ class ConversationOrchestrator:
 
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
-        self._intent_detector = MockIntentDetector()
+        self._intent_router = IntentRouter()
 
     async def process_message(self, request: ConversationRequest) -> ConversationResponse:
         """Main entry point called by the API layer and agent workers."""
@@ -62,28 +62,81 @@ class ConversationOrchestrator:
             if not last_user or not last_user.content.strip():
                 raise ValueError("No user message content found in request.")
 
-            # 1. Detect intent (mocked)
-            intent = self._intent_detector.detect(last_user.content)
-            logger.info(
-                "intent_detected", intent=intent.name, conversation_id=request.conversation_id
-            )
+            # 1. Detect intent — reuse locked intent when set, but still run the
+            # classifier to allow genuine topic changes to break the lock.
+            from dataclasses import replace as _replace
 
-            # 2. Select agent — local import avoids circular dependency with agents/__init__.py
-            # NOTE: The agent object is currently a no-op placeholder. The orchestrator
-            # still drives the pipeline directly from AgentConfig. Wiring the agent
-            # logic (e.g. handle_message) will land when real intent routing replaces
-            # MockIntentDetector.
+            from taskorbit.intent import _KNOWN_INTENTS
+
+            if request.current_intent_name and request.current_intent_name in _KNOWN_INTENTS:
+                fresh = await self._intent_router.detect(
+                    last_user.content,
+                    request.messages,
+                    self._call_llm,
+                    request.agent_config.llm,
+                )
+                if (
+                    fresh.name != request.current_intent_name
+                    and fresh.confidence >= self._intent_router._threshold
+                    and not fresh.requires_clarification
+                ):
+                    intent = fresh
+                    logger.info(
+                        "intent_lock_broken",
+                        old=request.current_intent_name,
+                        new=intent.name,
+                        confidence=intent.confidence,
+                        conversation_id=request.conversation_id,
+                    )
+                else:
+                    intent = _replace(_KNOWN_INTENTS[request.current_intent_name], confidence=1.0)
+                    logger.info(
+                        "intent_locked",
+                        intent=intent.name,
+                        conversation_id=request.conversation_id,
+                    )
+            else:
+                intent = await self._intent_router.detect(
+                    last_user.content,
+                    request.messages,
+                    self._call_llm,
+                    request.agent_config.llm,
+                )
+                logger.info(
+                    "intent_detected",
+                    intent=intent.name,
+                    confidence=intent.confidence,
+                    conversation_id=request.conversation_id,
+                )
+
+            # Short-circuit: ask for clarification instead of guessing
+            if intent.requires_clarification:
+                from taskorbit.intent import _CLARIFICATION_REPLY
+                from taskorbit.types import ConversationStatus
+
+                return ConversationResponse(
+                    conversation_id=request.conversation_id,
+                    reply=self._make_assistant_message(_CLARIFICATION_REPLY),
+                    status=ConversationStatus.CLARIFICATION,
+                    selected_intent=intent.name,
+                    selected_agent="",
+                    intent_confidence=intent.confidence,
+                )
+
+            # 2. Select agent based on detected intent, not config.id
             from taskorbit.agents import AgentRegistry
 
-            agent = AgentRegistry.get_agent(request.agent_config, self)
+            agent = AgentRegistry.create_by_name(intent.agent_name, request.agent_config, self)
             logger.info(
                 "agent_selected",
-                agent=type(agent).__name__,
+                agent=agent.agent_name,
                 conversation_id=request.conversation_id,
             )
 
             # 3. Select active tool
-            active_tool = self._select_active_tool(request.messages, agent)
+            active_tool = self._select_active_tool(
+                request.messages, agent, active_tool_id=request.active_tool_id
+            )
 
             # 3b. Extract slots from conversation history
             slot_result = await self._extract_slots(
@@ -96,9 +149,9 @@ class ConversationOrchestrator:
                 conversation_id=request.conversation_id,
             )
 
-            # 4. Build system prompt augmented with slot collection progress
+            # 4. Build system prompt using the routed agent's role
             system_prompt = self._build_system_prompt(
-                request.agent_config, active_tool, slot_result
+                request.agent_config, active_tool, slot_result, routed_agent=agent
             )
 
             # 4b. Truncate conversation history if context limit is configured
@@ -115,16 +168,55 @@ class ConversationOrchestrator:
             _llm_elapsed = time.perf_counter() - _llm_start
             get_metrics().pipeline_latency_seconds.labels(stage="llm_call").observe(_llm_elapsed)
 
-            # 5b. Execute DataExtractionTool when all required slots are filled
-            if slot_result.is_complete and intent.required_inputs:
-                from taskorbit.tools.data_extraction import DataExtractionTool
+            # 5b. Dispatch active tool when slots are complete
+            from taskorbit.types import ConversationStatus, ToolType
 
-                await DataExtractionTool().execute(slot_result.to_dict())
+            tool_data: dict[str, Any] = {}
+            response_status = ConversationStatus.SUCCESS
+
+            if active_tool and slot_result.is_complete and intent.required_inputs:
+                dispatch_context: dict[str, Any] = dict(slot_result.to_dict())
+                if active_tool.type == ToolType.AGENT_TRANSFER:
+                    targets = active_tool.parameters.get("targets") or []
+                    if targets:
+                        # Template IDs are kebab-case with "-agent" suffix
+                        # (e.g. "customer-dissatisfaction-agent"); agent_name is
+                        # snake_case without the suffix (e.g. "customer_dissatisfaction").
+                        raw = str(targets[0])
+                        normalized = raw.removesuffix("-agent").replace("-", "_")
+                        dispatch_context["target_agent_id"] = normalized
+                    dispatch_context["conversation_history"] = [
+                        {"role": m.role.value, "content": m.content} for m in request.messages
+                    ]
+                tool_data = await self._dispatch_tool(active_tool, dispatch_context)
                 logger.info(
-                    "data_extraction_complete",
-                    slots=list(slot_result.filled.keys()),
+                    "tool_dispatch_complete",
+                    tool_type=active_tool.type,
                     conversation_id=request.conversation_id,
                 )
+                if active_tool.type == ToolType.END_CALL:
+                    response_status = ConversationStatus.ENDED
+                elif active_tool.type == ToolType.AGENT_TRANSFER:
+                    logger.info(
+                        "agent_handoff",
+                        from_agent=request.agent_config.name,
+                        to_agent=tool_data.get("transferred_to"),
+                        conversation_id=request.conversation_id,
+                    )
+
+            # Advance to the next tool when the current one was dispatched,
+            # so sequential workflows (e.g. data_extraction → end_call) complete.
+            if tool_data and active_tool:
+                all_tools = agent.get_task_definitions()
+                current_idx = next(
+                    (i for i, t in enumerate(all_tools) if t.id == active_tool.id), -1
+                )
+                next_tool = (
+                    all_tools[current_idx + 1] if 0 <= current_idx < len(all_tools) - 1 else None
+                )
+                next_active_tool_id = next_tool.id if next_tool else None
+            else:
+                next_active_tool_id = active_tool.id if active_tool else None
 
             _total_elapsed = time.perf_counter() - _pipeline_start
             get_metrics().pipeline_latency_seconds.labels(stage="total").observe(_total_elapsed)
@@ -139,10 +231,14 @@ class ConversationOrchestrator:
                 conversation_id=request.conversation_id,
                 reply=self._make_assistant_message(llm_text),
                 selected_intent=intent.name,
-                selected_agent=request.agent_config.name,
-                status="success",
+                selected_agent=agent.agent_name,
+                intent_confidence=intent.confidence,
+                status=response_status,
                 extracted_slots=slot_result.to_dict() if slot_result.is_complete else {},
                 missing_slots=slot_result.missing,
+                tool_invoked=active_tool if tool_data else None,
+                locked_intent_name=intent.name,
+                next_active_tool_id=next_active_tool_id,
             )
 
         except LLMConfigError as exc:
@@ -217,6 +313,7 @@ class ConversationOrchestrator:
         agent_config: AgentConfig,
         active_tool: ToolDefinition | None,
         slot_result: Any | None = None,
+        routed_agent: Any | None = None,
     ) -> str:
         """Construct a system prompt (LLM context) for the current task."""
         from taskorbit.integrations.llm.prompts import with_persona_guardrails
@@ -225,6 +322,10 @@ class ConversationOrchestrator:
             f"You are {agent_config.name}.",
             f"Persona: {agent_config.persona}",
         ]
+        if routed_agent is not None and routed_agent.agent_name != "base":
+            lines.append(
+                f"Role: You are currently acting as the {routed_agent.agent_name.replace('_', ' ')} specialist."
+            )
         if active_tool:
             lines.append(f"Current task: {active_tool.name} - {active_tool.description}")
             if active_tool.parameters:
@@ -310,14 +411,21 @@ class ConversationOrchestrator:
         self,
         messages: list[Message],
         agent: BaseAgent,
+        active_tool_id: str | None = None,
     ) -> ToolDefinition | None:
         """Decide which tool should be in scope for this turn, if any.
 
-        Returns first tool from the agent's own task definitions.
-        Real selection based on conversation history lands in a later sprint.
+        Uses active_tool_id to resume a previously selected tool across turns.
+        Falls back to the first tool in the agent's list when no id is provided.
         """
         tools = agent.get_task_definitions()
-        return tools[0] if tools else None
+        if not tools:
+            return None
+        if active_tool_id:
+            match = next((t for t in tools if t.id == active_tool_id), None)
+            if match:
+                return match
+        return tools[0]
 
     async def _call_llm(
         self,
@@ -348,9 +456,43 @@ class ConversationOrchestrator:
         """Execute a tool after the user has confirmed (if required).
 
         Delegates to the concrete BaseTool implementation in taskorbit.tools.
-        Returns the tool's result payload.
+        Returns the tool's result payload, or empty dict on failure.
         """
-        raise NotImplementedError
+        from taskorbit.tools import ToolResult
+        from taskorbit.tools.agent_transfer import AgentTransferTool
+        from taskorbit.tools.data_extraction import DataExtractionTool
+        from taskorbit.tools.end_call import EndCallTool
+        from taskorbit.types import ToolType
+
+        dispatch: dict[ToolType, type] = {
+            ToolType.DATA_EXTRACTION: DataExtractionTool,
+            ToolType.AGENT_TRANSFER: AgentTransferTool,
+            ToolType.END_CALL: EndCallTool,
+        }
+
+        tool_cls = dispatch.get(tool.type)
+        if tool_cls is None:
+            logger.warning("unknown_tool_type", tool_type=tool.type, tool_id=tool.id)
+            return {}
+
+        result: ToolResult = await tool_cls().execute(context)
+
+        if not result.success:
+            logger.warning(
+                "tool_execution_failed",
+                tool_id=tool.id,
+                tool_type=tool.type,
+                error=result.error,
+            )
+            return {}
+
+        logger.info(
+            "tool_executed",
+            tool_id=tool.id,
+            tool_type=tool.type,
+            data=result.data,
+        )
+        return result.data
 
     def _make_assistant_message(self, content: str) -> Message:
         return Message(role=MessageRole.ASSISTANT, content=content)

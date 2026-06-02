@@ -265,7 +265,9 @@ class TestOrchestratorSlotIntegration:
     """Tests for orchestrator's slot extraction integration."""
 
     @pytest.mark.asyncio
-    async def test_orchestrator_returns_missing_slots_when_incomplete(self):
+    async def test_orchestrator_returns_missing_slots_when_incomplete(
+        self, mock_good_intent: object
+    ):
         """Should return missing slots when not all required slots are filled."""
         settings = get_settings()
         orchestrator = ConversationOrchestrator(settings=settings)
@@ -316,7 +318,9 @@ class TestOrchestratorSlotIntegration:
                 assert "preferred_date" in response.missing_slots
 
     @pytest.mark.asyncio
-    async def test_orchestrator_returns_extracted_slots_when_complete(self):
+    async def test_orchestrator_returns_extracted_slots_when_complete(
+        self, mock_good_intent: object
+    ):
         """Should return extracted slots when all required slots are filled."""
         settings = get_settings()
         orchestrator = ConversationOrchestrator(settings=settings)

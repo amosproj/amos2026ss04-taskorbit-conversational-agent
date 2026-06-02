@@ -109,7 +109,9 @@ def build_default_agent(
 
     Pass ``agent_config`` when the caller has parsed it from participant
     metadata (#100) so the voice path uses the user's saved configuration
-    instead of the hardcoded ``_default_agent_config`` fallback.
+    instead of the hardcoded ``_default_agent_config`` fallback. With the
+    full agent (including tools) the orchestrator can also dispatch the
+    agent_transfer tool on voice, enabling mid-call handoff (AC7 of #8).
     """
     return OrchestratorAgent(
         orchestrator=orchestrator or ConversationOrchestrator(settings=settings),
