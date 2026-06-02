@@ -154,6 +154,9 @@ module "cloud_run" {
   cors_allow_origins = var.cors_allow_origins
   api_url_override   = var.api_url_override
 
+  session_max_minutes        = var.session_max_minutes
+  inactivity_timeout_minutes = var.inactivity_timeout_minutes
+
   depends_on = [module.iam, module.secrets, module.database, module.network]
 }
 

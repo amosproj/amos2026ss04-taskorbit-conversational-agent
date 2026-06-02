@@ -12,14 +12,16 @@ name: Deploy to GCP
 # TODO: switch GCP_SA_KEY to Workload Identity (OIDC) after Step 3 IAM is applied.
 
 on:
+  # Deploy only after the smoke-test workflow passes on prod.
+  # "Start Web Service" runs after linting — if it succeeds, all quality
+  # gates have passed. Listening to a single workflow avoids 3 duplicate
+  # deploy runs (one per workflow_run completion) that cancel each other.
   workflow_run:
-    workflows: ["Backend Linting", "Frontend Linting", "Start Web Service"]
+    workflows: ["Start Web Service"]
     types: [completed]
     branches:
       - prod
-  push:
-    branches:
-      - prod
+  # Manual trigger for hotfixes or re-deploys without a code push.
   workflow_dispatch:
 
 concurrency:

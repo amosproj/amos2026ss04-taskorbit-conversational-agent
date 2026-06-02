@@ -58,7 +58,7 @@ async def entrypoint(ctx: JobContext) -> None:
     greeting: str = ""
     agent_config: AgentConfig | None = None
     try:
-        participant = await ctx.wait_for_participant()
+        participant = await asyncio.wait_for(ctx.wait_for_participant(), timeout=30.0)
         meta = json.loads(participant.metadata or "{}")
         greeting = str(meta.get("greeting") or "")
         try:
@@ -121,7 +121,6 @@ async def entrypoint(ctx: JobContext) -> None:
             if asyncio.iscoroutine(result):
                 await result
             _turn_elapsed = time.perf_counter() - turn_start
-            _turn_elapsed = time.perf_counter() - turn_start
             get_metrics().pipeline_latency_seconds.labels(stage="worker_turn").observe(
                 _turn_elapsed
             )
@@ -152,6 +151,8 @@ async def entrypoint(ctx: JobContext) -> None:
             return
         if msg_type == "commit_turn":
             t_now = time.perf_counter()
+            if reply_task and not reply_task.done():
+                reply_task.cancel()
             agent.request_reply(t_commit=t_now)
             reply_task = asyncio.create_task(_commit_and_reply(t_now))
         elif msg_type == "interrupt_playback":
