@@ -35,7 +35,7 @@ def test_orchestrator_instantiates() -> None:
 
 
 @pytest.mark.asyncio
-async def test_process_message_returns_mocked_llm_reply() -> None:
+async def test_process_message_returns_mocked_llm_reply(mock_good_intent: Any) -> None:
     orch = ConversationOrchestrator()
     mock_reply = '[Mocked LLM] I received: "Hello there"'
 
@@ -68,7 +68,7 @@ async def test_process_message_returns_error_on_empty_messages() -> None:
 
 
 @pytest.mark.asyncio
-async def test_process_message_timeout_handling() -> None:
+async def test_process_message_timeout_handling(mock_good_intent: Any) -> None:
     # Use settings with a very short timeout for testing
     from taskorbit.config import Settings
 
@@ -93,7 +93,7 @@ async def test_process_message_timeout_handling() -> None:
 
 
 @pytest.mark.asyncio
-async def test_timeout_increments_conversation_errors_total() -> None:
+async def test_timeout_increments_conversation_errors_total(mock_good_intent: Any) -> None:
     from taskorbit.config import Settings
 
     settings = Settings(llm_timeout_seconds=0.01)
@@ -113,7 +113,7 @@ async def test_timeout_increments_conversation_errors_total() -> None:
 
 
 @pytest.mark.asyncio
-async def test_runtime_error_increments_conversation_errors_total() -> None:
+async def test_runtime_error_increments_conversation_errors_total(mock_good_intent: Any) -> None:
     orch = ConversationOrchestrator()
     mock_metrics = MagicMock()
 

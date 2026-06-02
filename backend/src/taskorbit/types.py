@@ -131,6 +131,8 @@ class ConversationRequest(BaseModel):
     conversation_id: str
     agent_config: AgentConfig
     messages: list[Message]
+    current_intent_name: str | None = None
+    active_tool_id: str | None = None
 
 
 class ConversationResponse(BaseModel):
@@ -141,10 +143,13 @@ class ConversationResponse(BaseModel):
     confirmation_prompt: str = ""  # e.g. "I'll save your contact info. OK?"
     selected_intent: str = ""
     selected_agent: str = ""
+    intent_confidence: float = 0.0
     status: ConversationStatus = ConversationStatus.SUCCESS
     error: str = ""
     extracted_slots: dict[str, Any] = Field(default_factory=dict)
     missing_slots: list[str] = Field(default_factory=list)
+    locked_intent_name: str | None = None
+    next_active_tool_id: str | None = None
 
 
 # ---------------------------------------------------------------------------

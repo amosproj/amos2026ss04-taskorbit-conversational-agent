@@ -61,19 +61,52 @@ class ConversationOrchestrator:
             if not last_user or not last_user.content.strip():
                 raise ValueError("No user message content found in request.")
 
-            # 1. Detect intent via LLM-based router
-            intent = await self._intent_router.detect(
-                last_user.content,
-                request.messages,
-                self._call_llm,
-                request.agent_config.llm,
-            )
-            logger.info(
-                "intent_detected",
-                intent=intent.name,
-                confidence=intent.confidence,
-                conversation_id=request.conversation_id,
-            )
+            # 1. Detect intent — reuse locked intent when set, but still run the
+            # classifier to allow genuine topic changes to break the lock.
+            from dataclasses import replace as _replace
+
+            from taskorbit.intent import _KNOWN_INTENTS
+
+            if request.current_intent_name and request.current_intent_name in _KNOWN_INTENTS:
+                fresh = await self._intent_router.detect(
+                    last_user.content,
+                    request.messages,
+                    self._call_llm,
+                    request.agent_config.llm,
+                )
+                if (
+                    fresh.name != request.current_intent_name
+                    and fresh.confidence >= self._intent_router._threshold
+                    and not fresh.requires_clarification
+                ):
+                    intent = fresh
+                    logger.info(
+                        "intent_lock_broken",
+                        old=request.current_intent_name,
+                        new=intent.name,
+                        confidence=intent.confidence,
+                        conversation_id=request.conversation_id,
+                    )
+                else:
+                    intent = _replace(_KNOWN_INTENTS[request.current_intent_name], confidence=1.0)
+                    logger.info(
+                        "intent_locked",
+                        intent=intent.name,
+                        conversation_id=request.conversation_id,
+                    )
+            else:
+                intent = await self._intent_router.detect(
+                    last_user.content,
+                    request.messages,
+                    self._call_llm,
+                    request.agent_config.llm,
+                )
+                logger.info(
+                    "intent_detected",
+                    intent=intent.name,
+                    confidence=intent.confidence,
+                    conversation_id=request.conversation_id,
+                )
 
             # Short-circuit: ask for clarification instead of guessing
             if intent.requires_clarification:
@@ -86,6 +119,7 @@ class ConversationOrchestrator:
                     status=ConversationStatus.CLARIFICATION,
                     selected_intent=intent.name,
                     selected_agent="",
+                    intent_confidence=intent.confidence,
                 )
 
             # 2. Select agent based on detected intent, not config.id
@@ -99,7 +133,9 @@ class ConversationOrchestrator:
             )
 
             # 3. Select active tool
-            active_tool = self._select_active_tool(request.messages, agent)
+            active_tool = self._select_active_tool(
+                request.messages, agent, active_tool_id=request.active_tool_id
+            )
 
             # 3b. Extract slots from conversation history
             slot_result = await self._extract_slots(
@@ -162,6 +198,20 @@ class ConversationOrchestrator:
                         conversation_id=request.conversation_id,
                     )
 
+            # Advance to the next tool when the current one was dispatched,
+            # so sequential workflows (e.g. data_extraction → end_call) complete.
+            if tool_data and active_tool:
+                all_tools = agent.get_task_definitions()
+                current_idx = next(
+                    (i for i, t in enumerate(all_tools) if t.id == active_tool.id), -1
+                )
+                next_tool = (
+                    all_tools[current_idx + 1] if 0 <= current_idx < len(all_tools) - 1 else None
+                )
+                next_active_tool_id = next_tool.id if next_tool else None
+            else:
+                next_active_tool_id = active_tool.id if active_tool else None
+
             _total_elapsed = time.perf_counter() - _pipeline_start
             get_metrics().pipeline_latency_seconds.labels(stage="total").observe(_total_elapsed)
             logger.info(
@@ -176,10 +226,13 @@ class ConversationOrchestrator:
                 reply=self._make_assistant_message(llm_text),
                 selected_intent=intent.name,
                 selected_agent=agent.agent_name,
+                intent_confidence=intent.confidence,
                 status=response_status,
                 extracted_slots=slot_result.to_dict() if slot_result.is_complete else {},
                 missing_slots=slot_result.missing,
                 tool_invoked=active_tool if tool_data else None,
+                locked_intent_name=intent.name,
+                next_active_tool_id=next_active_tool_id,
             )
 
         except LLMConfigError as exc:
@@ -318,14 +371,21 @@ class ConversationOrchestrator:
         self,
         messages: list[Message],
         agent: BaseAgent,
+        active_tool_id: str | None = None,
     ) -> ToolDefinition | None:
         """Decide which tool should be in scope for this turn, if any.
 
-        Returns first tool from the agent's own task definitions.
-        Real selection based on conversation history lands in a later sprint.
+        Uses active_tool_id to resume a previously selected tool across turns.
+        Falls back to the first tool in the agent's list when no id is provided.
         """
         tools = agent.get_task_definitions()
-        return tools[0] if tools else None
+        if not tools:
+            return None
+        if active_tool_id:
+            match = next((t for t in tools if t.id == active_tool_id), None)
+            if match:
+                return match
+        return tools[0]
 
     async def _call_llm(
         self,

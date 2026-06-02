@@ -185,8 +185,8 @@ class MockIntentDetector:
           5. Book service appointment — default when nothing else matches.
         """
         lowered = prompt.lower()
-        if any(kw in lowered for kw in _APPOINTMENT_MANAGEMENT_KEYWORDS):
-            return replace(_KNOWN_INTENTS["appointment_management"])
+        # if any(kw in lowered for kw in _APPOINTMENT_MANAGEMENT_KEYWORDS):
+        #     return replace(_KNOWN_INTENTS["appointment_management"])
         if any(kw in lowered for kw in _TECHNICAL_SUPPORT_KEYWORDS):
             return replace(_TECHNICAL_SUPPORT_REQUEST)
         if any(kw in lowered for kw in _DISSATISFACTION_KEYWORDS):
@@ -220,22 +220,22 @@ _KNOWN_INTENTS: dict[str, IntentResult] = {
             {"id": "handoff_or_end", "action": "transfer_or_end_call"},
         ],
     ),
-    "appointment_management": IntentResult(
-        name="appointment_management",
-        description="Reschedule, cancel, or check the status of an existing appointment.",
-        agent_name="appointment_management",
-        required_inputs=[
-            {"name": "caller_name", "type": "string", "required": True},
-            {"name": "booking_reference", "type": "string", "required": True},
-            {"name": "requested_action", "type": "string", "required": True},
-        ],
-        workflow_steps=[
-            {"id": "greet", "action": "send_first_message"},
-            {"id": "collect-data", "action": "extract_required_fields", "tool": "extract_data"},
-            {"id": "confirm", "action": "confirm_action"},
-            {"id": "end", "action": "end_call", "tool": "end_call"},
-        ],
-    ),
+    # "appointment_management": IntentResult(
+    #     name="appointment_management",
+    #     description="Reschedule, cancel, or check the status of an existing appointment.",
+    #     agent_name="appointment_management",
+    #     required_inputs=[
+    #         {"name": "caller_name", "type": "string", "required": True},
+    #         {"name": "booking_reference", "type": "string", "required": True},
+    #         {"name": "requested_action", "type": "string", "required": True},
+    #     ],
+    #     workflow_steps=[
+    #         {"id": "greet", "action": "send_first_message"},
+    #         {"id": "collect-data", "action": "extract_required_fields", "tool": "extract_data"},
+    #         {"id": "confirm", "action": "confirm_action"},
+    #         {"id": "end", "action": "end_call", "tool": "end_call"},
+    #     ],
+    # ),
 }
 
 _CLARIFICATION_REPLY = (
@@ -278,7 +278,19 @@ class IntentRouter:
         intents_list = "\n".join(
             f"- {name}: {result.description}" for name, result in _KNOWN_INTENTS.items()
         )
-        system_prompt = _ROUTING_SYSTEM_PROMPT.format(intents_list=intents_list)
+
+        history_block = ""
+        if len(messages) >= 2:
+            recent = messages[-3:] if len(messages) >= 3 else messages[:-1]
+            lines = [
+                f"{m.role.value}: {m.content}"
+                for m in recent
+                if m.role.value in ("user", "assistant")
+            ]
+            if lines:
+                history_block = "\n\nConversation so far:\n" + "\n".join(lines)
+
+        system_prompt = _ROUTING_SYSTEM_PROMPT.format(intents_list=intents_list) + history_block
 
         # Send only the current user turn so the classifier stays focused.
         from taskorbit.types import Message as Msg
@@ -294,7 +306,13 @@ class IntentRouter:
         except Exception as exc:
             logger.warning("intent_router_parse_error", extra={"error": str(exc)})
             # Fallback to keyword matching so the call never silently drops.
-            return replace(self._fallback.detect(prompt), confidence=0.5)
+            # confidence=0.5 is below the threshold so requires_clarification is set
+            # consistently — prevents silent mis-routing when the LLM is unavailable.
+            return replace(
+                self._fallback.detect(prompt),
+                confidence=0.5,
+                requires_clarification=0.5 < self._threshold,
+            )
 
         if not intent_name or intent_name not in _KNOWN_INTENTS:
             return replace(_FALLBACK_RESULT, confidence=0.0, requires_clarification=True)
