@@ -18,7 +18,24 @@ import { useActiveAgent } from "@/components/active-agent-provider";
 import { buildLiveKitWorkerMetadata } from "@/lib/livekitAgentMetadata";
 import { sendMessage, getConversations } from "@/lib/conversationApi";
 import { playSynthesizedSpeech } from "@/lib/ttsApi";
+import { backendToFrontendAgent, fetchUserAgents } from "@/lib/userAgentsApi";
 import type { ConfirmationPromptState } from "@/types/callState";
+
+function SessionEndedBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  useEffect(() => {
+    const id = window.setTimeout(onDismiss, 5_000);
+    return () => window.clearTimeout(id);
+  }, [onDismiss]);
+
+  return (
+    <div
+      role="status"
+      className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-lg border border-amber-500 bg-amber-50 px-4 py-3 text-sm text-amber-800 shadow-md dark:bg-amber-950 dark:text-amber-200"
+    >
+      {message}
+    </div>
+  );
+}
 
 const mockConfirmationPrompt: ConfirmationPromptState = {
   id: "demo-confirmation",
@@ -44,7 +61,9 @@ export function ConversationalChat() {
   // Active agent comes from shared context, set on the config page. Before
   // this hook existed, the chat was hardcoded to JOHN_DOE_AGENT — Christoph
   // + Carl reported the bug on Discord 2026-05-24.
-  const { agent } = useActiveAgent();
+  // setActiveAgent is used below to swap the displayed agent when the backend
+  // signals an agent_transfer via response.tool_invoked (#8 Task 6).
+  const { agent, setActiveAgent } = useActiveAgent();
   const appName = import.meta.env.VITE_APP_NAME ?? "TaskOrbit";
 
   const call = useVoiceCall();
@@ -52,11 +71,13 @@ export function ConversationalChat() {
   // Starts true (no call active). Set false on call start, then back to
   // true once the first speaking→idle_in_call transition is detected.
   const [greetingDone, setGreetingDone] = useState(true);
+  const [routedAgent, setRoutedAgent] = useState<string | null>(null);
   const greetingSeenSpeakingRef = useRef(false);
   const greetingTimeoutRef = useRef<number | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastUserTurnIdRef = useRef<string | null>(null);
+  const lockedIntentRef = useRef<string | null>(null);
   const [previousConversations, setPreviousConversations] = useState<
     Record<string, string | null>[]
   >([]);
@@ -173,18 +194,51 @@ export function ConversationalChat() {
 
       void Promise.resolve().then(async () => {
         try {
-          const reply = await sendMessage(
+          const response = await sendMessage(
             agent,
-            [{ id: "tmp", role: "user", text }],
+            [...call.transcript, { id: "tmp", role: "user", text }],
             call.conversationId,
             controller.signal,
+            lockedIntentRef.current,
           );
-          call.appendAssistantTurn(reply);
-          const speakable = reply.trim().length > 0 && !reply.startsWith("[Connection error");
+          lockedIntentRef.current = response.locked_intent_name ?? null;
+          if (response.selected_agent) setRoutedAgent(response.selected_agent);
+          const replyText = response.reply.content;
+          call.appendAssistantTurn(replyText);
+
+          // Agent handoff (#8 Task 6): backend's IntentRouter / dispatch decided
+          // to transfer the conversation. Swap the displayed agent and add a
+          // transcript marker so the user sees the switch.
+          // NOTE: backend currently exposes only the agent's configured targets
+          // in tool_invoked.parameters; the actual transferred_to id from
+          // ToolResult.data is not propagated (orchestration/__init__.py:169).
+          // First target works for single-target configs (e.g. JOHN_DOE_AGENT).
+          if (response.tool_invoked?.type === "agent_transfer") {
+            const targets = (response.tool_invoked.parameters as { targets?: string[] })?.targets;
+            const targetId = targets?.[0];
+            if (targetId) {
+              try {
+                const entries = await fetchUserAgents(controller.signal);
+                const match = entries.find((e) => e.template_id === targetId || e.id === targetId);
+                if (match) {
+                  const next = backendToFrontendAgent(match);
+                  setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
+                  call.appendAssistantTurn(`[Transferred to ${next.name}]`);
+                }
+              } catch (transferErr) {
+                if ((transferErr as Error).name !== "AbortError") {
+                  console.warn("[ConversationalChat] agent transfer lookup failed", transferErr);
+                }
+              }
+            }
+          }
+
+          const speakable =
+            replyText.trim().length > 0 && !replyText.startsWith("[Connection error");
           if (speakable) {
             call.setPhase("speaking");
             try {
-              await playSynthesizedSpeech(reply, { signal: controller.signal });
+              await playSynthesizedSpeech(replyText, { signal: controller.signal });
             } catch (audioErr) {
               if ((audioErr as Error).name !== "AbortError") {
                 console.warn("[ConversationalChat] ElevenLabs playback failed", audioErr);
@@ -199,7 +253,7 @@ export function ConversationalChat() {
         }
       });
     },
-    [agent, call],
+    [agent, call, setActiveAgent],
   );
 
   const handleRoomError = useCallback(
@@ -212,6 +266,21 @@ export function ConversationalChat() {
     },
     [call],
   );
+
+  // AC7: when the voice worker publishes an agent_handoff packet (after
+  // the orchestrator dispatched agent_transfer mid-call), useAgentHandoff
+  // already swapped the active agent. Surface the same transcript marker
+  // the text path renders so the user sees the switch.
+  const handleVoiceHandoff = useCallback(
+    (agentName: string) => {
+      call.appendAssistantTurn(`[Transferred to ${agentName}]`);
+    },
+    [call],
+  );
+
+  const handleVoiceAgentRouted = useCallback((agentName: string) => {
+    setRoutedAgent(agentName);
+  }, []);
 
   const handleTriggerConfirmation = useCallback(() => {
     call.triggerConfirmation(mockConfirmationPrompt);
@@ -233,8 +302,16 @@ export function ConversationalChat() {
     });
   }, [call]);
 
+  const handleRestart = useCallback(() => {
+    lockedIntentRef.current = null;
+    setRoutedAgent(null);
+    call.restart();
+  }, [call]);
+
   const handleStartSession = useCallback(() => {
     // console.log("[greeting] handleStartSession fired");
+    lockedIntentRef.current = null;
+    setRoutedAgent(null);
     call.start({ tokenMetadata: buildLiveKitWorkerMetadata(agent) });
     setGreetingDone(false);
     greetingSeenSpeakingRef.current = false;
@@ -292,7 +369,15 @@ export function ConversationalChat() {
                   : "Voice session active · live transcript below."}
               </CardDescription>
             </div>
-            <CallStatusIndicator status={call.status} />
+            <div className="flex flex-col items-end gap-2">
+              <CallStatusIndicator status={call.status} />
+              {routedAgent && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                  <span className="size-1.5 rounded-full bg-primary" />
+                  {routedAgent.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} Agent
+                </span>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="pt-6">
             <ScrollArea className="h-[min(50vh,28rem)] pr-3">
@@ -358,7 +443,7 @@ export function ConversationalChat() {
           status={call.status}
           onStart={handleStartSession}
           onSendText={handleSendText}
-          onRestart={call.restart}
+          onRestart={handleRestart}
         />
       )}
     </div>
@@ -380,6 +465,8 @@ export function ConversationalChat() {
             status={call.status}
             onPhase={call.setPhase}
             onSegment={handleSegment}
+            onHandoff={handleVoiceHandoff}
+            onAgentRouted={handleVoiceAgentRouted}
           />
           {body}
         </LiveKitRoom>
@@ -394,6 +481,13 @@ export function ConversationalChat() {
         >
           {call.micError}
         </div>
+      )}
+
+      {call.sessionEndReason !== null && (
+        <SessionEndedBanner
+          message={call.sessionEndReason}
+          onDismiss={call.clearSessionEndReason}
+        />
       )}
     </main>
   );

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -28,6 +28,13 @@ class ToolType(str, Enum):
     DATA_EXTRACTION = "data_extraction"
     AGENT_TRANSFER = "agent_transfer"
     END_CALL = "end_call"
+
+
+class ConversationStatus(str, Enum):
+    SUCCESS = "success"
+    CLARIFICATION = "clarification"
+    ENDED = "ended"
+    ERROR = "error"
 
 
 class STTProvider(str, Enum):
@@ -103,6 +110,34 @@ class PersonaConstraints(BaseModel):
     refusal_template: str | None = None
 
 
+class ContextLimitConfig(BaseModel):
+    """Configuration for conversation history limits and truncation.
+
+    Controls how many messages the agent remembers before the oldest are
+    automatically removed (FIFO). The system prompt is always protected and
+    never truncated.
+
+    Only ``"message_count"`` is supported in this sprint. Token-threshold
+    truncation and summarisation are tracked as follow-up work — see the
+    "Context-limit follow-up" issue.
+
+    Example:
+        Keep the last 50 messages:
+        ContextLimitConfig(type="message_count", value=50)
+    """
+
+    type: Literal["message_count"] = Field(
+        default="message_count",
+        description='Truncation strategy. Only "message_count" is enforced today.',
+    )
+    value: int = Field(
+        default=50,
+        ge=2,
+        le=499,
+        description="Maximum non-system messages to retain (2-499).",
+    )
+
+
 class AgentConfig(BaseModel):
     id: str
     name: str
@@ -113,6 +148,7 @@ class AgentConfig(BaseModel):
     tts: TTSConfig = Field(default_factory=TTSConfig)
     tools: list[ToolDefinition] = Field(default_factory=list)
     persona_constraints: PersonaConstraints | None = None
+    context_limit: ContextLimitConfig | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -124,6 +160,8 @@ class ConversationRequest(BaseModel):
     conversation_id: str
     agent_config: AgentConfig
     messages: list[Message]
+    current_intent_name: str | None = None
+    active_tool_id: str | None = None
 
 
 class ConversationResponse(BaseModel):
@@ -134,10 +172,13 @@ class ConversationResponse(BaseModel):
     confirmation_prompt: str = ""  # e.g. "I'll save your contact info. OK?"
     selected_intent: str = ""
     selected_agent: str = ""
-    status: str = "success"
+    intent_confidence: float = 0.0
+    status: ConversationStatus = ConversationStatus.SUCCESS
     error: str = ""
     extracted_slots: dict[str, Any] = Field(default_factory=dict)
     missing_slots: list[str] = Field(default_factory=list)
+    locked_intent_name: str | None = None
+    next_active_tool_id: str | None = None
 
 
 # ---------------------------------------------------------------------------

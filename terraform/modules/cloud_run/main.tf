@@ -343,6 +343,16 @@ resource "google_cloud_run_v2_service" "frontend" {
         value = var.api_url_override != "" ? var.api_url_override : google_cloud_run_v2_service.backend.uri
       }
 
+      env {
+        name  = "VITE_SESSION_MAX_MINUTES"
+        value = tostring(var.session_max_minutes)
+      }
+
+      env {
+        name  = "VITE_INACTIVITY_TIMEOUT_MINUTES"
+        value = tostring(var.inactivity_timeout_minutes)
+      }
+
       resources {
         limits = {
           cpu    = "1"

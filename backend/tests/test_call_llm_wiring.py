@@ -126,6 +126,7 @@ async def test_call_llm_propagates_client_errors(
 @pytest.mark.asyncio
 async def test_persona_guardrails_flow_through_to_llm_prompt(
     orchestrator: ConversationOrchestrator,
+    mock_good_intent: object,
 ) -> None:
     """When an AgentConfig has persona_constraints set, the refusal template
     and scope/out-of-scope lines must reach the LLM client's generate() call.

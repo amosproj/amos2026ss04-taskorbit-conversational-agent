@@ -49,6 +49,10 @@ cors_allow_origins = "https://taskorbit.example.com"
 # Leave empty when using a real domain (uses https://api.<domain> instead).
 # api_url_override = "https://taskorbit-backend-<hash>-ew.a.run.app"
 
+# Session time limits — override defaults if needed.
+# session_max_minutes        = 30  # hard wall-clock limit per call (default: 30)
+# inactivity_timeout_minutes = 7   # silence timeout — no speech for N min closes the session (default: 7)
+
 # ── GitHub (Workload Identity) ────────────────────────────────────────────────
 github_repository = "amosproj/amos2026ss04-taskorbit-conversational-agent"
 

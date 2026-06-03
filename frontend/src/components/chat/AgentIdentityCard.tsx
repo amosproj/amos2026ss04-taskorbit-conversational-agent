@@ -55,7 +55,7 @@ function formatLanguage(tag: string): string {
  */
 export function AgentIdentityCard({ agent, className }: Props) {
   const initials = initialsOf(agent.name);
-  const description = describeFromInstructions(agent.instructions);
+  const description = agent.instructions ? describeFromInstructions(agent.instructions) : null;
   const language = agent.language?.default ?? "en";
   const toolTypes = Array.from(new Set(agent.tools.map((t) => t.type)));
 

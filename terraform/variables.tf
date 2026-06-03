@@ -315,3 +315,15 @@ variable "api_url_override" {
   type        = string
   default     = ""
 }
+
+variable "session_max_minutes" {
+  description = "Maximum LiveKit session duration in minutes (VITE_SESSION_MAX_MINUTES). Default 30."
+  type        = number
+  default     = 30
+}
+
+variable "inactivity_timeout_minutes" {
+  description = "Minutes of silence before auto-closing the session (VITE_INACTIVITY_TIMEOUT_MINUTES). Default 7."
+  type        = number
+  default     = 7
+}

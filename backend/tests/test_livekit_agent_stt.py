@@ -53,6 +53,9 @@ def test_build_agent_session_deepgram_stt_uses_settings(
         api_key=_FAKE_API_KEY,
         model=_FAKE_MODEL,
         language=_FAKE_LANGUAGE,
+        smart_format=True,
+        numerals=True,
+        endpointing_ms=400,
     )
     kwargs = mock_session.call_args.kwargs
     assert kwargs["stt"] is mock_stt.return_value
@@ -81,6 +84,9 @@ def test_build_agent_session_deepgram_stt_respects_custom_language(
         api_key=_FAKE_API_KEY,
         model=_FAKE_MODEL,
         language="de",
+        smart_format=True,
+        numerals=True,
+        endpointing_ms=400,
     )
     assert mock_vad.load.called
     assert mock_tts.called

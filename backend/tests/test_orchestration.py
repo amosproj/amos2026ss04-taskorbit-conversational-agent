@@ -9,6 +9,7 @@ import pytest
 from taskorbit.orchestration import ConversationOrchestrator
 from taskorbit.types import (
     AgentConfig,
+    ContextLimitConfig,
     ConversationRequest,
     Message,
     MessageRole,
@@ -35,7 +36,7 @@ def test_orchestrator_instantiates() -> None:
 
 
 @pytest.mark.asyncio
-async def test_process_message_returns_mocked_llm_reply() -> None:
+async def test_process_message_returns_mocked_llm_reply(mock_good_intent: Any) -> None:
     orch = ConversationOrchestrator()
     mock_reply = '[Mocked LLM] I received: "Hello there"'
 
@@ -68,7 +69,7 @@ async def test_process_message_returns_error_on_empty_messages() -> None:
 
 
 @pytest.mark.asyncio
-async def test_process_message_timeout_handling() -> None:
+async def test_process_message_timeout_handling(mock_good_intent: Any) -> None:
     # Use settings with a very short timeout for testing
     from taskorbit.config import Settings
 
@@ -93,7 +94,7 @@ async def test_process_message_timeout_handling() -> None:
 
 
 @pytest.mark.asyncio
-async def test_timeout_increments_conversation_errors_total() -> None:
+async def test_timeout_increments_conversation_errors_total(mock_good_intent: Any) -> None:
     from taskorbit.config import Settings
 
     settings = Settings(llm_timeout_seconds=0.01)
@@ -113,7 +114,7 @@ async def test_timeout_increments_conversation_errors_total() -> None:
 
 
 @pytest.mark.asyncio
-async def test_runtime_error_increments_conversation_errors_total() -> None:
+async def test_runtime_error_increments_conversation_errors_total(mock_good_intent: Any) -> None:
     orch = ConversationOrchestrator()
     mock_metrics = MagicMock()
 
@@ -210,3 +211,241 @@ def test_build_system_prompt_empty_constraints_object_is_noop() -> None:
         _agent_with_constraints(PersonaConstraints()), active_tool=None
     )
     assert prompt == "You are John.\nPersona: TechStore customer support."
+
+
+# ---------------------------------------------------------------------------
+# _truncate_messages — conversation-history FIFO cap (LLM memory safeguards)
+# ---------------------------------------------------------------------------
+
+
+def _msg(role: MessageRole, content: str) -> Message:
+    return Message(role=role, content=content)
+
+
+def _conversation(count: int) -> list[Message]:
+    """Build alternating user/assistant turns: u0, a0, u1, a1, ..."""
+    out: list[Message] = []
+    for i in range(count):
+        role = MessageRole.USER if i % 2 == 0 else MessageRole.ASSISTANT
+        out.append(_msg(role, f"msg-{i}"))
+    return out
+
+
+def test_truncate_messages_returns_unchanged_when_no_context_limit() -> None:
+    """No config → full history is passed through verbatim."""
+    orch = ConversationOrchestrator()
+    msgs = _conversation(20)
+    assert orch._truncate_messages(msgs, None) == msgs
+
+
+def test_truncate_messages_returns_unchanged_when_under_limit() -> None:
+    """History smaller than the cap is returned untouched."""
+    orch = ConversationOrchestrator()
+    msgs = _conversation(10)
+    result = orch._truncate_messages(msgs, ContextLimitConfig(type="message_count", value=50))
+    assert result == msgs
+
+
+def test_truncate_messages_drops_oldest_fifo_when_over_limit() -> None:
+    """FIFO: oldest non-system messages are removed first."""
+    orch = ConversationOrchestrator()
+    msgs = _conversation(100)
+    result = orch._truncate_messages(msgs, ContextLimitConfig(type="message_count", value=10))
+    assert len(result) == 10
+    # The first kept message should be msg-90; last should be msg-99.
+    assert result[0].content == "msg-90"
+    assert result[-1].content == "msg-99"
+
+
+def test_truncate_messages_preserves_system_prompt_at_minimum_limit() -> None:
+    """Acceptance criterion: system prompt is NEVER dropped (schema min limit = 10)."""
+    orch = ConversationOrchestrator()
+    system = _msg(MessageRole.SYSTEM, "You are TaskOrbit.")
+    msgs = [system, *_conversation(30)]
+    result = orch._truncate_messages(msgs, ContextLimitConfig(type="message_count", value=10))
+    # System prompt survives + exactly 10 most recent conversation messages kept.
+    assert result[0] is system
+    assert len(result) == 11
+    assert result[1].content == "msg-20"
+    assert result[-1].content == "msg-29"
+
+
+def test_truncate_messages_preserves_multiple_system_messages() -> None:
+    """All system messages are protected regardless of position."""
+    orch = ConversationOrchestrator()
+    sys1 = _msg(MessageRole.SYSTEM, "sys-1")
+    sys2 = _msg(MessageRole.SYSTEM, "sys-2")
+    # 30 non-system messages, split around a second system message.
+    msgs = [sys1, *_conversation(15), sys2, *_conversation(15)]
+    result = orch._truncate_messages(msgs, ContextLimitConfig(type="message_count", value=10))
+    # Both system messages present; only the last 10 non-system kept.
+    system_results = [m for m in result if m.role == MessageRole.SYSTEM]
+    other_results = [m for m in result if m.role != MessageRole.SYSTEM]
+    assert system_results == [sys1, sys2]
+    assert len(other_results) == 10
+
+
+def test_truncate_messages_logs_truncation_event() -> None:
+    """Truncation must emit a structured log line with counts (for observability)."""
+    orch = ConversationOrchestrator()
+    msgs = _conversation(30)
+    with patch("taskorbit.orchestration.logger") as mock_logger:
+        orch._truncate_messages(msgs, ContextLimitConfig(type="message_count", value=10))
+        mock_logger.info.assert_called_once()
+        call_kwargs = mock_logger.info.call_args.kwargs
+        assert mock_logger.info.call_args.args[0] == "message_truncation_applied"
+        assert call_kwargs["original_count"] == 30
+        assert call_kwargs["trimmed_count"] == 10
+        assert call_kwargs["dropped_count"] == 20
+
+
+def test_truncate_messages_does_not_log_when_under_limit() -> None:
+    """No truncation → no log noise."""
+    orch = ConversationOrchestrator()
+    msgs = _conversation(5)
+    with patch("taskorbit.orchestration.logger") as mock_logger:
+        orch._truncate_messages(msgs, ContextLimitConfig(type="message_count", value=50))
+        mock_logger.info.assert_not_called()
+
+
+def test_context_limit_rejects_unsupported_strategy() -> None:
+    """Only 'message_count' is enforced this sprint; the schema rejects others."""
+    import pydantic
+
+    with pytest.raises(pydantic.ValidationError):
+        ContextLimitConfig(type="token_threshold", value=100)  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# Routing pipeline (#8 Task 7)
+# ---------------------------------------------------------------------------
+
+
+def _intent_result(
+    name: str = "book_service_appointment",
+    agent_name: str = "sales",
+    confidence: float = 0.9,
+    requires_clarification: bool = False,
+    required_inputs: list[dict[str, Any]] | None = None,
+) -> Any:
+    from taskorbit.intent import IntentResult
+
+    return IntentResult(
+        name=name,
+        description="test",
+        agent_name=agent_name,
+        required_inputs=required_inputs or [],
+        confidence=confidence,
+        requires_clarification=requires_clarification,
+    )
+
+
+@pytest.mark.asyncio
+async def test_clarification_short_circuits_pipeline() -> None:
+    """Low confidence intent skips LLM call and returns CLARIFICATION status."""
+    from taskorbit.intent import _CLARIFICATION_REPLY
+
+    orch = ConversationOrchestrator()
+    low_conf = _intent_result(confidence=0.3, requires_clarification=True)
+
+    with patch.object(orch._intent_router, "detect", new_callable=AsyncMock) as mock_detect:
+        mock_detect.return_value = low_conf
+        with patch.object(
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock
+        ) as mock_llm:
+            response = await orch.process_message(_make_request("uhh maybe?"))
+
+    assert response.status == "clarification"
+    assert response.selected_agent == ""
+    assert response.reply.content == _CLARIFICATION_REPLY
+    mock_llm.assert_not_called()  # short-circuit means no LLM call
+
+
+@pytest.mark.asyncio
+async def test_routed_agent_matches_intent_agent_name() -> None:
+    """selected_agent in response mirrors intent.agent_name from the router."""
+    orch = ConversationOrchestrator()
+    intent = _intent_result(
+        name="customer_dissatisfaction_inquiry", agent_name="customer_dissatisfaction"
+    )
+
+    with patch.object(orch._intent_router, "detect", new_callable=AsyncMock) as mock_detect:
+        mock_detect.return_value = intent
+        with patch.object(
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+        ):
+            response = await orch.process_message(_make_request("I'm unhappy"))
+
+    assert response.selected_intent == "customer_dissatisfaction_inquiry"
+    assert response.selected_agent == "customer_dissatisfaction"
+
+
+@pytest.mark.asyncio
+async def test_agent_transfer_dispatch_sets_tool_invoked() -> None:
+    """When an agent_transfer tool fires, response.tool_invoked is populated."""
+    from taskorbit.slots.models import SlotExtractionResult, SlotValue
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    orch = ConversationOrchestrator()
+    intent = _intent_result(
+        required_inputs=[{"name": "caller_name", "type": "string", "required": True}]
+    )
+    transfer_tool = ToolDefinition(
+        id="transfer-1",
+        name="agent_transfer",
+        type=ToolType.AGENT_TRANSFER,
+        description="hand off",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={"targets": ["technical_support"]},
+    )
+    slot_result = SlotExtractionResult(
+        filled={"caller_name": SlotValue(name="caller_name", value="Asad", slot_type="string")},
+        missing=[],
+    )
+
+    with (
+        patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
+        patch.object(ConversationOrchestrator, "_select_active_tool", return_value=transfer_tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_extract_slots",
+            new_callable=AsyncMock,
+            return_value=slot_result,
+        ),
+        patch.object(
+            ConversationOrchestrator,
+            "_dispatch_tool",
+            new_callable=AsyncMock,
+            return_value={"transferred_to": "technical_support", "history_preserved": True},
+        ),
+        patch.object(
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+        ),
+    ):
+        response = await orch.process_message(_make_request("transfer me"))
+
+    assert response.tool_invoked is not None
+    assert response.tool_invoked.type == ToolType.AGENT_TRANSFER
+
+
+@pytest.mark.asyncio
+async def test_unknown_intent_falls_back_via_clarification() -> None:
+    """When the LLM returns no matching intent, the router's _FALLBACK_RESULT
+    surfaces as a clarification response — no 500 error, no LLM call for reply."""
+    from taskorbit.intent import _CLARIFICATION_REPLY, _FALLBACK_RESULT
+
+    orch = ConversationOrchestrator()
+
+    with patch.object(
+        orch._intent_router, "detect", new_callable=AsyncMock, return_value=_FALLBACK_RESULT
+    ):
+        with patch.object(
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock
+        ) as mock_llm:
+            response = await orch.process_message(_make_request("blibber blabber"))
+
+    assert response.status == "clarification"
+    assert response.selected_intent == "unknown"
+    assert response.selected_agent == ""
+    assert response.reply.content == _CLARIFICATION_REPLY
+    mock_llm.assert_not_called()

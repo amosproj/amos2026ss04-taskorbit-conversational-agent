@@ -108,6 +108,17 @@ export type PersonaConstraints = {
   refusal_template?: string;
 };
 
+/**
+ * ContextLimitConfig — caps how many non-system messages the agent retains
+ * before the oldest are dropped (FIFO). The system prompt is always protected.
+ * Mirrors ContextLimitConfig in backend/src/taskorbit/types.py.
+ * Default: 50 messages. Allowed range: 10–500.
+ */
+export type ContextLimitConfig = {
+  type: "message_count";
+  value: number;
+};
+
 export type AgentConfig = {
   agent_id: string;
   name: string;
@@ -126,6 +137,7 @@ export type AgentConfig = {
   language?: LanguageConfig;
   vad?: VadConfig;
   persona_constraints?: PersonaConstraints;
+  context_limit?: ContextLimitConfig;
 };
 
 /** Strip `undefined` optional sections so JSON output stays Preet-faithful. */
@@ -146,6 +158,7 @@ export function serializeAgent(agent: AgentConfig): Record<string, unknown> {
   if (agent.language) out.language = agent.language;
   if (agent.vad) out.vad = agent.vad;
   if (agent.persona_constraints) out.persona_constraints = agent.persona_constraints;
+  if (agent.context_limit) out.context_limit = agent.context_limit;
   return out;
 }
 
