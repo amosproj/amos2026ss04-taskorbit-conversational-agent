@@ -52,6 +52,8 @@ def build_agent_session(
             api_key=cfg.deepgram_api_key,
             model=cfg.deepgram_model,
             language=cfg.deepgram_language,
+            smart_format=True,
+            numerals=True,
         ),
         # Required by generate_reply() — OrchestratorAgent.llm_node() overrides
         # this fully, so the OpenAI model is never actually called or billed.
