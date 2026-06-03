@@ -71,8 +71,12 @@ def _make_ctx() -> tuple[MagicMock, dict[str, object]]:
 
         return decorator
 
+    participant = MagicMock()
+    participant.metadata = ""
+
     ctx = MagicMock()
     ctx.connect = AsyncMock()
+    ctx.wait_for_participant = AsyncMock(return_value=participant)
     ctx.room.on.side_effect = fake_room_on
     return ctx, registered
 
@@ -505,3 +509,146 @@ async def test_interrupt_after_completed_task_does_not_raise(configured_settings
         handler(_data_packet(json.dumps({"type": "interrupt_playback"}).encode()))
 
     mock_session.interrupt.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Issue #100 — agent config parsing from participant metadata
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_entrypoint_parses_agent_config_from_metadata(configured_settings: None) -> None:
+    """entrypoint() should parse participant metadata into an AgentConfig and
+    forward it to build_default_agent, so the voice path uses the user's saved
+    configuration instead of the hardcoded _default_agent_config fallback (#100).
+    """
+    ctx, _ = _make_ctx()
+    mock_session = _make_session_mock()
+    mock_agent = MagicMock()
+
+    participant = MagicMock()
+    participant.metadata = json.dumps(
+        {
+            "id": "pizza-bot",
+            "name": "PizzaBot",
+            "persona": "You are a pizza expert. Only pizza.",
+            "greeting": "Welcome to the pizza party!",
+            "stt": {"provider": "deepgram", "language": "multi", "model": "nova-3"},
+            "llm": {"provider": "openai", "model": "gpt-4o-mini"},
+            "tts": {
+                "provider": "elevenlabs",
+                "voice_id": "21m00Tcm4TlvDq8ikWAM",
+                "model": "eleven_multilingual_v2",
+            },
+            "tools": [],
+        }
+    )
+    ctx.wait_for_participant = AsyncMock(return_value=participant)
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent) as mock_build,
+    ):
+        await entrypoint(ctx)
+
+    build_kwargs = mock_build.call_args.kwargs
+    assert "agent_config" in build_kwargs
+    parsed = build_kwargs["agent_config"]
+    assert parsed is not None
+    assert parsed.id == "pizza-bot"
+    assert parsed.name == "PizzaBot"
+    assert parsed.persona == "You are a pizza expert. Only pizza."
+
+
+@pytest.mark.asyncio
+async def test_entrypoint_falls_back_when_metadata_missing(configured_settings: None) -> None:
+    """If participant metadata is empty or absent, agent_config is None so the
+    default fallback in _default_agent_config kicks in unchanged."""
+    ctx, _ = _make_ctx()
+    mock_session = _make_session_mock()
+    mock_agent = MagicMock()
+
+    participant = MagicMock()
+    participant.metadata = ""
+    ctx.wait_for_participant = AsyncMock(return_value=participant)
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent) as mock_build,
+    ):
+        await entrypoint(ctx)
+
+    assert mock_build.call_args.kwargs.get("agent_config") is None
+
+
+@pytest.mark.asyncio
+async def test_entrypoint_falls_back_when_metadata_malformed(configured_settings: None) -> None:
+    """If metadata JSON does not validate against AgentConfig, log a warning and
+    pass None to build_default_agent so the fallback applies — never crash."""
+    ctx, _ = _make_ctx()
+    mock_session = _make_session_mock()
+    mock_agent = MagicMock()
+
+    participant = MagicMock()
+    # Missing required fields (id, name, persona, greeting)
+    participant.metadata = json.dumps({"unrelated": "shape"})
+    ctx.wait_for_participant = AsyncMock(return_value=participant)
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent) as mock_build,
+    ):
+        await entrypoint(ctx)
+
+    assert mock_build.call_args.kwargs.get("agent_config") is None
+
+
+@pytest.mark.asyncio
+async def test_commit_turn_cancels_stale_task(configured_settings: None) -> None:
+    """A second commit_turn arriving before the first completes must cancel the
+    first task so generate_reply() is only called once (for the latest turn)."""
+    ctx, registered = _make_ctx()
+    mock_session = _make_session_mock()
+    mock_session.generate_reply = MagicMock(return_value=None)
+    mock_agent = MagicMock()
+
+    small_delay = 0.05
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+        patch("taskorbit.worker._DEEPGRAM_FLUSH_DELAY_S", small_delay),
+    ):
+        await entrypoint(ctx)
+
+        handler = registered["data_received"]
+
+        # First commit_turn — task starts sleeping on the flush delay.
+        handler(_data_packet(json.dumps({"type": "commit_turn"}).encode()))
+        await asyncio.sleep(0)  # let first task start
+
+        # Second commit_turn arrives before flush delay expires — cancels the first.
+        handler(_data_packet(json.dumps({"type": "commit_turn"}).encode()))
+        await asyncio.sleep(small_delay * 2)  # let both tasks settle
+
+    # generate_reply should only have been called once (by the second task).
+    mock_session.generate_reply.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_participant_wait_timeout_continues_with_defaults(configured_settings: None) -> None:
+    """If wait_for_participant times out, the worker must continue with agent_config=None
+    rather than hanging, and still call session.start()."""
+    ctx, _ = _make_ctx()
+    ctx.wait_for_participant = AsyncMock(side_effect=asyncio.TimeoutError)
+    mock_session = _make_session_mock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent) as mock_build,
+    ):
+        await entrypoint(ctx)
+
+    assert mock_build.call_args.kwargs.get("agent_config") is None
+    mock_session.start.assert_awaited_once()

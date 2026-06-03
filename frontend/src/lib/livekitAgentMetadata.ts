@@ -1,14 +1,45 @@
 /**
  * Maps the UI `AgentConfig` into the JSON shape the voice worker expects on
- * the LiveKit JWT (`POST /v1/livekit/token` → `metadata`), which must match
- * the backend `AgentConfig` Pydantic model (id, name, persona, greeting, …).
+ * the LiveKit JWT (`POST /v1/livekit/token` -> `metadata`), which must match
+ * the backend `AgentConfig` Pydantic model (id, name, persona, greeting, ...).
  *
- * Tool definitions are omitted for now — the echo orchestrator ignores them
- * and serialising Meisterwerk tools into backend ToolDefinition rows is a
- * separate ticket.
+ * `persona_constraints` is included so #69 guardrails apply to the voice
+ * path too; before #100 the worker discarded the whole metadata and used
+ * a hardcoded default agent, so guardrails never reached voice sessions.
+ *
+ * Tools are serialised into the backend `ToolDefinition` wire shape (same
+ * adapter used by conversationApi.ts) so the voice path's orchestrator can
+ * dispatch agent_transfer / data_extraction the same way the text path does.
+ * AC7 of #8, voice handoff continuity.
  */
 
-import type { AgentConfig } from "@/types/agentConfig";
+import type { AgentConfig, ToolDefinition as FrontendTool } from "@/types/agentConfig";
+
+type BackendTool = {
+  id: string;
+  name: string;
+  type: string;
+  description: string;
+  confirmation: { required: boolean; prompt: string };
+  parameters: Record<string, unknown>;
+};
+
+function adaptTool(tool: FrontendTool): BackendTool {
+  const base = {
+    id: tool.name || tool.type,
+    name: tool.name,
+    type: tool.type,
+    description: tool.description,
+    confirmation: { required: false, prompt: "" },
+  };
+  if (tool.type === "data_extraction") {
+    return { ...base, parameters: { params: tool.params } };
+  }
+  if (tool.type === "agent_transfer") {
+    return { ...base, parameters: { targets: tool.targets } };
+  }
+  return { ...base, parameters: {} };
+}
 
 export function buildLiveKitWorkerMetadata(agent: AgentConfig): Record<string, unknown> {
   const llmProvider = agent.llm.provider === "gemini" ? "google" : "openai";
@@ -31,6 +62,7 @@ export function buildLiveKitWorkerMetadata(agent: AgentConfig): Record<string, u
       voice_id: agent.tts.voice_id,
       model: agent.tts.model,
     },
-    tools: [],
+    tools: agent.tools.map(adaptTool),
+    persona_constraints: agent.persona_constraints ?? null,
   };
 }

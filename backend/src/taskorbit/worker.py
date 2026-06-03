@@ -22,11 +22,13 @@ from livekit import rtc
 from livekit.agents import AutoSubscribe, JobContext, WorkerOptions, cli
 from livekit.agents.metrics import STTMetrics, TTSMetrics
 from livekit.agents.voice.events import AgentEvent
+from pydantic import ValidationError
 
 from taskorbit.config import get_settings
 from taskorbit.livekit_agent import build_agent_session, build_default_agent
 from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import configure_default_metrics, get_metrics
+from taskorbit.types import AgentConfig
 
 logger = get_logger(__name__)
 
@@ -37,27 +39,53 @@ _DEEPGRAM_FLUSH_DELAY_S: float = 0.3
 # Packets with any other `type` value are silently discarded.
 _RECOGNISED_MSG_TYPES: frozenset[str] = frozenset({"commit_turn", "interrupt_playback"})
 
+# Topic the FE subscribes to via useAgentHandoff to swap the active agent
+# card mid-call without dropping the LiveKit room. #8 Task 6 AC7.
+_HANDOFF_TOPIC: str = "taskorbit.agent_handoff"
+_ROUTED_AGENT_TOPIC: str = "taskorbit.agent_routed"
+
 
 async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
     cfg = get_settings()
 
-    # Read the greeting from participant metadata so we can speak it through
-    # the session — same TTS/WebRTC pipeline as every other agent turn, so
-    # the voice is identical. The frontend used to call ElevenLabs directly
-    # for the greeting which produced a different audio path (plain MP3
-    # playback vs WebRTC Opus), making the voices sound different.
+    # Read participant metadata and parse it into an AgentConfig so the
+    # voice path uses the user's saved configuration instead of the
+    # hardcoded fallback in ``_default_agent_config`` (#100). The frontend
+    # serialises this via ``buildLiveKitWorkerMetadata`` and the backend
+    # embeds it in ``RoomAgentDispatch.metadata`` on the JWT. Carrying the
+    # full agent (including tools) is what enables voice-side agent_transfer
+    # dispatch for the mid-call handoff (AC7 of #8).
+    #
+    # ``greeting`` is still extracted separately because ``session.say()``
+    # below speaks it through the same TTS/WebRTC pipeline as every other
+    # agent turn; the frontend used to call ElevenLabs directly which
+    # produced a different audio path (plain MP3 vs WebRTC Opus).
     greeting: str = ""
+    agent_config: AgentConfig | None = None
     try:
-        participant = await ctx.wait_for_participant()
+        participant = await asyncio.wait_for(ctx.wait_for_participant(), timeout=30.0)
         meta = json.loads(participant.metadata or "{}")
         greeting = str(meta.get("greeting") or "")
+        try:
+            agent_config = AgentConfig.model_validate(meta)
+            logger.info(
+                "worker_agent_config_loaded_from_metadata",
+                agent_id=agent_config.id,
+                agent_name=agent_config.name,
+            )
+        except ValidationError as exc:
+            logger.warning(
+                "worker_agent_config_parse_failed",
+                error=str(exc),
+                fallback="_default_agent_config",
+            )
     except Exception:  # noqa: BLE001
         pass
 
     session = build_agent_session(settings=cfg)
-    agent = build_default_agent(settings=cfg)
+    agent = build_default_agent(settings=cfg, agent_config=agent_config)
 
     @session.on("metrics_collected")
     def _on_metrics(ev: AgentEvent) -> None:
@@ -96,10 +124,18 @@ async def entrypoint(ctx: JobContext) -> None:
         # the last word(s) of the utterance may be missing from the reply.
         try:
             await asyncio.sleep(_DEEPGRAM_FLUSH_DELAY_S)
-            result = session.generate_reply()
-            if asyncio.iscoroutine(result):
-                await result
-            _turn_elapsed = time.perf_counter() - turn_start
+            # generate_reply() returns a SpeechHandle synchronously; the actual
+            # llm_node + orchestrator work happens in the background. We must
+            # wait_for_playout() so the orchestrator finishes stashing the
+            # pending handoff target before we read it below — otherwise the
+            # publish fires before the stash, and the handoff is silently lost.
+            handle = session.generate_reply()
+            if asyncio.iscoroutine(handle):
+                handle = await handle
+            try:
+                await handle.wait_for_playout()
+            except Exception:  # noqa: BLE001
+                pass
             _turn_elapsed = time.perf_counter() - turn_start
             get_metrics().pipeline_latency_seconds.labels(stage="worker_turn").observe(
                 _turn_elapsed
@@ -108,6 +144,36 @@ async def entrypoint(ctx: JobContext) -> None:
                 "worker_generate_reply_triggered",
                 turn_latency_ms=round(_turn_elapsed * 1000, 1),
             )
+
+            # Publish the routed agent name after each turn so the frontend
+            # can display which specialist is currently handling the call.
+            if agent._current_routed_agent:
+                try:
+                    payload = json.dumps(
+                        {"type": "agent_routed", "agent": agent._current_routed_agent}
+                    )
+                    await ctx.room.local_participant.publish_data(
+                        payload, reliable=True, topic=_ROUTED_AGENT_TOPIC
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("worker_agent_routed_publish_failed", error=str(exc))
+
+            # AC7: now that the orchestrator has finished (wait_for_playout
+            # above), the pending target is set if an agent_transfer dispatched
+            # this turn. Publish on the FE-subscribed topic so the client
+            # swaps the active agent card without dropping the LiveKit room.
+            pending = agent._pending_handoff_target
+            if pending:
+                try:
+                    payload = json.dumps({"type": "agent_handoff", "target": pending})
+                    await ctx.room.local_participant.publish_data(
+                        payload, reliable=True, topic=_HANDOFF_TOPIC
+                    )
+                    logger.info("worker_handoff_published", target=pending, topic=_HANDOFF_TOPIC)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("worker_handoff_publish_failed", error=str(exc))
+                finally:
+                    agent._pending_handoff_target = None
         except Exception as exc:  # noqa: BLE001
             logger.warning("worker_generate_reply_failed", error=str(exc))
 
@@ -131,6 +197,8 @@ async def entrypoint(ctx: JobContext) -> None:
             return
         if msg_type == "commit_turn":
             t_now = time.perf_counter()
+            if reply_task and not reply_task.done():
+                reply_task.cancel()
             agent.request_reply(t_commit=t_now)
             reply_task = asyncio.create_task(_commit_and_reply(t_now))
         elif msg_type == "interrupt_playback":

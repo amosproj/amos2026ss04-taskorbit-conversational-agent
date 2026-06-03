@@ -26,6 +26,7 @@ from livekit.plugins.elevenlabs import VoiceSettings
 from taskorbit.config import Settings, get_settings
 from taskorbit.livekit_agent.llm import OrchestratorAgent
 from taskorbit.orchestration import ConversationOrchestrator
+from taskorbit.types import AgentConfig
 
 
 def build_agent_session(
@@ -45,7 +46,7 @@ def build_agent_session(
             activation_threshold=0.7,
             deactivation_threshold=0.45,
             min_speech_duration=0.2,
-            min_silence_duration=0.55,
+            min_silence_duration=1.5,
             prefix_padding_duration=0.4,
         ),
         stt=deepgram.STT(
@@ -54,6 +55,7 @@ def build_agent_session(
             language=cfg.deepgram_language,
             smart_format=True,
             numerals=True,
+            endpointing_ms=400,
         ),
         # Required by generate_reply() — OrchestratorAgent.llm_node() overrides
         # this fully, so the OpenAI model is never actually called or billed.
@@ -98,12 +100,20 @@ def build_default_agent(
     *,
     orchestrator: ConversationOrchestrator | None = None,
     settings: Settings | None = None,
+    agent_config: AgentConfig | None = None,
 ) -> OrchestratorAgent:
     """Build the ``OrchestratorAgent`` paired with this session.
 
     Kept separate from ``build_agent_session`` because ``session.start``
     expects the agent as a parameter, not as a constructor argument.
+
+    Pass ``agent_config`` when the caller has parsed it from participant
+    metadata (#100) so the voice path uses the user's saved configuration
+    instead of the hardcoded ``_default_agent_config`` fallback. With the
+    full agent (including tools) the orchestrator can also dispatch the
+    agent_transfer tool on voice, enabling mid-call handoff (AC7 of #8).
     """
     return OrchestratorAgent(
         orchestrator=orchestrator or ConversationOrchestrator(settings=settings),
+        agent_config=agent_config,
     )

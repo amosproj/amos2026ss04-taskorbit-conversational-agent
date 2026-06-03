@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { ChevronDown, Globe, Plus, Settings2, Trash2, Waves } from "lucide-react";
+import { ChevronDown, Globe, History, Plus, Settings2, Trash2, Waves } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,13 +17,15 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 
-import type { LanguageConfig, VadConfig } from "@/types/agentConfig";
+import type { ContextLimitConfig, LanguageConfig, VadConfig } from "@/types/agentConfig";
 
 type Props = {
   language: LanguageConfig | undefined;
   vad: VadConfig | undefined;
+  contextLimit: ContextLimitConfig | undefined;
   onLanguageChange: (next: LanguageConfig | undefined) => void;
   onVadChange: (next: VadConfig | undefined) => void;
+  onContextLimitChange: (next: ContextLimitConfig | undefined) => void;
 };
 
 const LANGUAGE_DEFAULT: LanguageConfig = {
@@ -37,7 +39,19 @@ const VAD_DEFAULT: VadConfig = {
   silence_threshold_ms: 500,
 };
 
-export function AdvancedSection({ language, vad, onLanguageChange, onVadChange }: Props) {
+const CONTEXT_LIMIT_DEFAULT: ContextLimitConfig = {
+  type: "message_count",
+  value: 50,
+};
+
+export function AdvancedSection({
+  language,
+  vad,
+  contextLimit,
+  onLanguageChange,
+  onVadChange,
+  onContextLimitChange,
+}: Props) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -56,8 +70,8 @@ export function AdvancedSection({ language, vad, onLanguageChange, onVadChange }
               Advanced
             </CardTitle>
             <CardDescription>
-              Optional language and voice-activity-detection settings. Each section is omitted from
-              the saved JSON unless enabled.
+              Optional language, voice-activity-detection, and memory settings. Each section is
+              omitted from the saved JSON unless enabled.
             </CardDescription>
           </div>
         </CardHeader>
@@ -75,6 +89,7 @@ export function AdvancedSection({ language, vad, onLanguageChange, onVadChange }
           <CardContent id="advanced-content" className="flex flex-col gap-6 pt-6">
             <LanguageBlock value={language} onChange={onLanguageChange} />
             <VadBlock value={vad} onChange={onVadChange} />
+            <ContextLimitBlock value={contextLimit} onChange={onContextLimitChange} />
           </CardContent>
         </>
       ) : null}
@@ -298,6 +313,78 @@ function VadBlock({
             />
             <FieldDescription>
               How long the user can be silent before the agent considers their turn over.
+            </FieldDescription>
+          </Field>
+        </FieldGroup>
+      ) : null}
+    </section>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────── */
+/* Context limit                                                         */
+/* ──────────────────────────────────────────────────────────────────── */
+
+function ContextLimitBlock({
+  value,
+  onChange,
+}: {
+  value: ContextLimitConfig | undefined;
+  onChange: (next: ContextLimitConfig | undefined) => void;
+}) {
+  const idSwitch = useId();
+  const idValue = useId();
+  const enabled = !!value;
+
+  const toggle = (next: boolean) => onChange(next ? (value ?? CONTEXT_LIMIT_DEFAULT) : undefined);
+
+  return (
+    <section className="rounded-lg border border-dashed border-border bg-muted/20 p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-1">
+          <h3 className="flex items-center gap-2 text-sm font-medium">
+            <History className="size-4 text-muted-foreground" aria-hidden />
+            Conversation memory limit
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Cap how many messages the agent remembers. Oldest messages are dropped first (FIFO). The
+            system prompt is always kept.
+          </p>
+        </div>
+        <Field orientation="horizontal" className="sm:w-auto">
+          <Switch
+            id={idSwitch}
+            checked={enabled}
+            onCheckedChange={toggle}
+            aria-label="Enable context limit"
+          />
+          <FieldLabel htmlFor={idSwitch} className="text-sm font-normal">
+            Enable
+          </FieldLabel>
+        </Field>
+      </div>
+
+      {enabled && value ? (
+        <FieldGroup className="mt-4">
+          <Field>
+            <FieldLabel htmlFor={idValue}>Max messages</FieldLabel>
+            <Input
+              id={idValue}
+              type="number"
+              min={2}
+              max={499}
+              step={1}
+              value={value.value}
+              onChange={(e) => {
+                const n = e.target.valueAsNumber;
+                if (!Number.isNaN(n)) {
+                  onChange({ ...value, value: Math.min(499, Math.max(2, n)) });
+                }
+              }}
+              className="w-32"
+            />
+            <FieldDescription>
+              Number of user/assistant messages to retain per session (2–499). Default: 50.
             </FieldDescription>
           </Field>
         </FieldGroup>
