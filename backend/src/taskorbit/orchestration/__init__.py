@@ -70,6 +70,15 @@ class ConversationOrchestrator:
                 (t for t in request.agent_config.tools if t.type == ToolType.END_CALL),
                 None,
             )
+            logger.debug(
+                "end_call_check",
+                conversation_id=request.conversation_id,
+                tool_found=end_call_tool is not None,
+                tools_count=len(request.agent_config.tools),
+                tool_types=[t.type for t in request.agent_config.tools],
+                user_requested=self._user_requested_end_call(last_user.content),
+                message_snippet=last_user.content[:60],
+            )
             if end_call_tool and self._user_requested_end_call(last_user.content):
                 farewell = await asyncio.wait_for(
                     self._call_llm(

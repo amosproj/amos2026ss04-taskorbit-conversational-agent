@@ -76,6 +76,11 @@ async def entrypoint(ctx: JobContext) -> None:
                 agent_id=agent_config.id,
                 agent_name=agent_config.name,
             )
+            logger.info(
+                "worker_agent_config_tools_loaded",
+                tools_count=len(agent_config.tools),
+                tool_types=[t.type for t in agent_config.tools],
+            )
         except ValidationError as exc:
             logger.warning(
                 "worker_agent_config_parse_failed",
