@@ -82,6 +82,30 @@ type ConversationsResponse = {
   total: number;
 };
 
+export type ConversationHistory = {
+  conversation_id: string;
+  agent_id: string;
+  agent_name: string;
+  started_at: string;
+  ended_at: string | null;
+  messages: Array<{ id: number; role: string; content: string; created_at: string }>;
+  tool_executions: Array<{
+    id: number;
+    tool_id: string;
+    tool_type: string;
+    confirmed: boolean;
+    executed_at: string;
+    result: Record<string, unknown> | null;
+  }>;
+  slot_extractions: Array<{
+    id: number;
+    tool_id: string;
+    field_name: string;
+    field_value: string | null;
+    extracted_at: string;
+  }>;
+};
+
 // ---------------------------------------------------------------------------
 // Adapters: frontend schema → backend wire schema
 // ---------------------------------------------------------------------------
@@ -185,6 +209,18 @@ export async function getConversations(): Promise<ConversationsResponse> {
   const response = await fetch("/api/v1/conversations");
   if (!response.ok) {
     throw new Error("Failed to fetch conversations");
+  }
+  return response.json();
+}
+
+/**
+ * Fetch full history for a single conversation — messages, tool executions,
+ * and slot extractions. Used on reload to restore a previous session.
+ */
+export async function getConversationHistory(conversationId: string): Promise<ConversationHistory> {
+  const response = await fetch(`/api/v1/conversations/${conversationId}/history`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch history for conversation ${conversationId}`);
   }
   return response.json();
 }
