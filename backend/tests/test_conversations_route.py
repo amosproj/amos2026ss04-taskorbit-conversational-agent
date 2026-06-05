@@ -13,6 +13,8 @@ from taskorbit.types import (
     ConversationResponse,
     Message,
     MessageRole,
+    ToolDefinition,
+    ToolType,
 )
 
 _VALID_PAYLOAD = {
@@ -247,4 +249,110 @@ def test_get_history_returns_404_when_not_found() -> None:
         with TestClient(app) as client:
             response = client.get("/v1/conversations/nonexistent/history")
     assert response.status_code == 404
+    app.dependency_overrides = {}
+
+
+def test_process_conversation_persists_slot_extractions() -> None:
+    """When the orchestrator returns extracted_slots, create_slot_extractions is called once."""
+    tool = ToolDefinition(
+        id="data_extraction",
+        name="collect_info",
+        type=ToolType.DATA_EXTRACTION,
+        description="Collects user info",
+    )
+    mock_response = ConversationResponse(
+        conversation_id="conv-1",
+        reply=Message(role=MessageRole.ASSISTANT, content="Got it!"),
+        status="success",
+        tool_invoked=tool,
+        extracted_slots={"name": "Alice", "email": "alice@example.com"},
+    )
+    mock_orchestrator = AsyncMock()
+    mock_orchestrator.process_message.return_value = mock_response
+
+    app = create_app()
+    app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
+    app.dependency_overrides[get_session] = _mock_db
+    app.dependency_overrides[get_current_user_id] = lambda: 1
+
+    with (
+        patch(
+            "taskorbit.api.routes.conversations.get_conversation",
+            new_callable=AsyncMock,
+            return_value=MagicMock(),
+        ),
+        patch(
+            "taskorbit.api.routes.conversations.create_conversation_message",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "taskorbit.api.routes.conversations.create_slot_extractions",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as mock_extractions,
+        patch(
+            "taskorbit.api.routes.conversations.create_tool_execution",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+    ):
+        with TestClient(app) as client:
+            response = client.post("/v1/conversations/process", json=_VALID_PAYLOAD)
+
+    assert response.status_code == 200
+    mock_extractions.assert_called_once()
+    call_kwargs = mock_extractions.call_args.kwargs
+    assert call_kwargs["tool_id"] == "data_extraction"
+    assert call_kwargs["slots"] == {"name": "Alice", "email": "alice@example.com"}
+    app.dependency_overrides = {}
+
+
+def test_process_conversation_records_tool_execution() -> None:
+    """When the orchestrator returns tool_invoked, create_tool_execution is called once."""
+    tool = ToolDefinition(
+        id="agent_transfer",
+        name="transfer",
+        type=ToolType.AGENT_TRANSFER,
+        description="Transfers the call",
+    )
+    mock_response = ConversationResponse(
+        conversation_id="conv-1",
+        reply=Message(role=MessageRole.ASSISTANT, content="Transferring now."),
+        status="success",
+        tool_invoked=tool,
+    )
+    mock_orchestrator = AsyncMock()
+    mock_orchestrator.process_message.return_value = mock_response
+
+    app = create_app()
+    app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
+    app.dependency_overrides[get_session] = _mock_db
+    app.dependency_overrides[get_current_user_id] = lambda: 1
+
+    with (
+        patch(
+            "taskorbit.api.routes.conversations.get_conversation",
+            new_callable=AsyncMock,
+            return_value=MagicMock(),
+        ),
+        patch(
+            "taskorbit.api.routes.conversations.create_conversation_message",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "taskorbit.api.routes.conversations.create_tool_execution",
+            new_callable=AsyncMock,
+            return_value=None,
+        ) as mock_execution,
+    ):
+        with TestClient(app) as client:
+            response = client.post("/v1/conversations/process", json=_VALID_PAYLOAD)
+
+    assert response.status_code == 200
+    mock_execution.assert_called_once()
+    call_kwargs = mock_execution.call_args.kwargs
+    assert call_kwargs["tool_id"] == "agent_transfer"
+    assert call_kwargs["tool_type"] == ToolType.AGENT_TRANSFER.value
     app.dependency_overrides = {}

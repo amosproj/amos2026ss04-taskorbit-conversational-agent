@@ -21,6 +21,14 @@ from typing import Any
 
 from livekit.agents import Agent, FunctionTool, ModelSettings, llm
 
+from taskorbit.database import AsyncSessionLocal
+from taskorbit.database.crud import (
+    create_conversation,
+    create_conversation_message,
+    create_slot_extractions,
+    create_tool_execution,
+    get_conversation,
+)
 from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import get_metrics
 from taskorbit.orchestration import ConversationOrchestrator
@@ -234,6 +242,60 @@ class OrchestratorAgent(Agent):
         self._locked_intent_name = response.locked_intent_name
         if response.selected_agent:
             self._current_routed_agent = response.selected_agent
+
+        # Persist the voice turn to the database so conversation history is
+        # available regardless of whether the user interacted via text or voice.
+        try:
+            async with AsyncSessionLocal() as db:
+                conv_id = self._conversation_id
+                if not await get_conversation(db, conv_id):
+                    conv = await create_conversation(
+                        db,
+                        agent_id=self._agent_config.id,
+                        agent_name=self._agent_config.name,
+                    )
+                    if conv:
+                        conv_id = conv.id
+                        self._conversation_id = conv_id
+                if last_user:
+                    await create_conversation_message(
+                        db,
+                        conversation_id=conv_id,
+                        role=last_user.role.value,
+                        content=last_user.content,
+                    )
+                if response.reply:
+                    await create_conversation_message(
+                        db,
+                        conversation_id=conv_id,
+                        role=response.reply.role.value,
+                        content=response.reply.content,
+                    )
+                if response.extracted_slots:
+                    tool_id = response.tool_invoked.id if response.tool_invoked else "orchestrator"
+                    await create_slot_extractions(
+                        db,
+                        conversation_id=conv_id,
+                        tool_id=tool_id,
+                        slots=response.extracted_slots,
+                    )
+                if response.tool_invoked:
+                    await create_tool_execution(
+                        db,
+                        conversation_id=conv_id,
+                        tool_id=response.tool_invoked.id,
+                        tool_type=response.tool_invoked.type.value,
+                        result={"extracted_slots": response.extracted_slots}
+                        if response.extracted_slots
+                        else None,
+                    )
+        except Exception as exc:
+            log.error(
+                "voice_turn_db_persist_failed",
+                error=str(exc),
+                conversation_id=self._conversation_id,
+            )
+
         status = "success" if response.status == "success" else "error"
         get_metrics().voice_pipeline_requests_total.labels(
             handler="/v1/conversations/process", status=status
