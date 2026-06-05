@@ -562,6 +562,17 @@ class ConversationOrchestrator:
         "i'm ready to end", "im ready to end",
         # Wrap-up with explicit call reference
         "wrap up the call", "let's end the call", "lets end the call",
+        # Done for the day / session
+        "done for the day", "done for today",
+        "i'm done for the day", "im done for the day",
+        "i am done for the day", "am done for the day",
+        "i think i'm done", "i think im done",
+        "i think am done", "i think i am done",
+        "i think that's all", "i think thats all",
+        "i think that's everything", "i think thats everything",
+        "i think we're done", "i think were done",
+        "i guess that's all", "i guess thats all",
+        "that's it for today", "thats it for today",
     })
 
     def _user_requested_end_call(self, message: str) -> bool:
