@@ -157,7 +157,7 @@ class AgentConfig(BaseModel):
 
 
 class ConversationRequest(BaseModel):
-    conversation_id: str
+    conversation_id: str | None = None  # omit on first message; backend assigns and returns one
     agent_config: AgentConfig
     messages: list[Message]
     current_intent_name: str | None = None

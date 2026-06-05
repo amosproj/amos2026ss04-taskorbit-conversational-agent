@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
+from taskorbit.api.deps import get_current_user_id
 from taskorbit.api.main import create_app
 from taskorbit.api.routes.conversations import get_orchestrator, get_session
 from taskorbit.types import (
@@ -49,10 +50,18 @@ def test_process_conversation_returns_200_with_mock() -> None:
     app = create_app()
     app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
     app.dependency_overrides[get_session] = _mock_db
-    with patch(
-        "taskorbit.api.routes.conversations.create_conversation_message",
-        new_callable=AsyncMock,
-        return_value=None,
+    app.dependency_overrides[get_current_user_id] = lambda: 1
+    with (
+        patch(
+            "taskorbit.api.routes.conversations.get_conversation",
+            new_callable=AsyncMock,
+            return_value=MagicMock(),  # truthy — conversation exists, skip auto-create
+        ),
+        patch(
+            "taskorbit.api.routes.conversations.create_conversation_message",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
     ):
         with TestClient(app) as client:
             response = client.post("/v1/conversations/process", json=_VALID_PAYLOAD)
@@ -61,6 +70,61 @@ def test_process_conversation_returns_200_with_mock() -> None:
     assert body["conversation_id"] == "conv-1"
     assert "[Mocked] Hello" == body["reply"]["content"]
     assert body["reply"]["role"] == "assistant"
+    app.dependency_overrides = {}
+
+
+def test_process_conversation_auto_creates_when_no_id() -> None:
+    """When no conversation_id is sent the endpoint auto-creates one and returns the assigned ID."""
+    new_conv_id = "auto-conv-abc123"
+    mock_conv = MagicMock()
+    mock_conv.id = new_conv_id
+
+    mock_response = ConversationResponse(
+        conversation_id=new_conv_id,
+        reply=Message(role=MessageRole.ASSISTANT, content="Hello!"),
+        status="success",
+    )
+    mock_orchestrator = AsyncMock()
+    mock_orchestrator.process_message.return_value = mock_response
+
+    app = create_app()
+    app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
+    app.dependency_overrides[get_session] = _mock_db
+    app.dependency_overrides[get_current_user_id] = lambda: 1
+
+    payload = {
+        "agent_config": {
+            "id": "agent-1",
+            "name": "Bot",
+            "persona": "Helpful",
+            "greeting": "Hi!",
+        },
+        "messages": [{"role": "user", "content": "Hello"}],
+    }
+
+    with (
+        patch(
+            "taskorbit.api.routes.conversations.get_conversation",
+            new_callable=AsyncMock,
+            return_value=None,  # simulates unknown / first-ever conversation
+        ),
+        patch(
+            "taskorbit.api.routes.conversations.create_conversation",
+            new_callable=AsyncMock,
+            return_value=mock_conv,
+        ),
+        patch(
+            "taskorbit.api.routes.conversations.create_conversation_message",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+    ):
+        with TestClient(app) as client:
+            response = client.post("/v1/conversations/process", json=payload)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["conversation_id"] == new_conv_id
     app.dependency_overrides = {}
 
 
@@ -109,4 +173,78 @@ def test_create_conversation_returns_201() -> None:
     with TestClient(app) as client:
         response = client.post("/v1/conversations")
     assert response.status_code == 201
+    app.dependency_overrides = {}
+
+
+def test_get_history_returns_200() -> None:
+    """GET /v1/conversations/{id}/history returns the full history payload."""
+    history_payload = {
+        "conversation_id": "conv-1",
+        "agent_id": "agent-1",
+        "agent_name": "Bot",
+        "started_at": "2026-06-05T20:00:00+00:00",
+        "ended_at": None,
+        "messages": [
+            {"id": 1, "role": "user", "content": "Hi", "created_at": "2026-06-05T20:00:01+00:00"},
+            {
+                "id": 2,
+                "role": "assistant",
+                "content": "Hello!",
+                "created_at": "2026-06-05T20:00:02+00:00",
+            },
+        ],
+        "tool_executions": [
+            {
+                "id": 1,
+                "tool_id": "data_extraction",
+                "tool_type": "extraction",
+                "confirmed": False,
+                "executed_at": "2026-06-05T20:00:02+00:00",
+                "result": {"extracted_slots": {"name": "Alice"}},
+            }
+        ],
+        "slot_extractions": [
+            {
+                "id": 1,
+                "tool_id": "data_extraction",
+                "field_name": "name",
+                "field_value": "Alice",
+                "extracted_at": "2026-06-05T20:00:02+00:00",
+            }
+        ],
+    }
+    app = create_app()
+    app.dependency_overrides[get_session] = _mock_db
+    with patch(
+        "taskorbit.api.routes.conversations.get_conversation_history",
+        new_callable=AsyncMock,
+        return_value=history_payload,
+    ):
+        with TestClient(app) as client:
+            response = client.get("/v1/conversations/conv-1/history")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["conversation_id"] == "conv-1"
+    assert body["agent_name"] == "Bot"
+    assert len(body["messages"]) == 2
+    assert len(body["tool_executions"]) == 1
+    assert body["tool_executions"][0]["tool_id"] == "data_extraction"
+    assert len(body["slot_extractions"]) == 1
+    assert body["slot_extractions"][0]["field_name"] == "name"
+    assert body["slot_extractions"][0]["tool_id"] == "data_extraction"
+    app.dependency_overrides = {}
+
+
+def test_get_history_returns_404_when_not_found() -> None:
+    """GET /v1/conversations/{id}/history returns 404 for unknown conversation."""
+    app = create_app()
+    app.dependency_overrides[get_session] = _mock_db
+    with patch(
+        "taskorbit.api.routes.conversations.get_conversation_history",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        with TestClient(app) as client:
+            response = client.get("/v1/conversations/nonexistent/history")
+    assert response.status_code == 404
     app.dependency_overrides = {}
