@@ -210,9 +210,7 @@ class ConversationOrchestrator:
 
             end_call_ready = active_tool is not None and active_tool.type == ToolType.END_CALL
             slots_ready = (
-                active_tool is not None
-                and slot_result.is_complete
-                and bool(intent.required_inputs)
+                active_tool is not None and slot_result.is_complete and bool(intent.required_inputs)
             )
             if end_call_ready or slots_ready:
                 dispatch_context: dict[str, Any] = dict(slot_result.to_dict())
@@ -543,37 +541,67 @@ class ConversationOrchestrator:
         )
         return result.data
 
-    _END_CALL_SIGNALS: frozenset[str] = frozenset({
-        # Unambiguous farewells
-        "goodbye", "good bye", "bye bye",
-        # Explicit end-call phrases
-        "end the call", "end this call", "end call",
-        "end the conversation", "end this conversation",
-        "close the call", "terminate the call",
-        "hang up", "hangup", "i want to hang up",
-        "i want to end the call", "i want to end this call",
-        "please end the call", "please hang up",
-        # Clearly finished
-        "that's all i needed", "that is all i needed",
-        "that's everything i needed", "that is everything i needed",
-        "no more questions", "i have no more questions",
-        "i'm done for now", "im done for now",
-        "we're done here", "were done here",
-        "i'm ready to end", "im ready to end",
-        # Wrap-up with explicit call reference
-        "wrap up the call", "let's end the call", "lets end the call",
-        # Done for the day / session
-        "done for the day", "done for today",
-        "i'm done for the day", "im done for the day",
-        "i am done for the day", "am done for the day",
-        "i think i'm done", "i think im done",
-        "i think am done", "i think i am done",
-        "i think that's all", "i think thats all",
-        "i think that's everything", "i think thats everything",
-        "i think we're done", "i think were done",
-        "i guess that's all", "i guess thats all",
-        "that's it for today", "thats it for today",
-    })
+    _END_CALL_SIGNALS: frozenset[str] = frozenset(
+        {
+            # Unambiguous farewells
+            "goodbye",
+            "good bye",
+            "bye bye",
+            # Explicit end-call phrases
+            "end the call",
+            "end this call",
+            "end call",
+            "end the conversation",
+            "end this conversation",
+            "close the call",
+            "terminate the call",
+            "hang up",
+            "hangup",
+            "i want to hang up",
+            "i want to end the call",
+            "i want to end this call",
+            "please end the call",
+            "please hang up",
+            # Clearly finished
+            "that's all i needed",
+            "that is all i needed",
+            "that's everything i needed",
+            "that is everything i needed",
+            "no more questions",
+            "i have no more questions",
+            "i'm done for now",
+            "im done for now",
+            "we're done here",
+            "were done here",
+            "i'm ready to end",
+            "im ready to end",
+            # Wrap-up with explicit call reference
+            "wrap up the call",
+            "let's end the call",
+            "lets end the call",
+            # Done for the day / session
+            "done for the day",
+            "done for today",
+            "i'm done for the day",
+            "im done for the day",
+            "i am done for the day",
+            "am done for the day",
+            "i think i'm done",
+            "i think im done",
+            "i think am done",
+            "i think i am done",
+            "i think that's all",
+            "i think thats all",
+            "i think that's everything",
+            "i think thats everything",
+            "i think we're done",
+            "i think were done",
+            "i guess that's all",
+            "i guess thats all",
+            "that's it for today",
+            "thats it for today",
+        }
+    )
 
     def _user_requested_end_call(self, message: str) -> bool:
         """Return True when the user's message contains an explicit end-call signal."""
