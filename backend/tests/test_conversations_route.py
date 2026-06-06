@@ -132,9 +132,11 @@ def test_process_conversation_auto_creates_when_no_id() -> None:
 
 def test_process_conversation_rejects_invalid_payload() -> None:
     app = create_app()
+    app.dependency_overrides[get_current_user_id] = lambda: 1
     with TestClient(app) as client:
         response = client.post("/v1/conversations/process", json={"bad": "payload"})
     assert response.status_code == 422
+    app.dependency_overrides = {}
 
 
 def test_get_conversations_returns_200() -> None:
