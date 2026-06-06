@@ -142,11 +142,11 @@ async def get_conversation(db: AsyncSession, conversation_id: str) -> Conversati
 
 
 async def create_conversation(
-    db: AsyncSession, agent_id: str, agent_name: str
+    db: AsyncSession, agent_id: str, agent_name: str, id: str | None = None
 ) -> Conversation | None:
     try:
         conversation = Conversation(
-            id=str(uuid4()),
+            id=id or str(uuid4()),
             agent_id=agent_id,
             agent_name=agent_name,
             started_at=datetime.now(UTC),

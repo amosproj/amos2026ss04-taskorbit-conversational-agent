@@ -248,15 +248,16 @@ class OrchestratorAgent(Agent):
         try:
             async with AsyncSessionLocal() as db:
                 conv_id = self._conversation_id
+                log.debug("voice_turn_db_persist_start", conversation_id=conv_id)
                 if not await get_conversation(db, conv_id):
                     conv = await create_conversation(
                         db,
                         agent_id=self._agent_config.id,
                         agent_name=self._agent_config.name,
+                        id=conv_id,
                     )
-                    if conv:
-                        conv_id = conv.id
-                        self._conversation_id = conv_id
+                    if conv is None:
+                        log.error("voice_turn_conversation_create_failed", conversation_id=conv_id)
                 if last_user:
                     await create_conversation_message(
                         db,
@@ -295,6 +296,8 @@ class OrchestratorAgent(Agent):
                 error=str(exc),
                 conversation_id=self._conversation_id,
             )
+        else:
+            log.info("voice_turn_db_persist_ok", conversation_id=conv_id)
 
         status = "success" if response.status == "success" else "error"
         get_metrics().voice_pipeline_requests_total.labels(

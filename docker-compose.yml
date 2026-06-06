@@ -78,6 +78,7 @@ services:
     env_file:
       - ./backend/.env
     environment:
+      DATABASE_URL: postgresql://taskorbit:taskorbit@postgres:5432/taskorbit
       PYTHONUNBUFFERED: "1"
       LOG_JSON: "true"
       PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
@@ -88,6 +89,8 @@ services:
       - taskorbit-worker-prometheus:/tmp/prometheus_multiproc
     command: poetry run taskorbit-worker dev
     depends_on:
+      postgres:
+        condition: service_healthy
       backend:
         condition: service_started
 
