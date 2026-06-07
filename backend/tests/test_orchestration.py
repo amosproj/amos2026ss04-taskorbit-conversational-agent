@@ -449,3 +449,108 @@ async def test_unknown_intent_falls_back_via_clarification() -> None:
     assert response.selected_agent == ""
     assert response.reply.content == _CLARIFICATION_REPLY
     mock_llm.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# process_message_stream
+# ---------------------------------------------------------------------------
+
+
+async def _fake_llm_chunks(*tokens: str):
+    for token in tokens:
+        yield token
+
+
+@pytest.mark.asyncio
+async def test_process_message_stream_yields_chunks_then_response(
+    mock_good_intent: Any,
+) -> None:
+    orch = ConversationOrchestrator()
+
+    with patch.object(
+        ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="{}"
+    ):
+        with patch.object(
+            ConversationOrchestrator,
+            "_call_llm_stream",
+            return_value=_fake_llm_chunks("Hello ", "world!"),
+        ):
+            events = []
+            async for event in orch.process_message_stream(_make_request("hi")):
+                events.append(event)
+
+    text_chunks = [e for e in events if isinstance(e, str)]
+    responses = [e for e in events if not isinstance(e, str)]
+
+    assert text_chunks == ["Hello ", "world!"]
+    assert len(responses) == 1
+    final = responses[0]
+    assert final.reply.content == "Hello world!"
+    assert final.reply.role == MessageRole.ASSISTANT
+    assert final.conversation_id == "conv-test"
+
+
+@pytest.mark.asyncio
+async def test_process_message_stream_final_response_carries_metadata(
+    mock_good_intent: Any,
+) -> None:
+    orch = ConversationOrchestrator()
+
+    with patch.object(
+        ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="{}"
+    ):
+        with patch.object(
+            ConversationOrchestrator,
+            "_call_llm_stream",
+            return_value=_fake_llm_chunks("ok"),
+        ):
+            events = []
+            async for event in orch.process_message_stream(_make_request("hi")):
+                events.append(event)
+
+    final = next(e for e in events if not isinstance(e, str))
+    assert final.selected_intent == mock_good_intent.name
+    assert final.status == "success"
+    assert final.intent_confidence == 0.9
+
+
+@pytest.mark.asyncio
+async def test_process_message_stream_yields_error_response_on_empty_messages() -> None:
+    orch = ConversationOrchestrator()
+    req = ConversationRequest(
+        conversation_id="conv-empty",
+        agent_config=AgentConfig(id="a", name="Bot", persona="p", greeting="Hi!"),
+        messages=[],
+    )
+
+    events = []
+    async for event in orch.process_message_stream(req):
+        events.append(event)
+
+    assert len(events) == 1
+    assert events[0].status == "error"
+    assert "No user message content found" in events[0].error
+
+
+@pytest.mark.asyncio
+async def test_process_message_stream_clarification_yields_response_without_chunks() -> None:
+    from taskorbit.intent import _CLARIFICATION_REPLY, _FALLBACK_RESULT
+
+    orch = ConversationOrchestrator()
+
+    with patch.object(
+        orch._intent_router, "detect", new_callable=AsyncMock, return_value=_FALLBACK_RESULT
+    ):
+        with patch.object(ConversationOrchestrator, "_call_llm_stream") as mock_stream:
+            events = []
+            async for event in orch.process_message_stream(_make_request("???")):
+                events.append(event)
+
+    text_chunks = [e for e in events if isinstance(e, str)]
+    responses = [e for e in events if not isinstance(e, str)]
+
+    assert text_chunks == []
+    assert len(responses) == 1
+    assert responses[0].status == "clarification"
+    assert responses[0].reply.content == _CLARIFICATION_REPLY
+    mock_stream.assert_not_called()

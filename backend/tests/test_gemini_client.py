@@ -204,6 +204,149 @@ async def test_generate_records_token_metrics(client: GeminiClient, llm_config: 
     assert call(5) in inc_calls
 
 
+# ---------------------------------------------------------------------------
+# generate_stream helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_gemini_chunk(text: str | None) -> MagicMock:
+    chunk = MagicMock()
+    chunk.text = text
+    return chunk
+
+
+async def _fake_gemini_stream(*chunks):
+    for c in chunks:
+        yield c
+
+
+# ---------------------------------------------------------------------------
+# generate_stream — happy path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_generate_stream_yields_text_chunks(
+    client: GeminiClient, llm_config: LLMConfig
+) -> None:
+    stream = _fake_gemini_stream(_make_gemini_chunk("Hello "), _make_gemini_chunk("world!"))
+
+    with patch.object(
+        client._client.aio.models,
+        "generate_content_stream",
+        new=AsyncMock(return_value=stream),
+    ):
+        collected = [
+            t
+            async for t in client.generate_stream(
+                "sys", [Message(role=MessageRole.USER, content="hi")], llm_config
+            )
+        ]
+
+    assert collected == ["Hello ", "world!"]
+
+
+@pytest.mark.asyncio
+async def test_generate_stream_skips_none_and_empty_chunks(
+    client: GeminiClient, llm_config: LLMConfig
+) -> None:
+    stream = _fake_gemini_stream(
+        _make_gemini_chunk("A"),
+        _make_gemini_chunk(None),
+        _make_gemini_chunk(""),
+        _make_gemini_chunk("B"),
+    )
+
+    with patch.object(
+        client._client.aio.models,
+        "generate_content_stream",
+        new=AsyncMock(return_value=stream),
+    ):
+        collected = [
+            t
+            async for t in client.generate_stream(
+                "sys", [Message(role=MessageRole.USER, content="hi")], llm_config
+            )
+        ]
+
+    assert collected == ["A", "B"]
+
+
+# ---------------------------------------------------------------------------
+# generate_stream — error mapping
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_generate_stream_401_raises_llm_auth_error(
+    client: GeminiClient, llm_config: LLMConfig
+) -> None:
+    async def _error_stream():
+        raise _client_error(401)
+        yield  # make it an async generator
+
+    with patch.object(
+        client._client.aio.models,
+        "generate_content_stream",
+        new=AsyncMock(return_value=_error_stream()),
+    ):
+        with pytest.raises(LLMAuthError):
+            async for _ in client.generate_stream(
+                "sys", [Message(role=MessageRole.USER, content="hi")], llm_config
+            ):
+                pass
+
+
+@pytest.mark.asyncio
+async def test_generate_stream_429_raises_llm_rate_limit_error(
+    client: GeminiClient, llm_config: LLMConfig
+) -> None:
+    async def _error_stream():
+        raise _client_error(429)
+        yield
+
+    with patch.object(
+        client._client.aio.models,
+        "generate_content_stream",
+        new=AsyncMock(return_value=_error_stream()),
+    ):
+        with pytest.raises(LLMRateLimitError):
+            async for _ in client.generate_stream(
+                "sys", [Message(role=MessageRole.USER, content="hi")], llm_config
+            ):
+                pass
+
+
+# ---------------------------------------------------------------------------
+# generate_stream — metrics emitted after completion
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_generate_stream_records_metrics_on_completion(
+    client: GeminiClient, llm_config: LLMConfig
+) -> None:
+    stream = _fake_gemini_stream(_make_gemini_chunk("ok"))
+    mock_metrics = MagicMock()
+
+    with patch("taskorbit.integrations.llm.gemini_client.get_metrics", return_value=mock_metrics):
+        with patch.object(
+            client._client.aio.models,
+            "generate_content_stream",
+            new=AsyncMock(return_value=stream),
+        ):
+            _ = [
+                t
+                async for t in client.generate_stream(
+                    "sys", [Message(role=MessageRole.USER, content="hi")], llm_config
+                )
+            ]
+
+    mock_metrics.llm_requests_total.labels.assert_called_with(
+        provider="google", model="gemini-2.0-flash", status="success"
+    )
+
+
 @pytest.mark.asyncio
 async def test_generate_records_zero_tokens_when_usage_metadata_is_none(
     client: GeminiClient, llm_config: LLMConfig
