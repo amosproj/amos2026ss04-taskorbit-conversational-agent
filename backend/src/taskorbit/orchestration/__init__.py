@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -44,6 +46,19 @@ from taskorbit.types import (
 logger = get_logger(__name__)
 
 
+@dataclass
+class _ReplyPrep:
+    """Pipeline context from steps 1-4, passed to the LLM call step."""
+
+    intent: Any
+    agent: Any
+    active_tool: ToolDefinition | None
+    slot_result: Any
+    system_prompt: str
+    truncated_messages: list[Message]
+    pipeline_start: float
+
+
 class ConversationOrchestrator:
     """Routes messages through intent detection → agent → LLM → response."""
 
@@ -51,152 +66,171 @@ class ConversationOrchestrator:
         self._settings = settings or get_settings()
         self._intent_router = IntentRouter()
 
-    async def process_message(self, request: ConversationRequest) -> ConversationResponse:
-        """Main entry point called by the API layer and agent workers."""
+    async def _prepare_reply(
+        self, request: ConversationRequest
+    ) -> _ReplyPrep | ConversationResponse:
+        """Run pipeline steps 1-4 and return prepared context for the LLM call.
+
+        Returns a ConversationResponse directly for clarification short-circuits;
+        otherwise returns a _ReplyPrep with everything needed to call the LLM.
+        """
         _pipeline_start = time.perf_counter()
-        try:
-            last_user = next(
-                (m for m in reversed(request.messages) if m.role == MessageRole.USER),
-                None,
+
+        last_user = next(
+            (m for m in reversed(request.messages) if m.role == MessageRole.USER),
+            None,
+        )
+        if not last_user or not last_user.content.strip():
+            raise ValueError("No user message content found in request.")
+
+        # Step 1: Intent detection — reuse locked intent when set, but still run
+        # the classifier to allow genuine topic changes to break the lock.
+        from dataclasses import replace as _replace
+
+        from taskorbit.intent import _KNOWN_INTENTS
+
+        if request.current_intent_name and request.current_intent_name in _KNOWN_INTENTS:
+            fresh = await self._intent_router.detect(
+                last_user.content,
+                request.messages,
+                self._call_llm,
+                request.agent_config.llm,
             )
-            if not last_user or not last_user.content.strip():
-                raise ValueError("No user message content found in request.")
-
-            # 1. Detect intent — reuse locked intent when set, but still run the
-            # classifier to allow genuine topic changes to break the lock.
-            from dataclasses import replace as _replace
-
-            from taskorbit.intent import _KNOWN_INTENTS
-
-            if request.current_intent_name and request.current_intent_name in _KNOWN_INTENTS:
-                fresh = await self._intent_router.detect(
-                    last_user.content,
-                    request.messages,
-                    self._call_llm,
-                    request.agent_config.llm,
-                )
-                if (
-                    fresh.name != request.current_intent_name
-                    and fresh.confidence >= self._intent_router._threshold
-                    and not fresh.requires_clarification
-                ):
-                    intent = fresh
-                    logger.info(
-                        "intent_lock_broken",
-                        old=request.current_intent_name,
-                        new=intent.name,
-                        confidence=intent.confidence,
-                        conversation_id=request.conversation_id,
-                    )
-                else:
-                    intent = _replace(_KNOWN_INTENTS[request.current_intent_name], confidence=1.0)
-                    logger.info(
-                        "intent_locked",
-                        intent=intent.name,
-                        conversation_id=request.conversation_id,
-                    )
-            else:
-                intent = await self._intent_router.detect(
-                    last_user.content,
-                    request.messages,
-                    self._call_llm,
-                    request.agent_config.llm,
-                )
+            if (
+                fresh.name != request.current_intent_name
+                and fresh.confidence >= self._intent_router._threshold
+                and not fresh.requires_clarification
+            ):
+                intent = fresh
                 logger.info(
-                    "intent_detected",
-                    intent=intent.name,
+                    "intent_lock_broken",
+                    old=request.current_intent_name,
+                    new=intent.name,
                     confidence=intent.confidence,
                     conversation_id=request.conversation_id,
                 )
-
-            # Short-circuit: ask for clarification instead of guessing
-            if intent.requires_clarification:
-                from taskorbit.intent import _CLARIFICATION_REPLY
-                from taskorbit.types import ConversationStatus
-
-                return ConversationResponse(
+            else:
+                intent = _replace(_KNOWN_INTENTS[request.current_intent_name], confidence=1.0)
+                logger.info(
+                    "intent_locked",
+                    intent=intent.name,
                     conversation_id=request.conversation_id,
-                    reply=self._make_assistant_message(_CLARIFICATION_REPLY),
-                    status=ConversationStatus.CLARIFICATION,
-                    selected_intent=intent.name,
-                    selected_agent="",
-                    intent_confidence=intent.confidence,
                 )
-
-            # 2. Select agent based on detected intent, not config.id
-            from taskorbit.agents import AgentRegistry
-
-            agent = AgentRegistry.create_by_name(intent.agent_name, request.agent_config, self)
+        else:
+            intent = await self._intent_router.detect(
+                last_user.content,
+                request.messages,
+                self._call_llm,
+                request.agent_config.llm,
+            )
             logger.info(
-                "agent_selected",
-                agent=agent.agent_name,
+                "intent_detected",
+                intent=intent.name,
+                confidence=intent.confidence,
                 conversation_id=request.conversation_id,
             )
 
-            # 3. Select active tool
-            active_tool = self._select_active_tool(
-                request.messages, agent, active_tool_id=request.active_tool_id
-            )
+        if intent.requires_clarification:
+            from taskorbit.intent import _CLARIFICATION_REPLY
+            from taskorbit.types import ConversationStatus
 
-            # 3b. Extract slots from conversation history
-            slot_result = await self._extract_slots(
-                request.messages, intent.required_inputs, request.agent_config.llm
-            )
-            logger.info(
-                "slots_extracted",
-                filled=list(slot_result.filled.keys()),
-                missing=slot_result.missing,
+            return ConversationResponse(
                 conversation_id=request.conversation_id,
+                reply=self._make_assistant_message(_CLARIFICATION_REPLY),
+                status=ConversationStatus.CLARIFICATION,
+                selected_intent=intent.name,
+                selected_agent="",
+                intent_confidence=intent.confidence,
             )
 
-            # 4. Build system prompt using the routed agent's role
-            system_prompt = self._build_system_prompt(
-                request.agent_config, active_tool, slot_result, routed_agent=agent
-            )
+        # Step 2: Select agent based on detected intent
+        from taskorbit.agents import AgentRegistry
 
-            # 4b. Truncate conversation history if context limit is configured
-            truncated_messages = self._truncate_messages(
-                request.messages, request.agent_config.context_limit
-            )
+        agent = AgentRegistry.create_by_name(intent.agent_name, request.agent_config, self)
+        logger.info(
+            "agent_selected",
+            agent=agent.agent_name,
+            conversation_id=request.conversation_id,
+        )
 
-            # 5. Call LLM with a timeout from settings — measure latency
+        # Step 3: Select active tool
+        active_tool = self._select_active_tool(
+            request.messages, agent, active_tool_id=request.active_tool_id
+        )
+
+        # Step 3b: Extract slots from conversation history
+        slot_result = await self._extract_slots(
+            request.messages, intent.required_inputs, request.agent_config.llm
+        )
+        logger.info(
+            "slots_extracted",
+            filled=list(slot_result.filled.keys()),
+            missing=slot_result.missing,
+            conversation_id=request.conversation_id,
+        )
+
+        # Step 4: Build system prompt and truncate history
+        system_prompt = self._build_system_prompt(
+            request.agent_config, active_tool, slot_result, routed_agent=agent
+        )
+        truncated_messages = self._truncate_messages(
+            request.messages, request.agent_config.context_limit
+        )
+
+        return _ReplyPrep(
+            intent=intent,
+            agent=agent,
+            active_tool=active_tool,
+            slot_result=slot_result,
+            system_prompt=system_prompt,
+            truncated_messages=truncated_messages,
+            pipeline_start=_pipeline_start,
+        )
+
+    async def process_message(self, request: ConversationRequest) -> ConversationResponse:
+        """Main entry point called by the API layer and agent workers."""
+        try:
+            prep = await self._prepare_reply(request)
+            if isinstance(prep, ConversationResponse):
+                return prep
+
+            # Step 5: Call LLM with a timeout from settings
             _llm_start = time.perf_counter()
             llm_text = await asyncio.wait_for(
-                self._call_llm(system_prompt, truncated_messages, request.agent_config.llm),
+                self._call_llm(
+                    prep.system_prompt, prep.truncated_messages, request.agent_config.llm
+                ),
                 timeout=self._settings.llm_timeout_seconds,
             )
             _llm_elapsed = time.perf_counter() - _llm_start
             get_metrics().pipeline_latency_seconds.labels(stage="llm_call").observe(_llm_elapsed)
 
-            # 5b. Dispatch active tool when slots are complete
+            # Step 5b: Dispatch active tool when slots are complete
             from taskorbit.types import ConversationStatus, ToolType
 
             tool_data: dict[str, Any] = {}
             response_status = ConversationStatus.SUCCESS
 
-            if active_tool and slot_result.is_complete and intent.required_inputs:
-                dispatch_context: dict[str, Any] = dict(slot_result.to_dict())
-                if active_tool.type == ToolType.AGENT_TRANSFER:
-                    targets = active_tool.parameters.get("targets") or []
+            if prep.active_tool and prep.slot_result.is_complete and prep.intent.required_inputs:
+                dispatch_context: dict[str, Any] = dict(prep.slot_result.to_dict())
+                if prep.active_tool.type == ToolType.AGENT_TRANSFER:
+                    targets = prep.active_tool.parameters.get("targets") or []
                     if targets:
-                        # Template IDs are kebab-case with "-agent" suffix
-                        # (e.g. "customer-dissatisfaction-agent"); agent_name is
-                        # snake_case without the suffix (e.g. "customer_dissatisfaction").
                         raw = str(targets[0])
                         normalized = raw.removesuffix("-agent").replace("-", "_")
                         dispatch_context["target_agent_id"] = normalized
                     dispatch_context["conversation_history"] = [
                         {"role": m.role.value, "content": m.content} for m in request.messages
                     ]
-                tool_data = await self._dispatch_tool(active_tool, dispatch_context)
+                tool_data = await self._dispatch_tool(prep.active_tool, dispatch_context)
                 logger.info(
                     "tool_dispatch_complete",
-                    tool_type=active_tool.type,
+                    tool_type=prep.active_tool.type,
                     conversation_id=request.conversation_id,
                 )
-                if active_tool.type == ToolType.END_CALL:
+                if prep.active_tool.type == ToolType.END_CALL:
                     response_status = ConversationStatus.ENDED
-                elif active_tool.type == ToolType.AGENT_TRANSFER:
+                elif prep.active_tool.type == ToolType.AGENT_TRANSFER:
                     logger.info(
                         "agent_handoff",
                         from_agent=request.agent_config.name,
@@ -204,21 +238,19 @@ class ConversationOrchestrator:
                         conversation_id=request.conversation_id,
                     )
 
-            # Advance to the next tool when the current one was dispatched,
-            # so sequential workflows (e.g. data_extraction → end_call) complete.
-            if tool_data and active_tool:
-                all_tools = agent.get_task_definitions()
+            if tool_data and prep.active_tool:
+                all_tools = prep.agent.get_task_definitions()
                 current_idx = next(
-                    (i for i, t in enumerate(all_tools) if t.id == active_tool.id), -1
+                    (i for i, t in enumerate(all_tools) if t.id == prep.active_tool.id), -1
                 )
                 next_tool = (
                     all_tools[current_idx + 1] if 0 <= current_idx < len(all_tools) - 1 else None
                 )
                 next_active_tool_id = next_tool.id if next_tool else None
             else:
-                next_active_tool_id = active_tool.id if active_tool else None
+                next_active_tool_id = prep.active_tool.id if prep.active_tool else None
 
-            _total_elapsed = time.perf_counter() - _pipeline_start
+            _total_elapsed = time.perf_counter() - prep.pipeline_start
             get_metrics().pipeline_latency_seconds.labels(stage="total").observe(_total_elapsed)
             logger.info(
                 "pipeline_complete",
@@ -230,14 +262,14 @@ class ConversationOrchestrator:
             return ConversationResponse(
                 conversation_id=request.conversation_id,
                 reply=self._make_assistant_message(llm_text),
-                selected_intent=intent.name,
-                selected_agent=agent.agent_name,
-                intent_confidence=intent.confidence,
+                selected_intent=prep.intent.name,
+                selected_agent=prep.agent.agent_name,
+                intent_confidence=prep.intent.confidence,
                 status=response_status,
-                extracted_slots=slot_result.to_dict() if slot_result.is_complete else {},
-                missing_slots=slot_result.missing,
-                tool_invoked=active_tool if tool_data else None,
-                locked_intent_name=intent.name,
+                extracted_slots=prep.slot_result.to_dict() if prep.slot_result.is_complete else {},
+                missing_slots=prep.slot_result.missing,
+                tool_invoked=prep.active_tool if tool_data else None,
+                locked_intent_name=prep.intent.name,
                 next_active_tool_id=next_active_tool_id,
             )
 
@@ -302,6 +334,171 @@ class ConversationOrchestrator:
                 exc_info=True,
             )
             return ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message("An unexpected error occurred."),
+                status="error",
+                error=str(exc),
+            )
+
+    async def process_message_stream(
+        self,
+        request: ConversationRequest,
+    ) -> AsyncGenerator[str | ConversationResponse, None]:
+        """Like process_message but streams the final LLM reply token by token.
+
+        Yields str chunks while the LLM is generating, then yields a single
+        ConversationResponse as the final item carrying full metadata (intent,
+        agent, slots, status). The reply.content on the final ConversationResponse
+        is the complete assembled text from all prior chunks.
+
+        On any error, yields only a ConversationResponse with status=error so
+        callers always receive a terminal event.
+
+        Note: the LLM streaming call does not apply asyncio.wait_for — timeout
+        is enforced at the SDK level via the client's request timeout setting.
+        """
+        try:
+            prep = await self._prepare_reply(request)
+            if isinstance(prep, ConversationResponse):
+                yield prep
+                return
+
+            # Step 5: Stream the final LLM reply
+            full_text_parts: list[str] = []
+            _llm_start = time.perf_counter()
+
+            async for chunk in self._call_llm_stream(
+                prep.system_prompt, prep.truncated_messages, request.agent_config.llm
+            ):
+                full_text_parts.append(chunk)
+                yield chunk
+
+            _llm_elapsed = time.perf_counter() - _llm_start
+            get_metrics().pipeline_latency_seconds.labels(stage="llm_call").observe(_llm_elapsed)
+
+            llm_text = "".join(full_text_parts)
+            if not llm_text:
+                raise LLMConfigError("LLM returned an empty streaming response")
+
+            # Step 5b: Dispatch active tool when slots are complete
+            from taskorbit.types import ConversationStatus, ToolType
+
+            tool_data: dict[str, Any] = {}
+            response_status = ConversationStatus.SUCCESS
+
+            if prep.active_tool and prep.slot_result.is_complete and prep.intent.required_inputs:
+                dispatch_context: dict[str, Any] = dict(prep.slot_result.to_dict())
+                if prep.active_tool.type == ToolType.AGENT_TRANSFER:
+                    targets = prep.active_tool.parameters.get("targets") or []
+                    if targets:
+                        raw = str(targets[0])
+                        normalized = raw.removesuffix("-agent").replace("-", "_")
+                        dispatch_context["target_agent_id"] = normalized
+                    dispatch_context["conversation_history"] = [
+                        {"role": m.role.value, "content": m.content} for m in request.messages
+                    ]
+                tool_data = await self._dispatch_tool(prep.active_tool, dispatch_context)
+                logger.info(
+                    "tool_dispatch_complete",
+                    tool_type=prep.active_tool.type,
+                    conversation_id=request.conversation_id,
+                )
+                if prep.active_tool.type == ToolType.END_CALL:
+                    response_status = ConversationStatus.ENDED
+                elif prep.active_tool.type == ToolType.AGENT_TRANSFER:
+                    logger.info(
+                        "agent_handoff",
+                        from_agent=request.agent_config.name,
+                        to_agent=tool_data.get("transferred_to"),
+                        conversation_id=request.conversation_id,
+                    )
+
+            if tool_data and prep.active_tool:
+                all_tools = prep.agent.get_task_definitions()
+                current_idx = next(
+                    (i for i, t in enumerate(all_tools) if t.id == prep.active_tool.id), -1
+                )
+                next_tool = (
+                    all_tools[current_idx + 1] if 0 <= current_idx < len(all_tools) - 1 else None
+                )
+                next_active_tool_id = next_tool.id if next_tool else None
+            else:
+                next_active_tool_id = prep.active_tool.id if prep.active_tool else None
+
+            _total_elapsed = time.perf_counter() - prep.pipeline_start
+            get_metrics().pipeline_latency_seconds.labels(stage="total").observe(_total_elapsed)
+            logger.info(
+                "pipeline_complete",
+                conversation_id=request.conversation_id,
+                llm_latency_ms=round(_llm_elapsed * 1000, 1),
+                total_latency_ms=round(_total_elapsed * 1000, 1),
+            )
+
+            yield ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message(llm_text),
+                selected_intent=prep.intent.name,
+                selected_agent=prep.agent.agent_name,
+                intent_confidence=prep.intent.confidence,
+                status=response_status,
+                extracted_slots=prep.slot_result.to_dict() if prep.slot_result.is_complete else {},
+                missing_slots=prep.slot_result.missing,
+                tool_invoked=prep.active_tool if tool_data else None,
+                locked_intent_name=prep.intent.name,
+                next_active_tool_id=next_active_tool_id,
+            )
+
+        except LLMConfigError as exc:
+            get_metrics().conversation_errors_total.labels(error_type="llm_config").inc()
+            logger.error(
+                "llm_stream_config_error",
+                error=str(exc),
+                conversation_id=request.conversation_id,
+            )
+            yield ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message(
+                    "I'm not properly configured to respond right now. Please contact support."
+                ),
+                status="error",
+                error=str(exc),
+            )
+        except UnicodeEncodeError as exc:
+            get_metrics().conversation_errors_total.labels(error_type="encoding_error").inc()
+            logger.error(
+                "llm_stream_encoding_error",
+                error=str(exc),
+                conversation_id=request.conversation_id,
+                exc_info=True,
+            )
+            yield ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message("An unexpected error occurred."),
+                status="error",
+                error=str(exc),
+            )
+        except ValueError as exc:
+            get_metrics().conversation_errors_total.labels(error_type="invalid_input").inc()
+            logger.warning(
+                "llm_stream_invalid_input",
+                error=str(exc),
+                conversation_id=request.conversation_id,
+            )
+            yield ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message("I encountered an error. Please try again."),
+                status="error",
+                error=str(exc),
+            )
+        except Exception as exc:
+            get_metrics().conversation_errors_total.labels(error_type="runtime_error").inc()
+            logger.error(
+                "llm_stream_runtime_error",
+                error=str(exc),
+                conversation_id=request.conversation_id,
+                exc_info=True,
+            )
+            yield ConversationResponse(
                 conversation_id=request.conversation_id,
                 reply=self._make_assistant_message("An unexpected error occurred."),
                 status="error",
@@ -456,6 +653,24 @@ class ConversationOrchestrator:
         augmented_prompt = with_same_language_instruction(system_prompt)
         client = get_llm_client(llm_config, settings=self._settings)
         return await client.generate(augmented_prompt, messages, llm_config)
+
+    def _call_llm_stream(
+        self,
+        system_prompt: str,
+        messages: list[Message],
+        llm_config: LLMConfig,
+    ) -> AsyncGenerator[str, None]:
+        """Return a streaming async generator for the LLM reply.
+
+        Applies the same system-prompt augmentation as _call_llm so both
+        paths behave consistently. Callers iterate with `async for`.
+        """
+        from taskorbit.integrations.llm.factory import get_llm_client
+        from taskorbit.integrations.llm.prompts import with_same_language_instruction
+
+        augmented_prompt = with_same_language_instruction(system_prompt)
+        client = get_llm_client(llm_config, settings=self._settings)
+        return client.generate_stream(augmented_prompt, messages, llm_config)
 
     async def _dispatch_tool(
         self,
