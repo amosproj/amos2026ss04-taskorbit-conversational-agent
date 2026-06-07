@@ -12,6 +12,7 @@ than by SDK internals.
 from __future__ import annotations
 
 import time
+from collections.abc import AsyncGenerator
 
 import openai
 
@@ -146,3 +147,106 @@ class OpenAIClient:
             provider="openai", model=llm_config.model, token_type="completion"
         ).inc(completion_tokens)
         return text
+
+    async def generate_stream(
+        self,
+        system_prompt: str,
+        messages: list[Message],
+        llm_config: LLMConfig,
+    ) -> AsyncGenerator[str, None]:
+        """Stream the OpenAI chat completion token by token.
+
+        Initiating the request may raise LLMAuthError, LLMRateLimitError,
+        LLMTimeoutError, or LLMAPIError. Metrics and logging are emitted in
+        the finally block once the stream finishes or is abandoned.
+        """
+        wire_messages = [
+            {"role": "system", "content": system_prompt},
+            *to_openai_messages(messages),
+        ]
+
+        _log.info(
+            "llm_stream_started",
+            provider="openai",
+            model=llm_config.model,
+            message_count=len(wire_messages),
+        )
+
+        _api_start = time.perf_counter()
+        try:
+            stream = await self._client.chat.completions.create(
+                model=llm_config.model,
+                messages=wire_messages,
+                stream=True,
+                stream_options={"include_usage": True},
+            )
+        except openai.AuthenticationError as exc:
+            _log.error("llm_stream_failed", provider="openai", error_type="auth", error=str(exc))
+            get_metrics().llm_requests_total.labels(
+                provider="openai", model=llm_config.model, status="auth"
+            ).inc()
+            raise LLMAuthError(f"OpenAI authentication failed: {exc}") from exc
+        except openai.RateLimitError as exc:
+            _log.error(
+                "llm_stream_failed", provider="openai", error_type="rate_limit", error=str(exc)
+            )
+            get_metrics().llm_requests_total.labels(
+                provider="openai", model=llm_config.model, status="rate_limit"
+            ).inc()
+            raise LLMRateLimitError(f"OpenAI rate-limited: {exc}") from exc
+        except openai.APITimeoutError as exc:
+            _log.error("llm_stream_failed", provider="openai", error_type="timeout", error=str(exc))
+            get_metrics().llm_requests_total.labels(
+                provider="openai", model=llm_config.model, status="timeout"
+            ).inc()
+            raise LLMTimeoutError(f"OpenAI request timed out: {exc}") from exc
+        except openai.APIError as exc:
+            _log.error("llm_stream_failed", provider="openai", error_type="api", error=str(exc))
+            get_metrics().llm_requests_total.labels(
+                provider="openai", model=llm_config.model, status="api"
+            ).inc()
+            raise LLMAPIError(f"OpenAI API error: {exc}") from exc
+
+        char_count = 0
+        usage_chunk = None
+        try:
+            async for chunk in stream:
+                delta = chunk.choices[0].delta.content if chunk.choices else None
+                if delta:
+                    char_count += len(delta)
+                    yield delta
+                if chunk.usage:
+                    usage_chunk = chunk.usage
+        except openai.APIError as exc:
+            _log.error("llm_stream_failed", provider="openai", error_type="api", error=str(exc))
+            raise LLMAPIError(f"OpenAI streaming error: {exc}") from exc
+        finally:
+            await stream.close()
+            _api_elapsed = time.perf_counter() - _api_start
+            prompt_tokens = usage_chunk.prompt_tokens if usage_chunk else 0
+            completion_tokens = usage_chunk.completion_tokens if usage_chunk else 0
+            _log.info(
+                "llm_stream_completed",
+                provider="openai",
+                model=llm_config.model,
+                chars=char_count,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                llm_api_latency_ms=round(_api_elapsed * 1000, 1),
+            )
+            _m = get_metrics()
+            _m.llm_requests_total.labels(
+                provider="openai", model=llm_config.model, status="success"
+            ).inc()
+            _m.pipeline_latency_seconds.labels(stage="llm_api_openai").observe(_api_elapsed)
+            _m.llm_response_chars.labels(provider="openai", model=llm_config.model).observe(
+                char_count
+            )
+            if prompt_tokens:
+                _m.tokens_used_total.labels(
+                    provider="openai", model=llm_config.model, token_type="prompt"
+                ).inc(prompt_tokens)
+            if completion_tokens:
+                _m.tokens_used_total.labels(
+                    provider="openai", model=llm_config.model, token_type="completion"
+                ).inc(completion_tokens)

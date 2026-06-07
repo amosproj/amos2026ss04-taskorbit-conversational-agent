@@ -14,6 +14,7 @@ google-genai uses a different shape than OpenAI:
 from __future__ import annotations
 
 import time
+from collections.abc import AsyncGenerator
 
 from google import genai
 from google.genai import errors as genai_errors
@@ -155,3 +156,93 @@ class GeminiClient:
             provider="google", model=llm_config.model, token_type="completion"
         ).inc(completion_tokens)
         return text
+
+    async def generate_stream(
+        self,
+        system_prompt: str,
+        messages: list[Message],
+        llm_config: LLMConfig,
+    ) -> AsyncGenerator[str, None]:
+        """Stream the Gemini response token by token.
+
+        Note: Gemini does not return per-chunk usage metadata, so token counts
+        are not tracked for streaming calls.
+        """
+        contents = to_gemini_contents(messages)
+
+        _log.info(
+            "llm_stream_started",
+            provider="google",
+            model=llm_config.model,
+            message_count=len(contents),
+        )
+
+        _api_start = time.perf_counter()
+        char_count = 0
+        try:
+            async for chunk in await self._client.aio.models.generate_content_stream(
+                model=llm_config.model,
+                contents=contents,
+                config=GenerateContentConfig(system_instruction=system_prompt),
+            ):
+                text = chunk.text
+                if text:
+                    char_count += len(text)
+                    yield text
+        except genai_errors.ClientError as exc:
+            code = getattr(exc, "code", None)
+            if code in (401, 403):
+                _log.error(
+                    "llm_stream_failed", provider="google", error_type="auth", error=str(exc)
+                )
+                get_metrics().llm_requests_total.labels(
+                    provider="google", model=llm_config.model, status="auth"
+                ).inc()
+                raise LLMAuthError(f"Google API authentication failed: {exc}") from exc
+            if code == 429:
+                _log.error(
+                    "llm_stream_failed",
+                    provider="google",
+                    error_type="rate_limit",
+                    error=str(exc),
+                )
+                get_metrics().llm_requests_total.labels(
+                    provider="google", model=llm_config.model, status="rate_limit"
+                ).inc()
+                raise LLMRateLimitError(f"Google API rate-limited: {exc}") from exc
+            if code == 408:
+                _log.error(
+                    "llm_stream_failed", provider="google", error_type="timeout", error=str(exc)
+                )
+                get_metrics().llm_requests_total.labels(
+                    provider="google", model=llm_config.model, status="timeout"
+                ).inc()
+                raise LLMTimeoutError(f"Google API request timed out: {exc}") from exc
+            _log.error("llm_stream_failed", provider="google", error_type="client", error=str(exc))
+            get_metrics().llm_requests_total.labels(
+                provider="google", model=llm_config.model, status="client"
+            ).inc()
+            raise LLMAPIError(f"Google API client error: {exc}") from exc
+        except genai_errors.APIError as exc:
+            _log.error("llm_stream_failed", provider="google", error_type="api", error=str(exc))
+            get_metrics().llm_requests_total.labels(
+                provider="google", model=llm_config.model, status="api"
+            ).inc()
+            raise LLMAPIError(f"Google API error: {exc}") from exc
+        finally:
+            _api_elapsed = time.perf_counter() - _api_start
+            _log.info(
+                "llm_stream_completed",
+                provider="google",
+                model=llm_config.model,
+                chars=char_count,
+                llm_api_latency_ms=round(_api_elapsed * 1000, 1),
+            )
+            _m = get_metrics()
+            _m.llm_requests_total.labels(
+                provider="google", model=llm_config.model, status="success"
+            ).inc()
+            _m.pipeline_latency_seconds.labels(stage="llm_api_google").observe(_api_elapsed)
+            _m.llm_response_chars.labels(provider="google", model=llm_config.model).observe(
+                char_count
+            )
