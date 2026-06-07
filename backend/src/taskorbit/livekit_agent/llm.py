@@ -230,21 +230,30 @@ class OrchestratorAgent(Agent):
             messages=messages,
             current_intent_name=self._locked_intent_name,
         )
-        response = await self._orchestrator.process_message(request)
+        from taskorbit.types import ConversationResponse as _ConversationResponse
+        from taskorbit.types import ToolType as _ToolType
+
+        response: _ConversationResponse | None = None
+
+        async for event in self._orchestrator.process_message_stream(request):
+            if isinstance(event, str):
+                yield event
+            else:
+                response = event
+
+        if response is None:
+            return
+
         self._locked_intent_name = response.locked_intent_name
         if response.selected_agent:
             self._current_routed_agent = response.selected_agent
+
         status = "success" if response.status == "success" else "error"
         get_metrics().voice_pipeline_requests_total.labels(
             handler="/v1/conversations/process", status=status
         ).inc()
 
-        # Surface agent_transfer for the voice path (#8 Task 6 AC7). The
-        # worker reads self._pending_handoff_target after generate_reply()
-        # completes and publishes it on the taskorbit.agent_handoff topic
-        # so the FE swaps the active agent without dropping the LiveKit room.
-        from taskorbit.types import ToolType as _ToolType
-
+        # Surface agent_transfer for the voice path (#8 Task 6 AC7).
         if (
             response.tool_invoked is not None
             and response.tool_invoked.type == _ToolType.AGENT_TRANSFER
@@ -259,14 +268,8 @@ class OrchestratorAgent(Agent):
                     conversation_id=self._conversation_id,
                 )
 
-        text = response.reply.content or ""
-
         if self._t_commit is not None:
             elapsed = time.perf_counter() - self._t_commit
             get_metrics().voice_turn_latency_seconds.observe(elapsed)
             log.info("voice_turn_complete", latency_ms=round(elapsed * 1000, 1))
             self._t_commit = None
-
-        if not text:
-            return
-        yield text
