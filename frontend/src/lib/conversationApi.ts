@@ -56,15 +56,16 @@ type ConversationRequest = {
   agent_config: BackendAgentConfig;
   messages: BackendMessage[];
   current_intent_name?: string | null;
+  confirmation_id?: string | null;
+  decision?: "confirm" | "reject" | null;
 };
 
 export type ConversationResponse = {
   conversation_id: string;
   reply: { role: string; content: string; timestamp: string | null };
   tool_invoked: BackendTool | null;
-  requires_confirmation: boolean;
-  confirmation_prompt: string;
-  status: "success" | "clarification" | "ended" | "error";
+  confirmation?: { confirmation_id: string; action: string; description: string };
+  status: "success" | "clarification" | "ended" | "error" | "confirmation_required" | "rejected";
   selected_intent: string;
   selected_agent: string;
   locked_intent_name: string | null;
@@ -144,6 +145,8 @@ export async function sendMessage(
   conversationId: string,
   signal?: AbortSignal,
   lockedIntentName?: string | null,
+  confirmationId?: string | null,
+  decision?: "confirm" | "reject" | null,
 ): Promise<ConversationResponse> {
   // STEP A: Map transcript -> backend Message[]
   const messages: BackendMessage[] = transcript.map((turn) => ({
@@ -157,6 +160,8 @@ export async function sendMessage(
     agent_config: adaptAgentConfig(agent),
     messages,
     current_intent_name: lockedIntentName ?? null,
+    confirmation_id: confirmationId ?? null,
+    decision: decision ?? null,
   };
 
   const res = await fetch("/api/v1/conversations/process", {
