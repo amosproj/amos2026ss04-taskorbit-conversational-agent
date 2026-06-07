@@ -55,7 +55,7 @@ export type LiveTranscriptTurn = {
  * History.
  */
 export type ConfirmationPromptState = {
-  id: string;
-  tool_name: string;
-  prompt: string;
+  confirmation_id: string;
+  action: string;
+  description: string;
 };
