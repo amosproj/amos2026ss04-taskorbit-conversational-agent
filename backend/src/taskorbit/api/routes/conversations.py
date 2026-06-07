@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -96,6 +98,95 @@ async def process_conversation(
         raise HTTPException(
             status_code=501, detail="Orchestration engine not yet implemented."
         ) from exc
+
+
+async def _sse_generator(
+    http_request: Request,
+    request: ConversationRequest,
+    orchestrator: ConversationOrchestrator,
+    db: AsyncSession,
+):
+    """Yield SSE-formatted events from process_message_stream.
+
+    Event schema (agreed with frontend / Dev 2):
+      data: {"type": "chunk", "text": "<token>"}
+      data: {"type": "done", "intent": "...", "status": "...", "selected_agent": "...",
+              "slots": {...}, "missing_slots": [...], "conversation_id": "..."}
+      data: {"type": "error", "message": "..."}
+    """
+    meta: ConversationResponse | None = None
+
+    async for event in orchestrator.process_message_stream(request):
+        if await http_request.is_disconnected():
+            logger.info("sse_client_disconnected", conversation_id=request.conversation_id)
+            return
+
+        if isinstance(event, str):
+            yield f"data: {json.dumps({'type': 'chunk', 'text': event})}\n\n"
+        elif isinstance(event, ConversationResponse):
+            meta = event
+
+    if meta is None:
+        return
+
+    if meta.status == "error":
+        yield f"data: {json.dumps({'type': 'error', 'message': meta.error or 'Unknown error'})}\n\n"
+        return
+
+    # Persist messages only after a successful full stream
+    last_msg = request.messages[-1] if request.messages else None
+    last_user = last_msg if last_msg and last_msg.role == MessageRole.USER else None
+    if last_user:
+        saved = await create_conversation_message(
+            db=db,
+            conversation_id=request.conversation_id,
+            role=last_user.role.value,
+            content=last_user.content,
+        )
+        if saved is None:
+            logger.error(
+                "sse_failed_to_save_user_message",
+                conversation_id=request.conversation_id,
+            )
+    if meta.reply:
+        saved = await create_conversation_message(
+            db=db,
+            conversation_id=request.conversation_id,
+            role=meta.reply.role.value,
+            content=meta.reply.content,
+        )
+        if saved is None:
+            logger.error(
+                "sse_failed_to_save_assistant_message",
+                conversation_id=request.conversation_id,
+            )
+
+    yield f"data: {json.dumps({'type': 'done', 'intent': meta.selected_intent, 'status': meta.status, 'selected_agent': meta.selected_agent, 'slots': meta.extracted_slots, 'missing_slots': meta.missing_slots, 'conversation_id': meta.conversation_id})}\n\n"
+
+
+@router.post("/stream")
+async def stream_conversation(
+    http_request: Request,
+    request: ConversationRequest,
+    orchestrator: ConversationOrchestrator = Depends(get_orchestrator),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> StreamingResponse:
+    """Stream one turn of a conversation token by token via Server-Sent Events.
+
+    The client reads the event stream and renders tokens as they arrive.
+    The final 'done' event carries intent, agent, and slot metadata.
+    Persists messages to the database only after the full stream completes.
+    """
+    logger.info(
+        "sse_stream_request_received",
+        conversation_id=request.conversation_id,
+        message_count=len(request.messages),
+    )
+    return StreamingResponse(
+        _sse_generator(http_request, request, orchestrator, db),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("", status_code=201)
