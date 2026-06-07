@@ -29,8 +29,8 @@ export function ConfirmationPrompt({ prompt, onApprove, onDeny }: Props) {
           </span>
           <div className="flex min-w-0 flex-col gap-1">
             <p className="text-sm font-medium">The agent is asking before it acts</p>
-            <p className="text-sm text-muted-foreground">{prompt.prompt}</p>
-            <p className="font-mono text-xs text-muted-foreground">tool: {prompt.tool_name}</p>
+            <p className="text-sm text-muted-foreground">{prompt.description}</p>
+            <p className="font-mono text-xs text-muted-foreground">action: {prompt.action}</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
