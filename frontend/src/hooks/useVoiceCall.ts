@@ -42,10 +42,10 @@ export type VoiceCallApi = {
   /** Reset everything back to the pre-call surface. */
   restart: () => void;
 
-  /** Confirmation-prompt helpers (mocked tool flow). */
+  /** Confirmation-prompt helpers. */
   triggerConfirmation: (prompt: ConfirmationPromptState) => void;
-  approveConfirmation: (followup: string) => void;
-  denyConfirmation: (followup: string) => void;
+  approveConfirmation: () => void;
+  denyConfirmation: () => void;
 
   /** Called from inside LiveKitRoom to push phase changes upward. */
   setPhase: (phase: CallStatus) => void;
@@ -321,23 +321,15 @@ export function useVoiceCall(): VoiceCallApi {
     [clearTimer],
   );
 
-  const approveConfirmation = useCallback(
-    (followup: string) => {
-      setConfirmation(null);
-      appendAssistantTurn(followup);
-      setStatus("idle_in_call");
-    },
-    [appendAssistantTurn],
-  );
+  const approveConfirmation = useCallback(() => {
+    setConfirmation(null);
+    setStatus("thinking");
+  }, []);
 
-  const denyConfirmation = useCallback(
-    (followup: string) => {
-      setConfirmation(null);
-      appendAssistantTurn(followup);
-      setStatus("idle_in_call");
-    },
-    [appendAssistantTurn],
-  );
+  const denyConfirmation = useCallback(() => {
+    setConfirmation(null);
+    setStatus("thinking");
+  }, []);
 
   return {
     status,
