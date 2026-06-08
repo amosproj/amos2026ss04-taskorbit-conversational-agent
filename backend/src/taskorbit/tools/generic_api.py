@@ -25,6 +25,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
+
 from taskorbit.logging.setup import get_logger
 from taskorbit.tools import BaseTool, ToolResult
 from taskorbit.types import ToolType
@@ -301,11 +303,99 @@ class GenericApiTool(BaseTool):
     tool_type = ToolType.EXTERNAL_API
 
     async def execute(self, parameters: dict[str, Any]) -> ToolResult:
-        """Stub: real HTTP + extraction + error normalisation lands in #66 stages 3-5."""
-        return ToolResult(
-            success=False,
-            error="GenericApiTool execute() is not implemented yet (#66 stages 3-5).",
+        """Send the configured HTTP request and return the response payload.
+
+        Stage 3 of #66. Substitutes templates into URL/headers/query/body,
+        dispatches the request via httpx, and returns the raw response in
+        ToolResult.data shaped as ``{status, data, headers}``. Response
+        extraction (Stage 4) and full error taxonomy (Stage 5) build on
+        top of this; today the only normalised failure is the timeout
+        path, everything else surfaces as a 4xx/5xx with the raw body.
+        """
+        try:
+            config = parse_config(parameters)
+        except GenericApiConfigError as exc:
+            return ToolResult(success=False, error=str(exc))
+
+        args = parameters.get("args") or {}
+        if not isinstance(args, dict):
+            return ToolResult(success=False, error="args must be an object")
+
+        try:
+            _check_args_against_schema(args, config.args_schema)
+        except GenericApiConfigError as exc:
+            return ToolResult(success=False, error=str(exc))
+
+        try:
+            url = substitute_string(config.url, args, config.allowed_env)
+            headers = {
+                str(k): str(substitute_tree(v, args, config.allowed_env))
+                for k, v in config.headers.items()
+            }
+            query = {
+                str(k): str(substitute_tree(v, args, config.allowed_env))
+                for k, v in config.query.items()
+            }
+            body = substitute_tree(config.body, args, config.allowed_env)
+        except TemplateSubstitutionError as exc:
+            return ToolResult(success=False, error=str(exc))
+
+        logger.info(
+            "generic_api_request",
+            method=config.method,
+            url=url,
+            has_body=body is not None,
+            timeout_seconds=config.timeout_seconds,
         )
+
+        try:
+            async with httpx.AsyncClient(timeout=config.timeout_seconds) as client:
+                response = await client.request(
+                    method=config.method,
+                    url=url,
+                    headers=headers or None,
+                    params=query or None,
+                    json=body if body is not None else None,
+                )
+        except httpx.TimeoutException as exc:
+            logger.warning(
+                "generic_api_timeout",
+                url=url,
+                timeout_seconds=config.timeout_seconds,
+                error=str(exc),
+            )
+            return ToolResult(
+                success=False,
+                error=f"TIMEOUT: request exceeded {config.timeout_seconds}s",
+            )
+
+        raw_body: Any
+        try:
+            raw_body = response.json()
+        except ValueError:
+            raw_body = response.text
+
+        success = response.status_code in config.success_statuses
+        result_data: dict[str, Any] = {
+            "status": response.status_code,
+            "data": raw_body,
+            "headers": dict(response.headers),
+        }
+
+        logger.info(
+            "generic_api_response",
+            url=url,
+            status=response.status_code,
+            success=success,
+        )
+
+        if not success:
+            return ToolResult(
+                success=False,
+                data=result_data,
+                error=f"HTTP {response.status_code}",
+            )
+        return ToolResult(success=True, data=result_data)
 
     def validate_parameters(self, parameters: dict[str, Any]) -> bool:
         """Return True if `parameters` carries a parseable config and valid args.

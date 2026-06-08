@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from taskorbit.tools.generic_api import (
@@ -226,13 +228,177 @@ def test_validate_non_dict_args_fails(
 
 
 # ---------------------------------------------------------------------------
-# execute() — still a stub in Stage 2
+# execute() — HTTP path (Stage 3)
 # ---------------------------------------------------------------------------
 
 
-async def test_execute_stub_returns_not_implemented(
+def _mock_response(
+    status_code: int = 200,
+    json_body: object | None = None,
+    text_body: str | None = None,
+    headers: dict[str, str] | None = None,
+) -> MagicMock:
+    """Build a fake httpx.Response stand-in for AsyncClient.request mocking."""
+    resp = MagicMock(spec=httpx.Response)
+    resp.status_code = status_code
+    resp.headers = headers or {}
+    if json_body is not None:
+        resp.json = MagicMock(return_value=json_body)
+        resp.text = ""
+    else:
+        resp.json = MagicMock(side_effect=ValueError("not json"))
+        resp.text = text_body or ""
+    return resp
+
+
+def _patch_async_client(response: MagicMock | None = None, side_effect: object = None):
+    """Patch httpx.AsyncClient with a context-manager that returns a request mock.
+
+    Either `response` (a single fake Response) or `side_effect` (e.g.
+    httpx.TimeoutException) drives the mocked behaviour.
+    """
+    request_mock = AsyncMock()
+    if side_effect is not None:
+        request_mock.side_effect = side_effect
+    else:
+        request_mock.return_value = response
+
+    client_instance = MagicMock()
+    client_instance.request = request_mock
+    client_instance.__aenter__ = AsyncMock(return_value=client_instance)
+    client_instance.__aexit__ = AsyncMock(return_value=None)
+    return patch(
+        "taskorbit.tools.generic_api.httpx.AsyncClient",
+        return_value=client_instance,
+    ), request_mock
+
+
+async def test_execute_get_returns_json_body_on_2xx(tool: GenericApiTool) -> None:
+    config = {
+        "request": {"method": "GET", "url": "https://api.example.com/v1/echo"},
+        "args_schema": {"type": "object", "properties": {}},
+    }
+    response = _mock_response(status_code=200, json_body={"result": "ok"})
+    patcher, request_mock = _patch_async_client(response=response)
+
+    with patcher:
+        result = await tool.execute(config)
+
+    assert result.success is True
+    assert result.data["status"] == 200
+    assert result.data["data"] == {"result": "ok"}
+    request_mock.assert_awaited_once()
+    call_kwargs = request_mock.call_args.kwargs
+    assert call_kwargs["method"] == "GET"
+    assert call_kwargs["url"] == "https://api.example.com/v1/echo"
+    assert call_kwargs["json"] is None
+
+
+async def test_execute_post_sends_substituted_body(
+    tool: GenericApiTool, full_config: dict[str, object], set_test_env: None
+) -> None:
+    params = {**full_config, "args": {"id": "w1", "name": "Asad"}}
+    response = _mock_response(status_code=201, json_body={"created": True})
+    patcher, request_mock = _patch_async_client(response=response)
+
+    with patcher:
+        result = await tool.execute(params)
+
+    assert result.success is True
+    assert result.data["status"] == 201
+    call_kwargs = request_mock.call_args.kwargs
+    assert call_kwargs["method"] == "POST"
+    assert call_kwargs["url"] == "https://api.example.com/v1/widgets/w1"
+    assert call_kwargs["headers"] == {"X-API-Key": "secret-value"}
+    assert call_kwargs["params"] == {"verbose": "true"}
+    assert call_kwargs["json"] == {"name": "Asad"}
+
+
+async def test_execute_non_success_status_returns_failure_with_body(
     tool: GenericApiTool, minimal_config: dict[str, object]
 ) -> None:
-    result = await tool.execute(minimal_config)
+    response = _mock_response(status_code=404, json_body={"error": "not found"})
+    patcher, _ = _patch_async_client(response=response)
+
+    with patcher:
+        result = await tool.execute(minimal_config)
+
     assert result.success is False
-    assert "not implemented" in result.error.lower()
+    assert result.data["status"] == 404
+    assert result.data["data"] == {"error": "not found"}
+    assert "HTTP 404" in result.error
+
+
+async def test_execute_timeout_returns_timeout_error(
+    tool: GenericApiTool, minimal_config: dict[str, object]
+) -> None:
+    patcher, _ = _patch_async_client(side_effect=httpx.TimeoutException("boom"))
+
+    with patcher:
+        result = await tool.execute(minimal_config)
+
+    assert result.success is False
+    assert result.error.startswith("TIMEOUT:")
+
+
+async def test_execute_unparseable_response_falls_back_to_text(
+    tool: GenericApiTool, minimal_config: dict[str, object]
+) -> None:
+    response = _mock_response(status_code=200, json_body=None, text_body="plain text body")
+    patcher, _ = _patch_async_client(response=response)
+
+    with patcher:
+        result = await tool.execute(minimal_config)
+
+    assert result.success is True
+    assert result.data["data"] == "plain text body"
+
+
+async def test_execute_short_circuits_on_invalid_config(tool: GenericApiTool) -> None:
+    # Bad method should be rejected BEFORE httpx is touched.
+    patcher, request_mock = _patch_async_client(response=_mock_response())
+
+    with patcher:
+        result = await tool.execute({"request": {"method": "TRACE", "url": "https://x"}})
+
+    assert result.success is False
+    assert "method must be one of" in result.error
+    request_mock.assert_not_awaited()
+
+
+async def test_execute_short_circuits_on_missing_required_arg(
+    tool: GenericApiTool, full_config: dict[str, object]
+) -> None:
+    # full_config requires id + name; provide only id.
+    params = {**full_config, "args": {"id": "w1"}}
+    patcher, request_mock = _patch_async_client(response=_mock_response())
+
+    with patcher:
+        result = await tool.execute(params)
+
+    assert result.success is False
+    assert "name" in result.error
+    request_mock.assert_not_awaited()
+
+
+async def test_execute_short_circuits_on_unwhitelisted_env(
+    tool: GenericApiTool,
+) -> None:
+    # Config references {{env.SECRET}} but auth.allowed_env is empty,
+    # so the template substitution step must reject before httpx fires.
+    config = {
+        "request": {
+            "method": "GET",
+            "url": "https://api.example.com",
+            "headers": {"Authorization": "Bearer {{env.SECRET}}"},
+        },
+        "auth": {"allowed_env": []},
+    }
+    patcher, request_mock = _patch_async_client(response=_mock_response())
+
+    with patcher:
+        result = await tool.execute(config)
+
+    assert result.success is False
+    assert "allowed_env" in result.error
+    request_mock.assert_not_awaited()
