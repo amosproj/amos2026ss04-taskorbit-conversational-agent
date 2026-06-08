@@ -180,14 +180,14 @@ export function ConversationalChat() {
   const handleSendText = useCallback(
     (text: string) => {
       let convId = call.conversationId;
-      // If the user starts a session via the "Use text instead" input rather than the 
-      // "Start session" button, the UI state is still 'idle'. We must explicitly 
-      // initialize the session here (which transitions the UI and generates an ID) 
+      // If the user starts a session via the "Use text instead" input rather than the
+      // "Start session" button, the UI state is still 'idle'. We must explicitly
+      // initialize the session here (which transitions the UI and generates an ID)
       // before dispatching the message.
       if (call.status === "idle") {
         convId = call.start();
       }
-      
+
       call.appendUserTurn(text);
       call.setPhase("thinking");
 

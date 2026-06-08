@@ -67,7 +67,7 @@ export function useAgentHandoff(onTransferred?: (agentName: string) => void): vo
         const match = entries.find((e) => {
           const uaId = e.template_id ?? e.id;
           if (uaId === parsed.target) return true;
-          
+
           const normalizedUaId = uaId.replace(/-agent$/, "").replace(/-/g, "_");
           return normalizedUaId === parsed.target;
         });

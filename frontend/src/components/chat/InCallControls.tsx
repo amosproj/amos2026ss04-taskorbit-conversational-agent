@@ -242,8 +242,7 @@ export function InCallControls({
 
   const thinking = status === "thinking";
   const awaitingConfirmation = status === "awaiting_confirmation";
-  const textDisabled =
-    awaitingConfirmation || (status !== "idle_in_call" && status !== "speaking");
+  const textDisabled = awaitingConfirmation || (status !== "idle_in_call" && status !== "speaking");
 
   // Allow stopping continuous mode at any non-network phase; keep disabled
   // only for actual connection states and while the mic track is initialising.
@@ -284,7 +283,9 @@ export function InCallControls({
               }
             }}
             placeholder={
-              awaitingConfirmation ? "Approve or deny the action above to continue…" : "Ask from Orbit."
+              awaitingConfirmation
+                ? "Approve or deny the action above to continue…"
+                : "Ask from Orbit."
             }
             autoComplete="off"
             disabled={textDisabled}
