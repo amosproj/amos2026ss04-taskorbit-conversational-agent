@@ -29,7 +29,7 @@ type BackendAgentConfig = {
   stt: { provider: string; language?: string; model: string };
   llm: { provider: string; model: string };
   tts: { provider: string; voice_id: string; model: string };
-  tools: ToolDefinition[];
+  tools: any[]; // Using any[] here to allow mapping the parameters object
   variables?: Record<string, string>;
   engine?: Record<string, unknown>;
   persona_constraints?: {
@@ -48,6 +48,18 @@ type BackendAgentConfig = {
 
 export function backendToFrontendAgent(entry: UserAgentEntry): AgentConfig {
   const c = entry.config;
+
+  // Map backend tools to frontend shape
+  const frontendTools: ToolDefinition[] = (Array.isArray(c.tools) ? c.tools : []).map((t: any) => {
+    if (t.type === "agent_transfer") {
+      return {
+        ...t,
+        targets: t.parameters?.targets || t.targets || [],
+      };
+    }
+    return t as ToolDefinition;
+  });
+
   const agent: AgentConfig = {
     agent_id: c.id,
     name: c.name,
@@ -56,7 +68,7 @@ export function backendToFrontendAgent(entry: UserAgentEntry): AgentConfig {
     stt: { provider: c.stt.provider as "deepgram", model: c.stt.model },
     llm: { provider: (c.llm.provider ?? "openai") as "openai" | "gemini", model: c.llm.model },
     tts: { provider: c.tts.provider as "elevenlabs", voice_id: c.tts.voice_id, model: c.tts.model },
-    tools: Array.isArray(c.tools) ? (c.tools as ToolDefinition[]) : [],
+    tools: frontendTools,
     variables: c.variables ?? {},
     engine: c.engine ?? {},
     persona_constraints: c.persona_constraints ?? undefined,
@@ -68,6 +80,18 @@ export function backendToFrontendAgent(entry: UserAgentEntry): AgentConfig {
 }
 
 function frontendToBackendConfig(agent: AgentConfig): BackendAgentConfig {
+  // Map frontend tools back to backend shape
+  const backendTools = agent.tools.map((t) => {
+    if (t.type === "agent_transfer") {
+      const { targets, ...rest } = t;
+      return {
+        ...rest,
+        parameters: { targets },
+      };
+    }
+    return t;
+  });
+
   const config: BackendAgentConfig = {
     id: agent.agent_id,
     name: agent.name,
@@ -76,7 +100,7 @@ function frontendToBackendConfig(agent: AgentConfig): BackendAgentConfig {
     stt: { provider: agent.stt.provider, language: "multi", model: agent.stt.model },
     llm: { provider: agent.llm.provider, model: agent.llm.model },
     tts: { provider: agent.tts.provider, voice_id: agent.tts.voice_id, model: agent.tts.model },
-    tools: agent.tools,
+    tools: backendTools,
     variables: agent.variables,
     engine: agent.engine,
     persona_constraints: agent.persona_constraints ?? null,
