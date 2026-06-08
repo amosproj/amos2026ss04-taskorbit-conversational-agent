@@ -1,8 +1,8 @@
-"""Unit tests for GenericApiTool config parsing, template substitution,
-and parameter validation (#66 Stage 2).
+"""Unit tests for GenericApiTool (#66).
 
-HTTP execution and response extraction are covered in later stages and
-their tests will land alongside that code.
+Covers config parsing, template substitution with the env-var whitelist,
+parameter validation, httpx execution (mocked), dot-path response
+extraction, and the standardised error envelope / code taxonomy.
 """
 
 from __future__ import annotations
@@ -328,7 +328,7 @@ async def test_execute_non_success_status_returns_failure_with_body(
     assert result.success is False
     assert result.data["status"] == 404
     assert result.data["data"] == {"error": "not found"}
-    assert "HTTP 404" in result.error
+    assert result.data["error_code"] == "HTTP_4XX"
 
 
 async def test_execute_timeout_returns_timeout_error(
@@ -340,7 +340,7 @@ async def test_execute_timeout_returns_timeout_error(
         result = await tool.execute(minimal_config)
 
     assert result.success is False
-    assert result.error.startswith("TIMEOUT:")
+    assert result.data["error_code"] == "TIMEOUT"
 
 
 async def test_execute_unparseable_response_falls_back_to_text(
@@ -364,7 +364,8 @@ async def test_execute_short_circuits_on_invalid_config(tool: GenericApiTool) ->
         result = await tool.execute({"request": {"method": "TRACE", "url": "https://x"}})
 
     assert result.success is False
-    assert "method must be one of" in result.error
+    assert result.data["error_code"] == "CONFIG_INVALID"
+    assert "method must be one of" in result.data["error_detail"]
     request_mock.assert_not_awaited()
 
 
@@ -379,7 +380,8 @@ async def test_execute_short_circuits_on_missing_required_arg(
         result = await tool.execute(params)
 
     assert result.success is False
-    assert "name" in result.error
+    assert result.data["error_code"] == "ARGS_INVALID"
+    assert "name" in result.data["error_detail"]
     request_mock.assert_not_awaited()
 
 
@@ -402,7 +404,8 @@ async def test_execute_short_circuits_on_unwhitelisted_env(
         result = await tool.execute(config)
 
     assert result.success is False
-    assert "allowed_env" in result.error
+    assert result.data["error_code"] == "TEMPLATE_INVALID"
+    assert "allowed_env" in result.data["error_detail"]
     request_mock.assert_not_awaited()
 
 
@@ -514,3 +517,114 @@ async def test_execute_extract_applied_even_on_non_success_status(
     assert result.success is False
     assert result.data["data"] == {"err": "not found"}
     assert result.data["raw"] == upstream_body
+
+
+# ---------------------------------------------------------------------------
+# Error normalisation (Stage 5)
+# ---------------------------------------------------------------------------
+
+
+async def test_execute_5xx_returns_http_5xx_code(
+    tool: GenericApiTool, minimal_config: dict[str, object]
+) -> None:
+    response = _mock_response(status_code=503, json_body={"err": "down"})
+    patcher, _ = _patch_async_client(response=response)
+
+    with patcher:
+        result = await tool.execute(minimal_config)
+
+    assert result.success is False
+    assert result.data["error_code"] == "HTTP_5XX"
+    assert result.data["status"] == 503
+
+
+async def test_execute_unexpected_status_returns_http_unexpected_code(
+    tool: GenericApiTool,
+) -> None:
+    # success_when restricted to 200; a 201 is neither 4xx/5xx nor success.
+    config = {
+        "request": {"method": "GET", "url": "https://api.example.com"},
+        "response": {"success_when": {"status_in": [200]}},
+    }
+    response = _mock_response(status_code=201, json_body={"created": True})
+    patcher, _ = _patch_async_client(response=response)
+
+    with patcher:
+        result = await tool.execute(config)
+
+    assert result.success is False
+    assert result.data["error_code"] == "HTTP_UNEXPECTED"
+    assert result.data["status"] == 201
+
+
+async def test_execute_network_error_returns_network_code(
+    tool: GenericApiTool, minimal_config: dict[str, object]
+) -> None:
+    patcher, _ = _patch_async_client(side_effect=httpx.ConnectError("DNS lookup failed"))
+
+    with patcher:
+        result = await tool.execute(minimal_config)
+
+    assert result.success is False
+    assert result.data["error_code"] == "NETWORK"
+    assert "ConnectError" in result.data["error_detail"]
+
+
+async def test_execute_invalid_response_when_extract_configured(
+    tool: GenericApiTool,
+) -> None:
+    # extract is configured but the upstream returns plain text, so we
+    # cannot apply the dot-paths. That must surface as INVALID_RESPONSE
+    # rather than masquerading as a success.
+    config = {
+        "request": {"method": "GET", "url": "https://api.example.com"},
+        "response": {"extract": {"x": "y.z"}},
+    }
+    response = _mock_response(status_code=200, json_body=None, text_body="oops")
+    patcher, _ = _patch_async_client(response=response)
+
+    with patcher:
+        result = await tool.execute(config)
+
+    assert result.success is False
+    assert result.data["error_code"] == "INVALID_RESPONSE"
+    assert result.data["raw"] == "oops"
+
+
+async def test_execute_uses_error_mapping_for_human_message(
+    tool: GenericApiTool,
+) -> None:
+    config = {
+        "request": {"method": "GET", "url": "https://api.example.com"},
+        "error_mapping": {
+            "HTTP_4XX": "We could not find that record.",
+            "TIMEOUT": "The CRM is slow today.",
+        },
+    }
+    response = _mock_response(status_code=404, json_body={"err": "missing"})
+    patcher, _ = _patch_async_client(response=response)
+
+    with patcher:
+        result = await tool.execute(config)
+
+    assert result.success is False
+    assert result.data["error_code"] == "HTTP_4XX"
+    assert result.data["error_message"] == "We could not find that record."
+    # ToolResult.error tracks "<code>: <message>" so the orchestrator log
+    # line stays informative even without inspecting the data payload.
+    assert result.error == "HTTP_4XX: We could not find that record."
+
+
+async def test_execute_default_error_message_when_mapping_absent(
+    tool: GenericApiTool, minimal_config: dict[str, object]
+) -> None:
+    response = _mock_response(status_code=500, json_body={"err": "boom"})
+    patcher, _ = _patch_async_client(response=response)
+
+    with patcher:
+        result = await tool.execute(minimal_config)
+
+    assert result.success is False
+    assert result.data["error_code"] == "HTTP_5XX"
+    # Falls back to the module default since no mapping override exists.
+    assert result.data["error_message"] == "The external service is unavailable."

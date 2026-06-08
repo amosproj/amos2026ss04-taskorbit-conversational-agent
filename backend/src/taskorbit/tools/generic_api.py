@@ -6,16 +6,16 @@ lets system admins add new external tools (CRM lookups, weather APIs,
 Slack/Zapier outbound webhooks, etc.) by writing a config block instead
 of new Python code.
 
-Stage 2 of #66 implements:
-- The parsed config representation (`GenericApiConfig`).
+The module covers:
+- The parsed config representation (`GenericApiConfig`) and `parse_config`.
 - `{{env.X}}` and `{{args.Y}}` template substitution with an env-var
   whitelist (`auth.allowed_env`) so a malicious or careless config
   cannot exfiltrate arbitrary process env vars.
-- `validate_parameters()` against the config schema and the LLM-provided
-  args.
-
-HTTP execution, response extraction, and error normalisation land in
-stages 3-5.
+- Dot-path response extraction (`extract_path` / `extract_response`) so
+  the LLM sees a stable shape regardless of vendor JSON.
+- Standardised error envelope (`build_error`) with the ERROR_* code
+  taxonomy so every failure surfaces the same way (#66 AC3).
+- The async `execute` that wires everything together against httpx.
 """
 
 from __future__ import annotations
@@ -44,6 +44,31 @@ _DEFAULT_SUCCESS_STATUSES: tuple[int, ...] = tuple(range(200, 300))
 
 # {{env.NAME}} or {{args.NAME}} — captures the namespace and the dotted key.
 _TEMPLATE_PATTERN = re.compile(r"\{\{\s*(env|args)\.([A-Za-z_][A-Za-z0-9_.]*)\s*\}\}")
+
+# Standardised error codes (#66 stage 5, AC3). Every GenericApiTool failure
+# surfaces under one of these so the LLM and downstream observability can
+# branch on a stable identifier rather than parsing free-text messages.
+ERROR_CONFIG_INVALID = "CONFIG_INVALID"
+ERROR_ARGS_INVALID = "ARGS_INVALID"
+ERROR_TEMPLATE_INVALID = "TEMPLATE_INVALID"
+ERROR_TIMEOUT = "TIMEOUT"
+ERROR_NETWORK = "NETWORK"
+ERROR_HTTP_4XX = "HTTP_4XX"
+ERROR_HTTP_5XX = "HTTP_5XX"
+ERROR_HTTP_UNEXPECTED = "HTTP_UNEXPECTED"
+ERROR_INVALID_RESPONSE = "INVALID_RESPONSE"
+
+_DEFAULT_ERROR_MESSAGES: dict[str, str] = {
+    ERROR_CONFIG_INVALID: "The external tool is misconfigured.",
+    ERROR_ARGS_INVALID: "The arguments supplied to the tool are invalid.",
+    ERROR_TEMPLATE_INVALID: "The tool configuration referenced a value that is not available.",
+    ERROR_TIMEOUT: "The external service did not respond in time.",
+    ERROR_NETWORK: "Could not reach the external service.",
+    ERROR_HTTP_4XX: "The external service rejected the request.",
+    ERROR_HTTP_5XX: "The external service is unavailable.",
+    ERROR_HTTP_UNEXPECTED: "The external service returned an unexpected status.",
+    ERROR_INVALID_RESPONSE: "The external service returned a response we could not parse.",
+}
 
 
 @dataclass(frozen=True)
@@ -296,6 +321,42 @@ def extract_response(body: Any, extract: dict[str, str]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Error envelope
+# ---------------------------------------------------------------------------
+
+
+def build_error(
+    code: str,
+    detail: str,
+    error_mapping: dict[str, str] | None = None,
+    status: int | None = None,
+    extra: dict[str, Any] | None = None,
+) -> ToolResult:
+    """Build a ``ToolResult`` carrying the standardised error envelope.
+
+    Looks the human-friendly message up in ``error_mapping`` first, falling
+    back to the module-level default for ``code``. ``error_detail`` always
+    carries the technical reason (exception text, status code, etc.) for
+    logs and debugging without leaking it into the LLM-facing message
+    unless the admin opted in via the mapping.
+
+    ``ToolResult.error`` is kept as ``"<code>: <message>"`` so the
+    orchestration layer's existing log line stays informative.
+    """
+    mapping = error_mapping or {}
+    message = mapping.get(code) or _DEFAULT_ERROR_MESSAGES.get(code, "Tool execution failed.")
+    payload: dict[str, Any] = {
+        "error_code": code,
+        "error_message": message,
+        "error_detail": detail,
+        "status": status,
+    }
+    if extra:
+        payload.update(extra)
+    return ToolResult(success=False, data=payload, error=f"{code}: {message}")
+
+
+# ---------------------------------------------------------------------------
 # Validation against args_schema (minimal JSON-Schema subset)
 # ---------------------------------------------------------------------------
 
@@ -346,28 +407,44 @@ class GenericApiTool(BaseTool):
     tool_type = ToolType.EXTERNAL_API
 
     async def execute(self, parameters: dict[str, Any]) -> ToolResult:
-        """Send the configured HTTP request and return the response payload.
+        """Send the configured HTTP request and return the standardised result.
 
-        Stage 3 of #66. Substitutes templates into URL/headers/query/body,
-        dispatches the request via httpx, and returns the raw response in
-        ToolResult.data shaped as ``{status, data, headers}``. Response
-        extraction (Stage 4) and full error taxonomy (Stage 5) build on
-        top of this; today the only normalised failure is the timeout
-        path, everything else surfaces as a 4xx/5xx with the raw body.
+        Failures surface under a normalised envelope (#66 stage 5):
+        ``{error_code, error_message, error_detail, status, ...}``. The
+        ``error_code`` is one of the module-level ERROR_* constants so the
+        LLM (and observability) can branch on a stable identifier instead
+        of parsing free text. ``error_message`` is taken from
+        ``config.error_mapping[code]`` when set, otherwise from the module
+        default; ``error_detail`` always carries the technical reason
+        (exception text, status, etc.) for logs.
+
+        Success paths return ``{status, data, headers}`` (plus ``raw`` when
+        extraction was applied) exactly as Stage 4 left them.
         """
+        # Pre-parse so we can pull error_mapping even before the config is
+        # fully validated. A bad config falls back to an empty mapping,
+        # which just means the default human-readable message wins.
+        error_mapping_raw = (
+            parameters.get("error_mapping") if isinstance(parameters, dict) else None
+        )
+        error_mapping = error_mapping_raw if isinstance(error_mapping_raw, dict) else {}
+
         try:
             config = parse_config(parameters)
         except GenericApiConfigError as exc:
-            return ToolResult(success=False, error=str(exc))
+            return build_error(ERROR_CONFIG_INVALID, str(exc), error_mapping)
+
+        # Once parsed, use the mapping the config explicitly carries.
+        error_mapping = config.error_mapping
 
         args = parameters.get("args") or {}
         if not isinstance(args, dict):
-            return ToolResult(success=False, error="args must be an object")
+            return build_error(ERROR_ARGS_INVALID, "args must be an object", error_mapping)
 
         try:
             _check_args_against_schema(args, config.args_schema)
         except GenericApiConfigError as exc:
-            return ToolResult(success=False, error=str(exc))
+            return build_error(ERROR_ARGS_INVALID, str(exc), error_mapping)
 
         try:
             url = substitute_string(config.url, args, config.allowed_env)
@@ -381,7 +458,7 @@ class GenericApiTool(BaseTool):
             }
             body = substitute_tree(config.body, args, config.allowed_env)
         except TemplateSubstitutionError as exc:
-            return ToolResult(success=False, error=str(exc))
+            return build_error(ERROR_TEMPLATE_INVALID, str(exc), error_mapping)
 
         logger.info(
             "generic_api_request",
@@ -407,16 +484,53 @@ class GenericApiTool(BaseTool):
                 timeout_seconds=config.timeout_seconds,
                 error=str(exc),
             )
-            return ToolResult(
-                success=False,
-                error=f"TIMEOUT: request exceeded {config.timeout_seconds}s",
+            return build_error(
+                ERROR_TIMEOUT,
+                f"request exceeded {config.timeout_seconds}s ({exc})",
+                error_mapping,
+            )
+        except httpx.RequestError as exc:
+            # Covers ConnectError, ReadError, ConnectTimeout, DNS failures,
+            # SSL errors, ... anything below the response layer. TimeoutException
+            # is a subclass and already handled above, so this only fires for
+            # genuine transport failures.
+            logger.warning(
+                "generic_api_network_error",
+                url=url,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            return build_error(
+                ERROR_NETWORK,
+                f"{type(exc).__name__}: {exc}",
+                error_mapping,
             )
 
+        # Parse the body. JSON failure is only a hard error when extraction
+        # was configured (we cannot extract from non-JSON); otherwise we
+        # fall back to text so plain-text endpoints still work.
         raw_body: Any
+        body_was_json = True
         try:
             raw_body = response.json()
         except ValueError:
             raw_body = response.text
+            body_was_json = False
+
+        if config.extract and not body_was_json:
+            logger.warning(
+                "generic_api_invalid_response",
+                url=url,
+                status=response.status_code,
+                reason="extract configured but response was not JSON",
+            )
+            return build_error(
+                ERROR_INVALID_RESPONSE,
+                "response was not JSON but extract was configured",
+                error_mapping,
+                status=response.status_code,
+                extra={"raw": raw_body, "headers": dict(response.headers)},
+            )
 
         success = response.status_code in config.success_statuses
 
@@ -448,13 +562,29 @@ class GenericApiTool(BaseTool):
             extracted_keys=list(config.extract.keys()),
         )
 
-        if not success:
-            return ToolResult(
-                success=False,
-                data=result_data,
-                error=f"HTTP {response.status_code}",
-            )
-        return ToolResult(success=True, data=result_data)
+        if success:
+            return ToolResult(success=True, data=result_data)
+
+        # Non-success: classify by status into a normalised code. Preserve
+        # the raw body + headers alongside the error envelope so the LLM
+        # (and operators) can still inspect what came back.
+        if 400 <= response.status_code < 500:
+            code = ERROR_HTTP_4XX
+        elif 500 <= response.status_code < 600:
+            code = ERROR_HTTP_5XX
+        else:
+            code = ERROR_HTTP_UNEXPECTED
+        return build_error(
+            code,
+            f"upstream returned HTTP {response.status_code}",
+            error_mapping,
+            status=response.status_code,
+            extra={
+                "data": result_data["data"],
+                "raw": result_data.get("raw"),
+                "headers": result_data["headers"],
+            },
+        )
 
     def validate_parameters(self, parameters: dict[str, Any]) -> bool:
         """Return True if `parameters` carries a parseable config and valid args.
