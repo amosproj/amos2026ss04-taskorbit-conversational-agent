@@ -37,6 +37,7 @@ const toolLabels: Record<ToolDefinition["type"], string> = {
   data_extraction: "Data extraction",
   end_call: "End call",
   agent_transfer: "Agent transfer",
+  external_api: "External API",
 };
 
 const languageDisplayNames =

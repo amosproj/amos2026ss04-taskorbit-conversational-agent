@@ -38,6 +38,12 @@ function adaptTool(tool: FrontendTool): BackendTool {
   if (tool.type === "agent_transfer") {
     return { ...base, parameters: { targets: tool.targets } };
   }
+  if (tool.type === "external_api") {
+    // External API tools (#66) carry the full backend config in
+    // `parameters` already. Pass it through so the voice path can
+    // dispatch external_api the same way the text path does.
+    return { ...base, parameters: tool.parameters };
+  }
   return { ...base, parameters: {} };
 }
 

@@ -54,7 +54,27 @@ export type AgentTransferTool = {
   targets: string[];
 };
 
-export type ToolDefinition = DataExtractionTool | EndCallTool | AgentTransferTool;
+/**
+ * ExternalApiTool — ticket #66.
+ *
+ * Generic adapter for HTTP-based external tools. The full backend config
+ * (request, response.extract, auth.allowed_env, error_mapping, args_schema)
+ * is carried in `parameters` so admins can plug in new APIs by editing
+ * configuration alone, no Python required. Mirrors the contract enforced
+ * by `taskorbit.tools.generic_api.parse_config` in the backend.
+ *
+ * `parameters` is intentionally typed loosely (Record<string, unknown>)
+ * so the contract can grow without a FE type migration each time. The
+ * form editor populates a strict shape; validation lives backend-side.
+ */
+export type ExternalApiTool = {
+  type: "external_api";
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+};
+
+export type ToolDefinition = DataExtractionTool | EndCallTool | AgentTransferTool | ExternalApiTool;
 
 export type ToolType = ToolDefinition["type"];
 
@@ -178,6 +198,19 @@ export function emptyToolByType(type: ToolType): ToolDefinition {
         name: "transfer_to_agent",
         description: "Hand off the conversation to a specialised agent.",
         targets: [],
+      };
+    case "external_api":
+      return {
+        type,
+        name: "call_external_api",
+        description: "Call an external HTTP API to fetch or send data.",
+        parameters: {
+          request: { method: "GET", url: "" },
+          response: { extract: {} },
+          auth: { allowed_env: [] },
+          error_mapping: {},
+          args_schema: { type: "object", properties: {} },
+        },
       };
   }
 }

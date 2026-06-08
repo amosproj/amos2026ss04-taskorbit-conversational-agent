@@ -100,6 +100,12 @@ function adaptTool(tool: FrontendTool): BackendTool {
   if (tool.type === "agent_transfer") {
     return { ...base, parameters: { targets: tool.targets } };
   }
+  if (tool.type === "external_api") {
+    // External API tools (#66) carry the full backend config in
+    // `parameters` already (request / response / auth / error_mapping /
+    // args_schema), so pass it through verbatim.
+    return { ...base, parameters: tool.parameters };
+  }
   return { ...base, parameters: {} };
 }
 
