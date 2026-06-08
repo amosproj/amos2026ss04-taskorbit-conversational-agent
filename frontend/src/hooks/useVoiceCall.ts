@@ -36,7 +36,7 @@ export type VoiceCallApi = {
   clearSessionEndReason: () => void;
 
   /** Begin a new call: fetch token, transition to `connecting`. */
-  start: (options?: VoiceCallStartOptions) => void;
+  start: (options?: VoiceCallStartOptions) => string;
   /** End the call: tear down LiveKit, transition to `ended`. */
   end: () => void;
   /** Reset everything back to the pre-call surface. */
@@ -259,6 +259,8 @@ export function useVoiceCall(): VoiceCallApi {
           "Session closed due to inactivity (no speech detected for 7 minutes).",
         );
       }, INACTIVITY_TIMEOUT_MS);
+
+      return newConvId;
     },
     [clearTimer, clearSessionTimers, handleSessionTimeout],
   );

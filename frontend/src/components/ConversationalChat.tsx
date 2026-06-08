@@ -179,6 +179,15 @@ export function ConversationalChat() {
 
   const handleSendText = useCallback(
     (text: string) => {
+      let convId = call.conversationId;
+      // If the user starts a session via the "Use text instead" input rather than the 
+      // "Start session" button, the UI state is still 'idle'. We must explicitly 
+      // initialize the session here (which transitions the UI and generates an ID) 
+      // before dispatching the message.
+      if (call.status === "idle") {
+        convId = call.start();
+      }
+      
       call.appendUserTurn(text);
       call.setPhase("thinking");
 
@@ -191,7 +200,7 @@ export function ConversationalChat() {
           const response = await sendMessage(
             agent,
             [...call.transcript, { id: "tmp", role: "user", text }],
-            call.conversationId,
+            convId,
             controller.signal,
             lockedIntentRef.current,
           );
@@ -305,6 +314,13 @@ export function ConversationalChat() {
             decision,
           );
           lockedIntentRef.current = response.locked_intent_name ?? null;
+
+          if (response.status === "confirmation_required" && response.confirmation) {
+            pendingConfirmationIdRef.current = response.confirmation.confirmation_id;
+            call.triggerConfirmation(response.confirmation);
+            return;
+          }
+
           const replyText = response.reply.content;
           call.appendAssistantTurn(replyText);
           const speakable =
@@ -319,11 +335,14 @@ export function ConversationalChat() {
               }
             }
           }
-          call.setPhase("idle_in_call");
         } catch (err) {
           if ((err as Error).name === "AbortError") return;
           call.appendAssistantTurn(`[Connection error: ${(err as Error).message}]`);
-          call.setPhase("idle_in_call");
+        } finally {
+          // Restore the idle UI state only if we aren't immediately blocked by another confirmation.
+          if (pendingConfirmationIdRef.current === null) {
+            call.setPhase("idle_in_call");
+          }
         }
       });
     },
@@ -464,14 +483,18 @@ export function ConversationalChat() {
         </Card>
       ) : null}
 
-      {call.confirmation !== null ? (
-        <ConfirmationPrompt
-          prompt={call.confirmation}
-          onApprove={handleApprove}
-          onDeny={handleDeny}
-        />
-      ) : isInCall ? (
-        call.livekitCredentials !== null ? (
+      {isInCall && call.livekitCredentials !== null ? (
+        // Wrapper for the bottom UI controls. We keep this sticky to the bottom of the viewport
+        // so that the confirmation prompt overlays the input area, preventing the UI from shifting
+        // dramatically when a critical action requires approval.
+        <div className="sticky bottom-0 z-10 -mx-4 flex flex-col gap-3 bg-background/95 px-4 pb-4 pt-2 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:-mx-6 sm:px-6">
+          {call.confirmation !== null ? (
+            <ConfirmationPrompt
+              prompt={call.confirmation}
+              onApprove={handleApprove}
+              onDeny={handleDeny}
+            />
+          ) : null}
           <InCallControls
             status={call.status}
             greetingInProgress={!greetingDone}
@@ -481,8 +504,8 @@ export function ConversationalChat() {
             onTriggerConfirmation={handleTriggerConfirmation}
             onMicError={call.setMicError}
           />
-        ) : null
-      ) : (
+        </div>
+      ) : isInCall ? null : (
         <CallControls
           status={call.status}
           onStart={handleStartSession}

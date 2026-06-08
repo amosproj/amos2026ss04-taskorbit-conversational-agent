@@ -240,13 +240,19 @@ export function InCallControls({
     return "";
   })();
 
+  const thinking = status === "thinking";
+  const awaitingConfirmation = status === "awaiting_confirmation";
+  const textDisabled =
+    awaitingConfirmation || (status !== "idle_in_call" && status !== "speaking");
+
   // Allow stopping continuous mode at any non-network phase; keep disabled
   // only for actual connection states and while the mic track is initialising.
   const voiceBtnDisabled =
-    greetingInProgress || mic.starting || status === "connecting" || status === "reconnecting";
-
-  const thinking = status === "thinking";
-  const textDisabled = status !== "idle_in_call" && status !== "speaking";
+    greetingInProgress ||
+    mic.starting ||
+    status === "connecting" ||
+    status === "reconnecting" ||
+    awaitingConfirmation;
 
   return (
     <div className="rounded-xl border bg-card p-3.5">
@@ -277,7 +283,9 @@ export function InCallControls({
                 handleSendText();
               }
             }}
-            placeholder="Ask from Orbit."
+            placeholder={
+              awaitingConfirmation ? "Approve or deny the action above to continue…" : "Ask from Orbit."
+            }
             autoComplete="off"
             disabled={textDisabled}
             className={cn(

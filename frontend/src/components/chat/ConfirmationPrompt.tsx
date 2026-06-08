@@ -13,8 +13,8 @@ type Props = {
 /**
  * Inline mid-call confirmation. Architecture §4.1 mandates explicit user
  * approval for sensitive actions; this is the surface that captures the
- * approval. Renders in place of the normal CallControls when the agent
- * has paused on a tool decision.
+ * approval. Renders above the in-call input dock while the agent has
+ * paused on a tool decision; the input stays visible but disabled.
  */
 export function ConfirmationPrompt({ prompt, onApprove, onDeny }: Props) {
   return (
