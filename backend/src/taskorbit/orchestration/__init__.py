@@ -471,12 +471,14 @@ class ConversationOrchestrator:
         from taskorbit.tools.agent_transfer import AgentTransferTool
         from taskorbit.tools.data_extraction import DataExtractionTool
         from taskorbit.tools.end_call import EndCallTool
+        from taskorbit.tools.generic_api import GenericApiTool
         from taskorbit.types import ToolType
 
         dispatch: dict[ToolType, type] = {
             ToolType.DATA_EXTRACTION: DataExtractionTool,
             ToolType.AGENT_TRANSFER: AgentTransferTool,
             ToolType.END_CALL: EndCallTool,
+            ToolType.EXTERNAL_API: GenericApiTool,
         }
 
         tool_cls = dispatch.get(tool.type)
