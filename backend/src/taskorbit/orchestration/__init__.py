@@ -188,6 +188,17 @@ class ConversationOrchestrator:
                     dispatch_context["conversation_history"] = [
                         {"role": m.role.value, "content": m.content} for m in request.messages
                     ]
+                elif active_tool.type == ToolType.EXTERNAL_API:
+                    # GenericApiTool (#66) reads its config from the same
+                    # parameters dict it expects on ToolDefinition.parameters,
+                    # plus runtime args under an `args` key. The slot dict we
+                    # built above carries the LLM-extracted values; surface
+                    # them as `args` so they substitute into the template, and
+                    # overlay the tool's static config (request, response, etc).
+                    dispatch_context = {
+                        **active_tool.parameters,
+                        "args": dict(slot_result.to_dict()),
+                    }
                 tool_data = await self._dispatch_tool(active_tool, dispatch_context)
                 logger.info(
                     "tool_dispatch_complete",

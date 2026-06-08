@@ -449,3 +449,78 @@ async def test_unknown_intent_falls_back_via_clarification() -> None:
     assert response.selected_agent == ""
     assert response.reply.content == _CLARIFICATION_REPLY
     mock_llm.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_external_api_dispatch_passes_full_config_plus_args() -> None:
+    """#66 wiring: EXTERNAL_API tools receive the full tool.parameters config
+    merged with the extracted slot values under an `args` key, so the adapter
+    can substitute templates and validate args without the orchestrator having
+    to understand the adapter's internal contract."""
+    from taskorbit.slots.models import SlotExtractionResult, SlotValue
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    orch = ConversationOrchestrator()
+    intent = _intent_result(required_inputs=[{"name": "city", "type": "string", "required": True}])
+    external_api_tool = ToolDefinition(
+        id="lookup-weather",
+        name="lookup_weather",
+        type=ToolType.EXTERNAL_API,
+        description="weather lookup",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={
+            "request": {"method": "GET", "url": "https://x/{{args.city}}"},
+            "response": {"extract": {"temp": "current.temp_c"}},
+            "args_schema": {
+                "type": "object",
+                "required": ["city"],
+                "properties": {"city": {"type": "string"}},
+            },
+        },
+    )
+    slot_result = SlotExtractionResult(
+        filled={"city": SlotValue(name="city", value="Berlin", slot_type="string")},
+        missing=[],
+    )
+
+    dispatch_calls: list[dict[str, Any]] = []
+
+    async def _capture_dispatch(
+        _self: ConversationOrchestrator, _tool: ToolDefinition, ctx: dict[str, Any]
+    ) -> dict[str, Any]:
+        dispatch_calls.append(ctx)
+        return {"status": 200, "data": {"temp": 18.3}}
+
+    with (
+        patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
+        patch.object(
+            ConversationOrchestrator, "_select_active_tool", return_value=external_api_tool
+        ),
+        patch.object(
+            ConversationOrchestrator,
+            "_extract_slots",
+            new_callable=AsyncMock,
+            return_value=slot_result,
+        ),
+        patch.object(
+            ConversationOrchestrator,
+            "_dispatch_tool",
+            new=_capture_dispatch,
+        ),
+        patch.object(
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+        ),
+    ):
+        response = await orch.process_message(_make_request("weather please"))
+
+    assert response.tool_invoked is not None
+    assert response.tool_invoked.type == ToolType.EXTERNAL_API
+    # The dispatch context must carry the tool's static config (so the adapter
+    # can find request/response/args_schema) AND the LLM-extracted args under
+    # the `args` key (so {{args.city}} substitutes correctly).
+    assert len(dispatch_calls) == 1
+    ctx = dispatch_calls[0]
+    assert "request" in ctx and ctx["request"]["method"] == "GET"
+    assert "response" in ctx
+    assert "args_schema" in ctx
+    assert ctx["args"] == {"city": "Berlin"}
