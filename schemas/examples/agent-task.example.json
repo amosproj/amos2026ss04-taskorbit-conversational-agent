@@ -150,6 +150,47 @@
         "type": "end_call",
         "name": "end_call",
         "description": "Ends the active voice call session."
+      },
+      {
+        "type": "external_api",
+        "name": "lookup_service_area",
+        "description": "Check whether a postal code is in our service area.",
+        "parameters": {
+          "request": {
+            "method": "GET",
+            "url": "https://api.example.com/v1/service-area/{{args.postal_code}}",
+            "headers": {
+              "X-API-Key": "{{env.MUELLER_API_KEY}}"
+            },
+            "timeout_seconds": 5
+          },
+          "response": {
+            "extract": {
+              "covered": "data.covered",
+              "earliest_slot": "data.earliest_slot"
+            },
+            "success_when": {
+              "status_in": [200]
+            }
+          },
+          "auth": {
+            "allowed_env": ["MUELLER_API_KEY"]
+          },
+          "error_mapping": {
+            "TIMEOUT": "The service area lookup is slow right now. I'll continue without it.",
+            "HTTP_4XX": "I couldn't validate that postal code, can you double-check it?"
+          },
+          "args_schema": {
+            "type": "object",
+            "required": ["postal_code"],
+            "properties": {
+              "postal_code": {
+                "type": "string",
+                "description": "German postal code, 5 digits."
+              }
+            }
+          }
+        }
       }
     ],
     "confirmations": {

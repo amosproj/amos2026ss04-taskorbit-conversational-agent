@@ -105,3 +105,6 @@ minversion = "8.0"
 addopts = "-ra -q"
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "integration: end-to-end test that hits a real external service; skips on network errors.",
+]
