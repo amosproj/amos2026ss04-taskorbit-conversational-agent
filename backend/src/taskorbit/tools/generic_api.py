@@ -253,6 +253,49 @@ def substitute_tree(value: Any, args: dict[str, Any], allowed_env: frozenset[str
 
 
 # ---------------------------------------------------------------------------
+# Response extraction (dot-path)
+# ---------------------------------------------------------------------------
+
+
+def extract_path(body: Any, path: str) -> Any:
+    """Walk `body` along a dot-separated `path` and return the leaf value.
+
+    Returns ``None`` if any segment is missing or the body is not a mapping
+    at that point. A leading ``$.`` is accepted and stripped so configs
+    written with the conventional JSONPath prefix still resolve cleanly
+    against the simple dot-path walker. Anything more exotic (array
+    indexing, wildcards) is intentionally unsupported in v1; document the
+    limitation and revisit in a follow-up when a real config requires it.
+    """
+    if not path:
+        return None
+    if path.startswith("$."):
+        path = path[2:]
+    elif path == "$":
+        return body
+
+    cursor: Any = body
+    for segment in path.split("."):
+        if not segment:
+            return None
+        if isinstance(cursor, dict) and segment in cursor:
+            cursor = cursor[segment]
+            continue
+        return None
+    return cursor
+
+
+def extract_response(body: Any, extract: dict[str, str]) -> dict[str, Any]:
+    """Apply every ``name -> path`` mapping in ``extract`` against ``body``.
+
+    Returns a new dict in the standardised LLM-facing shape. Missing paths
+    resolve to ``None`` rather than raising so a single missing field
+    cannot blow up an otherwise-successful response.
+    """
+    return {name: extract_path(body, path) for name, path in extract.items()}
+
+
+# ---------------------------------------------------------------------------
 # Validation against args_schema (minimal JSON-Schema subset)
 # ---------------------------------------------------------------------------
 
@@ -376,17 +419,33 @@ class GenericApiTool(BaseTool):
             raw_body = response.text
 
         success = response.status_code in config.success_statuses
-        result_data: dict[str, Any] = {
-            "status": response.status_code,
-            "data": raw_body,
-            "headers": dict(response.headers),
-        }
+
+        # When extract is configured, the LLM sees the standardised shape
+        # (stable names defined by the admin) under `data`. The raw vendor
+        # payload stays accessible under `raw` so reviewers / logs can still
+        # see what the upstream actually returned. With no extract config,
+        # we hand back the raw body directly to keep simple configs simple.
+        if config.extract:
+            data_payload: Any = extract_response(raw_body, config.extract)
+            result_data: dict[str, Any] = {
+                "status": response.status_code,
+                "data": data_payload,
+                "raw": raw_body,
+                "headers": dict(response.headers),
+            }
+        else:
+            result_data = {
+                "status": response.status_code,
+                "data": raw_body,
+                "headers": dict(response.headers),
+            }
 
         logger.info(
             "generic_api_response",
             url=url,
             status=response.status_code,
             success=success,
+            extracted_keys=list(config.extract.keys()),
         )
 
         if not success:

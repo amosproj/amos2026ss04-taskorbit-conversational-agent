@@ -18,6 +18,8 @@ from taskorbit.tools.generic_api import (
     GenericApiConfigError,
     GenericApiTool,
     TemplateSubstitutionError,
+    extract_path,
+    extract_response,
     parse_config,
     substitute_string,
     substitute_tree,
@@ -402,3 +404,113 @@ async def test_execute_short_circuits_on_unwhitelisted_env(
     assert result.success is False
     assert "allowed_env" in result.error
     request_mock.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Response extraction (Stage 4)
+# ---------------------------------------------------------------------------
+
+
+def test_extract_path_walks_nested_dict() -> None:
+    body = {"data": {"current": {"temp_c": 22.5}}}
+    assert extract_path(body, "data.current.temp_c") == 22.5
+
+
+def test_extract_path_returns_none_for_missing_segment() -> None:
+    body = {"data": {"current": {}}}
+    assert extract_path(body, "data.current.temp_c") is None
+
+
+def test_extract_path_returns_none_when_traversing_through_non_dict() -> None:
+    body = {"data": "not-a-dict"}
+    assert extract_path(body, "data.current") is None
+
+
+def test_extract_path_accepts_jsonpath_dollar_prefix() -> None:
+    body = {"items": {"first": "a"}}
+    assert extract_path(body, "$.items.first") == "a"
+
+
+def test_extract_path_dollar_alone_returns_whole_body() -> None:
+    body = {"any": "thing"}
+    assert extract_path(body, "$") == body
+
+
+def test_extract_response_builds_standardised_shape() -> None:
+    body = {"data": {"current": {"temp_c": 22.5, "humidity": 80}}, "status": "ok"}
+    result = extract_response(
+        body,
+        {
+            "temperature": "data.current.temp_c",
+            "humidity": "data.current.humidity",
+            "status_text": "status",
+        },
+    )
+    assert result == {"temperature": 22.5, "humidity": 80, "status_text": "ok"}
+
+
+def test_extract_response_missing_paths_become_none() -> None:
+    body = {"data": {"current": {"temp_c": 22.5}}}
+    result = extract_response(
+        body, {"temperature": "data.current.temp_c", "wind": "data.current.wind_kph"}
+    )
+    assert result == {"temperature": 22.5, "wind": None}
+
+
+async def test_execute_applies_extract_and_keeps_raw(tool: GenericApiTool) -> None:
+    config = {
+        "request": {"method": "GET", "url": "https://api.example.com/weather"},
+        "response": {
+            "extract": {
+                "temperature": "data.current.temp_c",
+                "condition": "data.current.condition.text",
+            }
+        },
+    }
+    upstream_body = {
+        "data": {"current": {"temp_c": 18.3, "condition": {"text": "Cloudy"}}},
+        "meta": {"source": "weatherapi"},
+    }
+    response = _mock_response(status_code=200, json_body=upstream_body)
+    patcher, _ = _patch_async_client(response=response)
+
+    with patcher:
+        result = await tool.execute(config)
+
+    assert result.success is True
+    assert result.data["data"] == {"temperature": 18.3, "condition": "Cloudy"}
+    assert result.data["raw"] == upstream_body
+
+
+async def test_execute_without_extract_returns_raw_as_data(
+    tool: GenericApiTool, minimal_config: dict[str, object]
+) -> None:
+    upstream_body = {"any": "shape"}
+    response = _mock_response(status_code=200, json_body=upstream_body)
+    patcher, _ = _patch_async_client(response=response)
+
+    with patcher:
+        result = await tool.execute(minimal_config)
+
+    assert result.success is True
+    assert result.data["data"] == upstream_body
+    assert "raw" not in result.data
+
+
+async def test_execute_extract_applied_even_on_non_success_status(
+    tool: GenericApiTool,
+) -> None:
+    config = {
+        "request": {"method": "GET", "url": "https://api.example.com/get"},
+        "response": {"extract": {"err": "error.message"}},
+    }
+    upstream_body = {"error": {"message": "not found"}}
+    response = _mock_response(status_code=404, json_body=upstream_body)
+    patcher, _ = _patch_async_client(response=response)
+
+    with patcher:
+        result = await tool.execute(config)
+
+    assert result.success is False
+    assert result.data["data"] == {"err": "not found"}
+    assert result.data["raw"] == upstream_body
