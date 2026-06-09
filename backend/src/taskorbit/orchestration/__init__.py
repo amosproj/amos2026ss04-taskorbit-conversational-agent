@@ -225,7 +225,7 @@ class ConversationOrchestrator:
             slots_ready = (
                 active_tool is not None and slot_result.is_complete and bool(intent.required_inputs)
             )
-            
+
             if no_slots_tool_ready or slots_ready:
                 # AC #49: mid-call confirmation logic (Dhruvin's contract).
                 is_decision_for_this_tool = request.confirmation_id == active_tool.id
