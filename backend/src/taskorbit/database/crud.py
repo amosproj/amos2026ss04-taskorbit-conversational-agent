@@ -1,6 +1,6 @@
 """CRUD operations for database models."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -10,7 +10,15 @@ from sqlalchemy.orm import Session
 
 from taskorbit.logging.setup import get_logger
 
-from .models import AgentConfiguration, ConversationMessage, DefaultAgentTemplate, User
+from .models import (
+    AgentConfiguration,
+    Conversation,
+    ConversationMessage,
+    DefaultAgentTemplate,
+    SlotExtraction,
+    ToolExecution,
+    User,
+)
 
 logger = get_logger(__name__)
 
@@ -119,6 +127,206 @@ async def delete_user(db: AsyncSession, user_id: int) -> bool:
         logger.error("delete_user_failed", error=str(e))
         await db.rollback()
         return False
+
+
+# ============ CONVERSATION CRUD ============
+
+
+async def get_conversation(db: AsyncSession, conversation_id: str) -> Conversation | None:
+    try:
+        result = await db.execute(select(Conversation).where(Conversation.id == conversation_id))
+        return result.scalar_one_or_none()
+    except SQLAlchemyError as e:
+        logger.error("get_conversation_failed", error=str(e))
+        return None
+
+
+async def create_conversation(
+    db: AsyncSession, agent_id: str, agent_name: str, id: str | None = None
+) -> Conversation | None:
+    try:
+        conversation = Conversation(
+            id=id or str(uuid4()),
+            agent_id=agent_id,
+            agent_name=agent_name,
+            started_at=datetime.now(UTC),
+        )
+        db.add(conversation)
+        await db.commit()
+        await db.refresh(conversation)
+        logger.info("conversation_created", conversation_id=conversation.id)
+        return conversation
+    except SQLAlchemyError as e:
+        logger.error("create_conversation_failed", error=str(e))
+        await db.rollback()
+        return None
+
+
+# ============ SLOT EXTRACTION CRUD ============
+
+
+async def create_slot_extractions(
+    db: AsyncSession,
+    conversation_id: str,
+    tool_id: str,
+    slots: dict,
+    user_id: int | None = None,
+) -> list[SlotExtraction]:
+    """Bulk-insert one row per extracted field, recording which tool extracted it."""
+    if not slots:
+        return []
+    try:
+        extractions = [
+            SlotExtraction(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                tool_id=tool_id,
+                field_name=str(name),
+                field_value=str(value) if value is not None else None,
+            )
+            for name, value in slots.items()
+        ]
+        db.add_all(extractions)
+        await db.commit()
+        for extraction in extractions:
+            await db.refresh(extraction)
+        logger.info(
+            "slot_extractions_saved",
+            conversation_id=conversation_id,
+            tool_id=tool_id,
+            count=len(extractions),
+        )
+        return extractions
+    except SQLAlchemyError as e:
+        logger.error("create_slot_extractions_failed", error=str(e))
+        await db.rollback()
+        return []
+
+
+async def get_slot_extractions(db: AsyncSession, conversation_id: str) -> list[SlotExtraction]:
+    """Return all slot extractions for a conversation ordered by extraction time."""
+    try:
+        result = await db.execute(
+            select(SlotExtraction)
+            .where(SlotExtraction.conversation_id == conversation_id)
+            .order_by(SlotExtraction.extracted_at.asc())
+        )
+        return list(result.scalars().all())
+    except SQLAlchemyError as e:
+        logger.error("get_slot_extractions_failed", error=str(e))
+        return []
+
+
+# ============ CONVERSATION HISTORY ============
+
+
+async def get_conversation_history(db: AsyncSession, conversation_id: str) -> dict | None:
+    """Return a conversation with its messages, tool executions, and slot extractions.
+
+    Returns None when the conversation does not exist.
+    """
+    try:
+        conv = await get_conversation(db, conversation_id)
+        if conv is None:
+            return None
+
+        messages_result = await db.execute(
+            select(ConversationMessage)
+            .where(ConversationMessage.conversation_id == conversation_id)
+            .order_by(ConversationMessage.created_at.asc())
+        )
+        messages = list(messages_result.scalars().all())
+
+        tools_result = await db.execute(
+            select(ToolExecution)
+            .where(ToolExecution.conversation_id == conversation_id)
+            .order_by(ToolExecution.executed_at.asc())
+        )
+        tool_executions = list(tools_result.scalars().all())
+
+        slots_result = await db.execute(
+            select(SlotExtraction)
+            .where(SlotExtraction.conversation_id == conversation_id)
+            .order_by(SlotExtraction.extracted_at.asc())
+        )
+        slot_extractions = list(slots_result.scalars().all())
+
+        return {
+            "conversation_id": conv.id,
+            "agent_id": conv.agent_id,
+            "agent_name": conv.agent_name,
+            "started_at": conv.started_at.isoformat() if conv.started_at else None,
+            "ended_at": conv.ended_at.isoformat() if conv.ended_at else None,
+            "messages": [
+                {
+                    "id": m.id,
+                    "role": m.role,
+                    "content": m.content,
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
+                }
+                for m in messages
+            ],
+            "tool_executions": [
+                {
+                    "id": t.id,
+                    "tool_id": t.tool_id,
+                    "tool_type": t.tool_type,
+                    "confirmed": t.confirmed,
+                    "executed_at": t.executed_at.isoformat() if t.executed_at else None,
+                    "result": t.result,
+                }
+                for t in tool_executions
+            ],
+            "slot_extractions": [
+                {
+                    "id": s.id,
+                    "tool_id": s.tool_id,
+                    "field_name": s.field_name,
+                    "field_value": s.field_value,
+                    "extracted_at": s.extracted_at.isoformat() if s.extracted_at else None,
+                }
+                for s in slot_extractions
+            ],
+        }
+    except SQLAlchemyError as e:
+        logger.error(
+            "get_conversation_history_failed", conversation_id=conversation_id, error=str(e)
+        )
+        return None
+
+
+# ============ TOOL EXECUTION CRUD ============
+
+
+async def create_tool_execution(
+    db: AsyncSession,
+    conversation_id: str,
+    tool_id: str,
+    tool_type: str,
+    result: dict | None = None,
+) -> ToolExecution | None:
+    """Record a tool invocation for the conversation history."""
+    try:
+        execution = ToolExecution(
+            conversation_id=conversation_id,
+            tool_id=tool_id,
+            tool_type=tool_type,
+            result=result,
+        )
+        db.add(execution)
+        await db.commit()
+        await db.refresh(execution)
+        logger.info(
+            "tool_execution_saved",
+            conversation_id=conversation_id,
+            tool_id=tool_id,
+            tool_type=tool_type,
+        )
+        return execution
+    except SQLAlchemyError as e:
+        logger.error("create_tool_execution_failed", error=str(e))
+        await db.rollback()
+        return None
 
 
 # ============ CONVERSATION MESSAGE CRUD ============

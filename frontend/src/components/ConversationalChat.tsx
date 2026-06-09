@@ -201,6 +201,7 @@ export function ConversationalChat() {
             controller.signal,
             lockedIntentRef.current,
           );
+          call.updateConversationId(response.conversation_id);
           lockedIntentRef.current = response.locked_intent_name ?? null;
           if (response.selected_agent) setRoutedAgent(response.selected_agent);
           const replyText = response.reply.content;

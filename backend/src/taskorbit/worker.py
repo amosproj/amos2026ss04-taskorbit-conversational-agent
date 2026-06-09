@@ -91,7 +91,11 @@ async def entrypoint(ctx: JobContext) -> None:
         pass
 
     session = build_agent_session(settings=cfg)
-    agent = build_default_agent(settings=cfg, agent_config=agent_config)
+    agent = build_default_agent(
+        settings=cfg,
+        agent_config=agent_config,
+        conversation_id=ctx.room.name,
+    )
 
     @session.on("metrics_collected")
     def _on_metrics(ev: AgentEvent) -> None:
