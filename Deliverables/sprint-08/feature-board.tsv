@@ -1,0 +1,54 @@
+Title	URL	Assignees	Status
+User Conversation History	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/45	abdulmoeez1225, qiblatainf	Awaiting Review
+[Tools] End Call	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/116	abdulmoeez1225, qiblatainf	Awaiting Review
+Critical Action Confirmation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/49	djv03, shikharthakur2404	Awaiting Review
+Stream LLM Responses	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/57	djv03, K-Vineesh	Awaiting Review
+Microphone Mute interrupts Agent TTS output	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/101	1Endri	Awaiting Review
+Generic Adapter for external Tools	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/66	Asadraza17	Awaiting Review
+Conditional Workflow Engine	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/71		Product Backlog
+LLM External Tool Execution	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/44		Product Backlog
+Provider Model Dropdown	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/87	K-Vineesh	In Progress
+Agent Routing Foundation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/8	abdulmoeez1225, Asadraza17, qiblatainf	Feature Archive
+Agent Config not persistant through text and voice prompts	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/99	K-Vineesh	Feature Archive
+Livekit - Session Limit	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/112	abdulmoeez1225, qiblatainf	Feature Archive
+Voice input splits into multiple bubbles & numbers/symbols are formatted wrong	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/102	1Endri, djv03	Feature Archive
+Agent/LLM Memory Safeguards	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/56	djv03, shikharthakur2404	Feature Archive
+[PROD] Agent config not loaded correctly	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/100	abdulmoeez1225, Asadraza17	Feature Archive
+[PROD] Grafana Backend Fix	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/103		Product Backlog
+Custom Agent Routing	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/129		Product Backlog
+Remove Legacy Text Processing Pipeline	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/126		Product Backlog
+Mute Agent Output	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/107		Product Backlog
+Cloud Open Source Inference Server	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/67		Product Backlog
+Integrate Cloud Environment with IaC	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/21	abdulmoeez1225, qiblatainf	Feature Archive
+Agent Persona Guardrails	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/69	Asadraza17, shikharthakur2404	Feature Archive
+User, Design & Build Documentation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/74	K-Vineesh	Feature Archive
+Logging & Monitoring Setup	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/11	abdulmoeez1225, djv03, qiblatainf	Feature Archive
+Voice Interruption for Audio Chat	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/55	abdulmoeez1225, qiblatainf	Feature Archive
+Slot Extraction for Structured Task Inputs	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/70	1Endri, djv03	Feature Archive
+Manage Agent Configuration	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/52	shikharthakur2404	Feature Archive
+Load Agent Configuration	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/51	K-Vineesh	Feature Archive
+Save Agent Configuration	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/47	Asadraza17	Feature Archive
+Build Process Video	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/43	djv03	Feature Archive
+Benchmarking Environment	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/86		Product Backlog
+Component Benchmarking	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/68		Product Backlog
+Prepare Build Process Review	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/22	1Endri, abdulmoeez1225, Asadraza17, djv03, qiblatainf	Feature Archive
+Core Backend Foundation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/7	1Endri, djv03, qiblatainf	Feature Archive
+Audio Output via LiveKit (Text-to-Speech)	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/15	qiblatainf	Feature Archive
+Basic LLM Integration 	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/18	Asadraza17, K-Vineesh	Feature Archive
+Audio Input via LiveKit (Speech-to-Text)	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/14	abdulmoeez1225, qiblatainf	Feature Archive
+DB Integration	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/32	1Endri	Feature Archive
+Setup LiveKit Infrastructure	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/26	abdulmoeez1225, Asadraza17	Feature Archive
+CI/CD Pipeline	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/10	abdulmoeez1225	Feature Archive
+Design Team Logo	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/1	abdulmoeez1225	Feature Archive
+Initialize Software Bill of Materials	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/13	1Endri	Feature Archive
+System Architecture	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/12	abdulmoeez1225, djv03, qiblatainf	Feature Archive
+Basic Agent Runtime	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/33	djv03, shikharthakur2404	Feature Archive
+First UI Design & Implementation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/5	Asadraza17, shikharthakur2404	Feature Archive
+Setup Development Environment	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/17	K-Vineesh	Feature Archive
+Schema Foundation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/6	K-Vineesh, shikharthakur2404	Feature Archive
+User Chat Interaction	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/48		Feature Archive
+Context Model Foundation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/9		Feature Archive
+Remove redundant "Use text instead" option from session start UI	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/125		Feature Archive
+[ROUTING] IntentRouter overrides user-configured agent_config from voice metadata	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/110	abdulmoeez1225	Feature Archive
+Routing Tool for Handoff between Agents	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/77		Feature Archive
+Persistent Handling of Extracted Data	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/106		Feature Archive
