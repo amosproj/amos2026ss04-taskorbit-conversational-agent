@@ -13,7 +13,11 @@
  * AC7 of #8, voice handoff continuity.
  */
 
-import type { AgentConfig, ToolDefinition as FrontendTool } from "@/types/agentConfig";
+import type {
+  AgentConfig,
+  ConfirmationsConfig,
+  ToolDefinition as FrontendTool,
+} from "@/types/agentConfig";
 
 type BackendTool = {
   id: string;
@@ -24,13 +28,25 @@ type BackendTool = {
   parameters: Record<string, unknown>;
 };
 
-function adaptTool(tool: FrontendTool): BackendTool {
+function toolNeedsConfirmation(
+  toolName: string,
+  confirmations: ConfirmationsConfig | undefined,
+): boolean {
+  if (confirmations === undefined) return true; // no config → confirm everything (safe default)
+  if (!confirmations.required) return false;
+  return confirmations.tools.length === 0 || confirmations.tools.includes(toolName);
+}
+
+function adaptTool(
+  tool: FrontendTool,
+  confirmations: ConfirmationsConfig | undefined,
+): BackendTool {
   const base = {
     id: tool.name || tool.type,
     name: tool.name,
     type: tool.type,
     description: tool.description,
-    confirmation: { required: false, prompt: "" },
+    confirmation: { required: toolNeedsConfirmation(tool.name, confirmations), prompt: "" },
   };
   if (tool.type === "data_extraction") {
     return { ...base, parameters: { params: tool.params } };
@@ -62,7 +78,7 @@ export function buildLiveKitWorkerMetadata(agent: AgentConfig): Record<string, u
       voice_id: agent.tts.voice_id,
       model: agent.tts.model,
     },
-    tools: agent.tools.map(adaptTool),
+    tools: agent.tools.map((t) => adaptTool(t, agent.confirmations)),
     persona_constraints: agent.persona_constraints ?? null,
   };
 }

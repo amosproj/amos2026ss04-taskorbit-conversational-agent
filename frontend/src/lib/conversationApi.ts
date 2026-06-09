@@ -9,7 +9,11 @@
  * in dev without CORS configuration.
  */
 
-import type { AgentConfig, ToolDefinition as FrontendTool } from "@/types/agentConfig";
+import type {
+  AgentConfig,
+  ConfirmationsConfig,
+  ToolDefinition as FrontendTool,
+} from "@/types/agentConfig";
 import type { LiveTranscriptTurn } from "@/types/callState";
 
 // ---------------------------------------------------------------------------
@@ -87,13 +91,25 @@ type ConversationsResponse = {
 // Adapters: frontend schema → backend wire schema
 // ---------------------------------------------------------------------------
 
-function adaptTool(tool: FrontendTool): BackendTool {
+function toolNeedsConfirmation(
+  toolName: string,
+  confirmations: ConfirmationsConfig | undefined,
+): boolean {
+  if (confirmations === undefined) return true; // no config → confirm everything (safe default)
+  if (!confirmations.required) return false;
+  return confirmations.tools.length === 0 || confirmations.tools.includes(toolName);
+}
+
+function adaptTool(
+  tool: FrontendTool,
+  confirmations: ConfirmationsConfig | undefined,
+): BackendTool {
   const base = {
     id: tool.name || tool.type,
     name: tool.name,
     type: tool.type,
     description: tool.description,
-    confirmation: { required: true, prompt: "" },
+    confirmation: { required: toolNeedsConfirmation(tool.name, confirmations), prompt: "" },
   };
   if (tool.type === "data_extraction") {
     return { ...base, parameters: { params: tool.params } };
@@ -116,7 +132,7 @@ function adaptAgentConfig(agent: AgentConfig): BackendAgentConfig {
     stt: { provider: agent.stt.provider, language: "multi", model: agent.stt.model },
     llm: { provider: llmProvider, model: agent.llm.model },
     tts: { provider: agent.tts.provider, voice_id: agent.tts.voice_id, model: agent.tts.model },
-    tools: agent.tools.map(adaptTool),
+    tools: agent.tools.map((t) => adaptTool(t, agent.confirmations)),
   };
   if (agent.persona_constraints) {
     out.persona_constraints = agent.persona_constraints;
