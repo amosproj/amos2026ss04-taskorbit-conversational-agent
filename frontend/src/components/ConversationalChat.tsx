@@ -16,7 +16,7 @@ import { useVoiceCall } from "@/hooks/useVoiceCall";
 import type { TranscriptionSegment } from "@/hooks/useAgentTranscription";
 import { useActiveAgent } from "@/components/active-agent-provider";
 import { buildLiveKitWorkerMetadata } from "@/lib/livekitAgentMetadata";
-import { sendMessage, getConversations } from "@/lib/conversationApi";
+import { sendMessageStream, getConversations } from "@/lib/conversationApi";
 import { playSynthesizedSpeech } from "@/lib/ttsApi";
 import { backendToFrontendAgent, fetchUserAgents } from "@/lib/userAgentsApi";
 import type { ConfirmationPromptState } from "@/types/callState";
@@ -193,43 +193,60 @@ export function ConversationalChat() {
       abortRef.current = controller;
 
       void Promise.resolve().then(async () => {
+        const assistantTurnId = `assistant-stream-${Date.now()}`;
+        let replyText = "";
+
         try {
-          const response = await sendMessage(
+          const stream = sendMessageStream(
             agent,
             [...call.transcript, { id: "tmp", role: "user", text }],
             call.conversationId,
             controller.signal,
             lockedIntentRef.current,
           );
-          lockedIntentRef.current = response.locked_intent_name ?? null;
-          if (response.selected_agent) setRoutedAgent(response.selected_agent);
-          const replyText = response.reply.content;
-          call.appendAssistantTurn(replyText);
 
-          // Agent handoff (#8 Task 6): backend's IntentRouter / dispatch decided
-          // to transfer the conversation. Swap the displayed agent and add a
-          // transcript marker so the user sees the switch.
-          // NOTE: backend currently exposes only the agent's configured targets
-          // in tool_invoked.parameters; the actual transferred_to id from
-          // ToolResult.data is not propagated (orchestration/__init__.py:169).
-          // First target works for single-target configs (e.g. JOHN_DOE_AGENT).
-          if (response.tool_invoked?.type === "agent_transfer") {
-            const targets = (response.tool_invoked.parameters as { targets?: string[] })?.targets;
-            const targetId = targets?.[0];
-            if (targetId) {
-              try {
-                const entries = await fetchUserAgents(controller.signal);
-                const match = entries.find((e) => e.template_id === targetId || e.id === targetId);
-                if (match) {
-                  const next = backendToFrontendAgent(match);
-                  setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
-                  call.appendAssistantTurn(`[Transferred to ${next.name}]`);
-                }
-              } catch (transferErr) {
-                if ((transferErr as Error).name !== "AbortError") {
-                  console.warn("[ConversationalChat] agent transfer lookup failed", transferErr);
+          for await (const event of stream) {
+            if (event.type === "chunk") {
+              replyText += event.text;
+              call.upsertTurnById(assistantTurnId, "assistant", replyText, false);
+            } else if (event.type === "done") {
+              call.upsertTurnById(assistantTurnId, "assistant", replyText, true);
+              lockedIntentRef.current = event.locked_intent_name ?? null;
+              if (event.selected_agent) setRoutedAgent(event.selected_agent);
+
+              // Agent handoff (#8 Task 6): backend's IntentRouter / dispatch decided
+              // to transfer the conversation. Swap the displayed agent and add a
+              // transcript marker so the user sees the switch.
+              // NOTE: backend currently exposes only the agent's configured targets
+              // in tool_invoked.parameters; the actual transferred_to id from
+              // ToolResult.data is not propagated (orchestration/__init__.py:169).
+              // First target works for single-target configs (e.g. JOHN_DOE_AGENT).
+              if (event.tool_invoked?.type === "agent_transfer") {
+                const targets = (event.tool_invoked.parameters as { targets?: string[] })?.targets;
+                const targetId = targets?.[0];
+                if (targetId) {
+                  try {
+                    const entries = await fetchUserAgents(controller.signal);
+                    const match = entries.find(
+                      (e) => e.template_id === targetId || e.id === targetId,
+                    );
+                    if (match) {
+                      const next = backendToFrontendAgent(match);
+                      setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
+                      call.appendAssistantTurn(`[Transferred to ${next.name}]`);
+                    }
+                  } catch (transferErr) {
+                    if ((transferErr as Error).name !== "AbortError") {
+                      console.warn(
+                        "[ConversationalChat] agent transfer lookup failed",
+                        transferErr,
+                      );
+                    }
+                  }
                 }
               }
+            } else if (event.type === "error") {
+              call.upsertTurnById(assistantTurnId, "assistant", `[Error: ${event.message}]`, true);
             }
           }
 
@@ -248,7 +265,12 @@ export function ConversationalChat() {
           call.setPhase("idle_in_call");
         } catch (err) {
           if ((err as Error).name === "AbortError") return;
-          call.appendAssistantTurn(`[Connection error: ${(err as Error).message}]`);
+          call.upsertTurnById(
+            assistantTurnId,
+            "assistant",
+            `[Connection error: ${(err as Error).message}]`,
+            true,
+          );
           call.setPhase("idle_in_call");
         }
       });
