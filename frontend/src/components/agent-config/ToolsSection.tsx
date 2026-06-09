@@ -20,6 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
 import {
+  END_CALL_DEFAULT_DESCRIPTION,
   emptyToolByType,
   type AgentTransferTool,
   type DataExtractionTool,
@@ -337,7 +338,7 @@ function EndCallEditor({
           value={tool.description}
           onChange={(e) => onChange({ ...tool, description: e.target.value })}
           rows={2}
-          placeholder="End the conversation when the goal is met."
+          placeholder={END_CALL_DEFAULT_DESCRIPTION}
         />
       </Field>
     </FieldGroup>

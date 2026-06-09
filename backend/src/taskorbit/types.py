@@ -76,7 +76,7 @@ class ToolDefinition(BaseModel):
     id: str
     name: str
     type: ToolType
-    description: str
+    description: str = ""
     confirmation: ConfirmationConfig = Field(default_factory=ConfirmationConfig)
     parameters: dict[str, Any] = Field(default_factory=dict)
 
