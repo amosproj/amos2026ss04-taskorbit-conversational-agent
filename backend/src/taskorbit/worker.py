@@ -43,6 +43,7 @@ _RECOGNISED_MSG_TYPES: frozenset[str] = frozenset({"commit_turn", "interrupt_pla
 # card mid-call without dropping the LiveKit room. #8 Task 6 AC7.
 _HANDOFF_TOPIC: str = "taskorbit.agent_handoff"
 _ROUTED_AGENT_TOPIC: str = "taskorbit.agent_routed"
+_SESSION_ENDED_TOPIC: str = "taskorbit.session_ended"
 
 
 async def entrypoint(ctx: JobContext) -> None:
@@ -75,6 +76,11 @@ async def entrypoint(ctx: JobContext) -> None:
                 agent_id=agent_config.id,
                 agent_name=agent_config.name,
             )
+            logger.info(
+                "worker_agent_config_tools_loaded",
+                tools_count=len(agent_config.tools),
+                tool_types=[t.type for t in agent_config.tools],
+            )
         except ValidationError as exc:
             logger.warning(
                 "worker_agent_config_parse_failed",
@@ -85,7 +91,11 @@ async def entrypoint(ctx: JobContext) -> None:
         pass
 
     session = build_agent_session(settings=cfg)
-    agent = build_default_agent(settings=cfg, agent_config=agent_config)
+    agent = build_default_agent(
+        settings=cfg,
+        agent_config=agent_config,
+        conversation_id=ctx.room.name,
+    )
 
     @session.on("metrics_collected")
     def _on_metrics(ev: AgentEvent) -> None:
@@ -157,6 +167,20 @@ async def entrypoint(ctx: JobContext) -> None:
                     )
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("worker_agent_routed_publish_failed", error=str(exc))
+
+            # Publish session_ended so the frontend can tear down the call
+            # when the user explicitly requests to end via voice.
+            if agent._call_ended:
+                try:
+                    payload = json.dumps({"type": "session_ended"})
+                    await ctx.room.local_participant.publish_data(
+                        payload, reliable=True, topic=_SESSION_ENDED_TOPIC
+                    )
+                    logger.info("worker_session_ended_published")
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("worker_session_ended_publish_failed", error=str(exc))
+                finally:
+                    agent._call_ended = False
 
             # AC7: now that the orchestrator has finished (wait_for_playout
             # above), the pending target is set if an agent_transfer dispatched

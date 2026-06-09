@@ -101,6 +101,7 @@ def build_default_agent(
     orchestrator: ConversationOrchestrator | None = None,
     settings: Settings | None = None,
     agent_config: AgentConfig | None = None,
+    conversation_id: str | None = None,
 ) -> OrchestratorAgent:
     """Build the ``OrchestratorAgent`` paired with this session.
 
@@ -112,8 +113,14 @@ def build_default_agent(
     instead of the hardcoded ``_default_agent_config`` fallback. With the
     full agent (including tools) the orchestrator can also dispatch the
     agent_transfer tool on voice, enabling mid-call handoff (AC7 of #8).
+
+    Pass ``conversation_id`` (= LiveKit room name) so voice turns are
+    persisted under the same conversation ID the frontend tracks.
     """
-    return OrchestratorAgent(
+    kwargs: dict = dict(
         orchestrator=orchestrator or ConversationOrchestrator(settings=settings),
         agent_config=agent_config,
     )
+    if conversation_id is not None:
+        kwargs["conversation_id"] = conversation_id
+    return OrchestratorAgent(**kwargs)

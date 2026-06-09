@@ -162,6 +162,9 @@ export function serializeAgent(agent: AgentConfig): Record<string, unknown> {
   return out;
 }
 
+export const END_CALL_DEFAULT_DESCRIPTION =
+  "End the conversation gracefully when the user asks to end the call.";
+
 export function emptyToolByType(type: ToolType): ToolDefinition {
   switch (type) {
     case "data_extraction":
@@ -170,7 +173,7 @@ export function emptyToolByType(type: ToolType): ToolDefinition {
       return {
         type,
         name: "end_call",
-        description: "End the conversation gracefully when the goal is met.",
+        description: END_CALL_DEFAULT_DESCRIPTION,
       };
     case "agent_transfer":
       return {

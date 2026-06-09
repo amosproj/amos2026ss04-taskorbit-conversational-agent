@@ -1,5 +1,5 @@
 import { LiveKitRoom, RoomAudioRenderer } from "@livekit/components-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { AgentIdentityCard } from "@/components/chat/AgentIdentityCard";
@@ -19,6 +19,26 @@ import { buildLiveKitWorkerMetadata } from "@/lib/livekitAgentMetadata";
 import { sendMessage, getConversations } from "@/lib/conversationApi";
 import { playSynthesizedSpeech } from "@/lib/ttsApi";
 import { backendToFrontendAgent, fetchUserAgents } from "@/lib/userAgentsApi";
+import type { LiveTranscriptTurn } from "@/types/callState";
+
+// Tidy up common Deepgram artefacts in user transcription before display.
+// Runs at render time only — does not mutate stored state.
+function normaliseUserText(text: string): string {
+  // Lowercase email domains: Bob@Gmail.com → Bob@gmail.com
+  let out = text.replace(
+    /(@)([A-Za-z0-9.-]+\.[A-Za-z]{2,})/g,
+    (_, at, domain) => at + domain.toLowerCase(),
+  );
+  // Collapse individually-dictated digits: "2 6 7 8" → "2678" (loop until stable)
+  let prev: string;
+  do {
+    prev = out;
+    out = out.replace(/(\d) (\d)/g, "$1$2");
+  } while (out !== prev);
+  // "2678 plus 1" → "2678+1"
+  out = out.replace(/(\d+)\s+plus\s+(\d)/gi, "$1+$2");
+  return out;
+}
 
 function SessionEndedBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   useEffect(() => {
@@ -95,6 +115,26 @@ export function ConversationalChat() {
   const agentTurnIdRef = useRef<string | null>(null);
   const agentCommittedRef = useRef<string>("");
   const agentActiveSegRef = useRef<string | null>(null);
+
+  // Merge consecutive user turns into one bubble (display only — raw state
+  // is unchanged). Also applies normaliseUserText so email/digit artefacts
+  // are cleaned up without touching the stored transcript.
+  const mergedTranscript = useMemo<LiveTranscriptTurn[]>(() => {
+    const result: LiveTranscriptTurn[] = [];
+    for (const turn of call.transcript) {
+      const last = result[result.length - 1];
+      if (turn.role === "user" && last?.role === "user") {
+        result[result.length - 1] = {
+          ...last,
+          text: normaliseUserText(`${last.text} ${turn.text}`.trim()),
+          isFinal: turn.isFinal,
+        };
+      } else {
+        result.push(turn.role === "user" ? { ...turn, text: normaliseUserText(turn.text) } : turn);
+      }
+    }
+    return result;
+  }, [call.transcript]);
 
   // Keep transcript rendering anchored to the latest turn.
   useEffect(() => {
@@ -195,6 +235,7 @@ export function ConversationalChat() {
             controller.signal,
             lockedIntentRef.current,
           );
+          call.updateConversationId(response.conversation_id);
           lockedIntentRef.current = response.locked_intent_name ?? null;
           if (response.selected_agent) setRoutedAgent(response.selected_agent);
 
@@ -206,6 +247,14 @@ export function ConversationalChat() {
 
           const replyText = response.reply.content;
           call.appendAssistantTurn(replyText);
+
+          if (response.status === "ended") {
+            if (replyText) {
+              await playSynthesizedSpeech(replyText, { signal: controller.signal }).catch(() => {});
+            }
+            call.end();
+            return;
+          }
 
           // Agent handoff (#8 Task 6): backend's IntentRouter / dispatch decided
           // to transfer the conversation. Swap the displayed agent and add a
@@ -431,7 +480,7 @@ export function ConversationalChat() {
                 </div>
               ) : (
                 <ul className="flex flex-col gap-4" aria-label="Transcript">
-                  {call.transcript.map((turn) => (
+                  {mergedTranscript.map((turn) => (
                     <TranscriptBubble key={turn.id} turn={turn} />
                   ))}
                   <div ref={transcriptEndRef} className="h-px" aria-hidden />
@@ -447,15 +496,15 @@ export function ConversationalChat() {
           <CardHeader>
             <CardTitle>Call ended</CardTitle>
             <CardDescription>
-              {call.transcript.length > 0
-                ? `${call.transcript.length} turn${call.transcript.length === 1 ? "" : "s"} recorded.`
+              {mergedTranscript.length > 0
+                ? `${mergedTranscript.length} turn${mergedTranscript.length === 1 ? "" : "s"} recorded.`
                 : "No turns recorded."}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-[min(40vh,24rem)] pr-3">
               <ul className="flex flex-col gap-4" aria-label="Transcript">
-                {call.transcript.map((turn) => (
+                {mergedTranscript.map((turn) => (
                   <TranscriptBubble key={turn.id} turn={turn} history />
                 ))}
               </ul>
@@ -511,6 +560,7 @@ export function ConversationalChat() {
             onSegment={handleSegment}
             onHandoff={handleVoiceHandoff}
             onAgentRouted={handleVoiceAgentRouted}
+            onSessionEnded={call.end}
           />
           {body}
         </LiveKitRoom>
