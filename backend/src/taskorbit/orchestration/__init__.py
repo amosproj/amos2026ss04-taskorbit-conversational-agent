@@ -621,11 +621,19 @@ class ConversationOrchestrator:
 
     _NEGATION_PREFIXES: frozenset[str] = frozenset(
         {
-            "don't", "dont", "do not",
-            "won't", "wont", "will not",
-            "can't", "cant", "cannot",
-            "not", "never",
-            "please don't", "please dont",
+            "don't",
+            "dont",
+            "do not",
+            "won't",
+            "wont",
+            "will not",
+            "can't",
+            "cant",
+            "cannot",
+            "not",
+            "never",
+            "please don't",
+            "please dont",
         }
     )
 
