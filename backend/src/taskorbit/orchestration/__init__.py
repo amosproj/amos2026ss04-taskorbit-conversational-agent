@@ -619,10 +619,32 @@ class ConversationOrchestrator:
         }
     )
 
+    _NEGATION_PREFIXES: frozenset[str] = frozenset(
+        {
+            "don't", "dont", "do not",
+            "won't", "wont", "will not",
+            "can't", "cant", "cannot",
+            "not", "never",
+            "please don't", "please dont",
+        }
+    )
+
     def _user_requested_end_call(self, message: str) -> bool:
-        """Return True when the user's message contains an explicit end-call signal."""
-        lowered = message.lower()
-        return any(signal in lowered for signal in self._END_CALL_SIGNALS)
+        """Return True when the user's message contains an explicit end-call signal.
+
+        Negation guard: if a negation word immediately precedes the matched
+        signal (e.g. "please don't end the call"), the match is skipped.
+        """
+        lowered = message.lower().strip()
+        for signal in self._END_CALL_SIGNALS:
+            pos = lowered.find(signal)
+            if pos == -1:
+                continue
+            prefix = lowered[:pos].rstrip()
+            if any(prefix.endswith(neg) for neg in self._NEGATION_PREFIXES):
+                continue
+            return True
+        return False
 
     def _make_assistant_message(self, content: str) -> Message:
         return Message(role=MessageRole.ASSISTANT, content=content)

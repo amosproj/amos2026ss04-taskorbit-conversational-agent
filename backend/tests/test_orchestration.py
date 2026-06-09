@@ -507,6 +507,28 @@ def test_user_requested_end_call_does_not_match_normal_phrases(phrase: str) -> N
     assert orch._user_requested_end_call(phrase) is False
 
 
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "please don't end the call",
+        "don't hang up",
+        "dont hang up",
+        "do not end the call",
+        "please don't hang up",
+        "won't end the call",
+        "will not hang up",
+        "can't end the call",
+        "cannot hang up",
+        "never end the call",
+        "not goodbye",
+    ],
+)
+def test_user_requested_end_call_negation_guard(phrase: str) -> None:
+    """Negated farewell phrases must NOT trigger end-call detection."""
+    orch = ConversationOrchestrator()
+    assert orch._user_requested_end_call(phrase) is False
+
+
 # ---------------------------------------------------------------------------
 # End-call early exit in process_message
 # ---------------------------------------------------------------------------
