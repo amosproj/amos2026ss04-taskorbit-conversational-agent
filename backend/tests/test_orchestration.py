@@ -507,6 +507,28 @@ def test_user_requested_end_call_does_not_match_normal_phrases(phrase: str) -> N
     assert orch._user_requested_end_call(phrase) is False
 
 
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "please don't end the call",
+        "don't hang up",
+        "dont hang up",
+        "do not end the call",
+        "please don't hang up",
+        "won't end the call",
+        "will not hang up",
+        "can't end the call",
+        "cannot hang up",
+        "never end the call",
+        "not goodbye",
+    ],
+)
+def test_user_requested_end_call_negation_guard(phrase: str) -> None:
+    """Negated farewell phrases must NOT trigger end-call detection."""
+    orch = ConversationOrchestrator()
+    assert orch._user_requested_end_call(phrase) is False
+
+
 # ---------------------------------------------------------------------------
 # End-call early exit in process_message
 # ---------------------------------------------------------------------------
@@ -621,6 +643,50 @@ async def test_end_call_reply_is_llm_farewell() -> None:
             response = await orch.process_message(_make_request_with_end_call_tool("goodbye"))
 
     assert response.reply.content == farewell_text
+
+
+@pytest.mark.asyncio
+async def test_end_call_uses_fallback_farewell_on_llm_timeout() -> None:
+    """If the farewell LLM call times out, the call still ends with a hardcoded farewell."""
+    from taskorbit.config import Settings
+    from taskorbit.types import ConversationStatus
+
+    orch = ConversationOrchestrator(settings=Settings(llm_timeout_seconds=0.01))
+
+    async def slow_llm(*args: Any, **kwargs: Any) -> str:
+        await asyncio.sleep(1.0)
+        return "too slow"
+
+    with patch.object(ConversationOrchestrator, "_call_llm", side_effect=slow_llm):
+        with patch.object(
+            ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock, return_value={}
+        ):
+            response = await orch.process_message(_make_request_with_end_call_tool("goodbye"))
+
+    assert response.status == ConversationStatus.ENDED
+    assert response.reply.content == "Goodbye! Take care."
+
+
+@pytest.mark.asyncio
+async def test_end_call_uses_fallback_farewell_on_llm_error() -> None:
+    """If the farewell LLM call raises any error, the call still ends with a hardcoded farewell."""
+    from taskorbit.types import ConversationStatus
+
+    orch = ConversationOrchestrator()
+
+    with patch.object(
+        ConversationOrchestrator,
+        "_call_llm",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("LLM unavailable"),
+    ):
+        with patch.object(
+            ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock, return_value={}
+        ):
+            response = await orch.process_message(_make_request_with_end_call_tool("hang up"))
+
+    assert response.status == ConversationStatus.ENDED
+    assert response.reply.content == "Goodbye! Take care."
 
 
 # ---------------------------------------------------------------------------
