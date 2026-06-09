@@ -155,3 +155,53 @@ def test_agent_config_round_trips_persona_constraints() -> None:
     dumped = original.model_dump()
     restored = AgentConfig.model_validate(dumped)
     assert restored.persona_constraints == original.persona_constraints
+
+
+# ---------------------------------------------------------------------------
+# ToolDefinition.description default (end_call missing-description bug)
+# ---------------------------------------------------------------------------
+
+
+def test_tool_definition_description_defaults_to_empty_string() -> None:
+    """description has a default of '' so omitting it never fails validation."""
+    tool = ToolDefinition(id="end-1", name="end_call", type=ToolType.END_CALL)
+    assert tool.description == ""
+
+
+def test_agent_config_validate_end_call_tool_without_description() -> None:
+    """AgentConfig.model_validate succeeds when an end_call tool has no description.
+
+    This is the exact failure mode that caused the end-call early exit to silently
+    skip: JSON.stringify drops undefined values, so old stored agents sent a
+    ToolDefinition dict without 'description', which caused a Pydantic
+    ValidationError, which caused the entire agent_config to fall back to
+    _default_agent_config() with tools=[].
+    """
+    raw = {
+        "id": "agent-1",
+        "name": "Sales Bot",
+        "persona": "Sales agent",
+        "greeting": "Hello!",
+        "tools": [
+            # no 'description' key — mirrors what JSON.stringify produced for old agents
+            {"id": "end-1", "name": "end_call", "type": "end_call"},
+        ],
+    }
+    config = AgentConfig.model_validate(raw)
+    assert len(config.tools) == 1
+    assert config.tools[0].type == ToolType.END_CALL
+    assert config.tools[0].description == ""
+
+
+def test_end_call_tool_found_after_validate_without_description() -> None:
+    """The orchestrator's end_call_tool lookup succeeds even with no description."""
+    raw = {
+        "id": "agent-1",
+        "name": "Bot",
+        "persona": "p",
+        "greeting": "hi",
+        "tools": [{"id": "end-1", "name": "end_call", "type": "end_call"}],
+    }
+    config = AgentConfig.model_validate(raw)
+    end_call = next((t for t in config.tools if t.type == ToolType.END_CALL), None)
+    assert end_call is not None

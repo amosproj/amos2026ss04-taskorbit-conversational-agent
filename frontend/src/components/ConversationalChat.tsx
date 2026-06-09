@@ -204,6 +204,7 @@ export function ConversationalChat() {
             controller.signal,
             lockedIntentRef.current,
           );
+          call.updateConversationId(response.conversation_id);
           lockedIntentRef.current = response.locked_intent_name ?? null;
           if (response.selected_agent) setRoutedAgent(response.selected_agent);
 
@@ -215,6 +216,14 @@ export function ConversationalChat() {
 
           const replyText = response.reply.content;
           call.appendAssistantTurn(replyText);
+
+          if (response.status === "ended") {
+            if (replyText) {
+              await playSynthesizedSpeech(replyText, { signal: controller.signal }).catch(() => {});
+            }
+            call.end();
+            return;
+          }
 
           // Agent handoff (#8 Task 6): backend's IntentRouter / dispatch decided
           // to transfer the conversation. Swap the displayed agent and add a
@@ -534,6 +543,7 @@ export function ConversationalChat() {
             onSegment={handleSegment}
             onHandoff={handleVoiceHandoff}
             onAgentRouted={handleVoiceAgentRouted}
+            onSessionEnded={call.end}
           />
           {body}
         </LiveKitRoom>

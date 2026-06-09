@@ -13,10 +13,11 @@
  * AC7 of #8, voice handoff continuity.
  */
 
-import type {
-  AgentConfig,
-  ConfirmationsConfig,
-  ToolDefinition as FrontendTool,
+import {
+  END_CALL_DEFAULT_DESCRIPTION,
+  type AgentConfig,
+  type ConfirmationsConfig,
+  type ToolDefinition as FrontendTool,
 } from "@/types/agentConfig";
 
 type BackendTool = {
@@ -45,7 +46,8 @@ function adaptTool(
     id: tool.name || tool.type,
     name: tool.name,
     type: tool.type,
-    description: tool.description,
+    description:
+      tool.description?.trim() || (tool.type === "end_call" ? END_CALL_DEFAULT_DESCRIPTION : ""),
     confirmation: { required: toolNeedsConfirmation(tool.name, confirmations), prompt: "" },
   };
   if (tool.type === "data_extraction") {
