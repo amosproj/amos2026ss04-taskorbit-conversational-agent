@@ -221,7 +221,10 @@ class ConversationOrchestrator:
             tool_data: dict[str, Any] = {}
             response_status = ConversationStatus.SUCCESS
 
-            no_slots_tool_ready = active_tool is not None and active_tool.type in (ToolType.END_CALL, ToolType.AGENT_TRANSFER)
+            no_slots_tool_ready = active_tool is not None and active_tool.type in (
+                ToolType.END_CALL,
+                ToolType.AGENT_TRANSFER,
+            )
             slots_ready = (
                 active_tool is not None and slot_result.is_complete and bool(intent.required_inputs)
             )

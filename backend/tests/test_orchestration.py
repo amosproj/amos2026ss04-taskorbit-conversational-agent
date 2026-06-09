@@ -840,4 +840,3 @@ async def test_no_intent_lock_when_current_intent_name_absent(mock_good_intent: 
 
     mock_detect.assert_called_once()
     assert response.selected_intent == mock_good_intent.name
-
