@@ -161,7 +161,7 @@ async def _sse_generator(
                 conversation_id=request.conversation_id,
             )
 
-    yield f"data: {json.dumps({'type': 'done', 'intent': meta.selected_intent, 'status': meta.status, 'selected_agent': meta.selected_agent, 'slots': meta.extracted_slots, 'missing_slots': meta.missing_slots, 'conversation_id': meta.conversation_id})}\n\n"
+    yield f"data: {json.dumps({'type': 'done', 'intent': meta.selected_intent, 'status': meta.status, 'selected_agent': meta.selected_agent, 'slots': meta.extracted_slots, 'missing_slots': meta.missing_slots, 'conversation_id': meta.conversation_id, 'locked_intent_name': meta.locked_intent_name, 'next_active_tool_id': meta.next_active_tool_id, 'tool_invoked': meta.tool_invoked.model_dump() if meta.tool_invoked else None})}\n\n"
 
 
 @router.post("/stream")
