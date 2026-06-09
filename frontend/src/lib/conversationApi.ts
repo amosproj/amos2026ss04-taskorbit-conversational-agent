@@ -9,7 +9,11 @@
  * in dev without CORS configuration.
  */
 
-import type { AgentConfig, ToolDefinition as FrontendTool } from "@/types/agentConfig";
+import {
+  END_CALL_DEFAULT_DESCRIPTION,
+  type AgentConfig,
+  type ToolDefinition as FrontendTool,
+} from "@/types/agentConfig";
 import type { LiveTranscriptTurn } from "@/types/callState";
 
 // ---------------------------------------------------------------------------
@@ -98,6 +102,30 @@ type ConversationsResponse = {
   total: number;
 };
 
+export type ConversationHistory = {
+  conversation_id: string;
+  agent_id: string;
+  agent_name: string;
+  started_at: string;
+  ended_at: string | null;
+  messages: Array<{ id: number; role: string; content: string; created_at: string }>;
+  tool_executions: Array<{
+    id: number;
+    tool_id: string;
+    tool_type: string;
+    confirmed: boolean;
+    executed_at: string;
+    result: Record<string, unknown> | null;
+  }>;
+  slot_extractions: Array<{
+    id: number;
+    tool_id: string;
+    field_name: string;
+    field_value: string | null;
+    extracted_at: string;
+  }>;
+};
+
 // ---------------------------------------------------------------------------
 // Adapters: frontend schema → backend wire schema
 // ---------------------------------------------------------------------------
@@ -107,7 +135,8 @@ function adaptTool(tool: FrontendTool): BackendTool {
     id: tool.name || tool.type,
     name: tool.name,
     type: tool.type,
-    description: tool.description,
+    description:
+      tool.description?.trim() || (tool.type === "end_call" ? END_CALL_DEFAULT_DESCRIPTION : ""),
     confirmation: { required: true, prompt: "" },
   };
   if (tool.type === "data_extraction") {
@@ -277,4 +306,16 @@ export async function* sendMessageStream(
   } finally {
     reader.releaseLock();
   }
+}
+
+/**
+ * Fetch full history for a single conversation — messages, tool executions,
+ * and slot extractions. Used on reload to restore a previous session.
+ */
+export async function getConversationHistory(conversationId: string): Promise<ConversationHistory> {
+  const response = await fetch(`/api/v1/conversations/${conversationId}/history`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch history for conversation ${conversationId}`);
+  }
+  return response.json();
 }

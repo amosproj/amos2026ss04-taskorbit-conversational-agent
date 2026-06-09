@@ -554,3 +554,311 @@ async def test_process_message_stream_clarification_yields_response_without_chun
     assert responses[0].status == "clarification"
     assert responses[0].reply.content == _CLARIFICATION_REPLY
     mock_stream.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _user_requested_end_call — keyword detection
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "goodbye",
+        "Goodbye!",
+        "GOODBYE",
+        "bye bye",
+        "end the call",
+        "end this call",
+        "hang up",
+        "hangup",
+        "please end the call",
+        "please hang up",
+        "i want to end the call",
+        "i want to hang up",
+        "end the conversation",
+        "wrap up the call",
+        "that's all i needed",
+        "no more questions",
+        "i'm done for now",
+        "done for today",
+        "i think that's all",
+        # Substring containment — the critical case from the bug report
+        "can you please end the call?",
+        "okay, goodbye then",
+        "I have no more questions, thanks",
+    ],
+)
+def test_user_requested_end_call_matches_signals(phrase: str) -> None:
+    orch = ConversationOrchestrator()
+    assert orch._user_requested_end_call(phrase) is True
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "hello",
+        "what are your hours?",
+        "I need help with my account",
+        "can you call me back?",
+        "tell me more",
+        "yes please",
+        "not yet",
+        "",
+    ],
+)
+def test_user_requested_end_call_does_not_match_normal_phrases(phrase: str) -> None:
+    orch = ConversationOrchestrator()
+    assert orch._user_requested_end_call(phrase) is False
+
+
+# ---------------------------------------------------------------------------
+# End-call early exit in process_message
+# ---------------------------------------------------------------------------
+
+
+def _make_request_with_end_call_tool(content: str = "goodbye") -> ConversationRequest:
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    end_call_tool = ToolDefinition(
+        id="end-1",
+        name="end_call",
+        type=ToolType.END_CALL,
+        description="End the call",
+        confirmation=ConfirmationConfig(required=False),
+    )
+    return ConversationRequest(
+        conversation_id="conv-end",
+        agent_config=AgentConfig(
+            id="agent-1",
+            name="Bot",
+            persona="Helpful bot",
+            greeting="Hi!",
+            tools=[end_call_tool],
+        ),
+        messages=[Message(role=MessageRole.USER, content=content)],
+    )
+
+
+@pytest.mark.asyncio
+async def test_end_call_returns_ended_status() -> None:
+    """When user says goodbye and end_call tool is present, status is ENDED."""
+    from taskorbit.types import ConversationStatus, ToolType
+
+    orch = ConversationOrchestrator()
+    with patch.object(
+        ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="Goodbye!"
+    ):
+        with patch.object(
+            ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock, return_value={}
+        ):
+            response = await orch.process_message(_make_request_with_end_call_tool("goodbye"))
+
+    assert response.status == ConversationStatus.ENDED
+    assert response.tool_invoked is not None
+    assert response.tool_invoked.type == ToolType.END_CALL
+
+
+@pytest.mark.asyncio
+async def test_end_call_skips_intent_router() -> None:
+    """Early exit means IntentRouter.detect is never called."""
+    orch = ConversationOrchestrator()
+    with patch.object(
+        ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="Goodbye!"
+    ):
+        with patch.object(
+            ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock, return_value={}
+        ):
+            with patch.object(orch._intent_router, "detect", new_callable=AsyncMock) as mock_detect:
+                await orch.process_message(_make_request_with_end_call_tool("hang up please"))
+
+    mock_detect.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_end_call_not_triggered_without_tool(mock_good_intent: Any) -> None:
+    """When agent has no end_call tool, farewell phrases go through normal pipeline."""
+    orch = ConversationOrchestrator()
+    with patch.object(
+        ConversationOrchestrator,
+        "_call_llm",
+        new_callable=AsyncMock,
+        return_value="How can I help?",
+    ) as mock_llm:
+        # _make_request has no end_call tool configured
+        response = await orch.process_message(_make_request("goodbye"))
+
+    assert response.status != "ended"
+    assert mock_llm.called  # normal pipeline ran (may be called >1 for slot extraction + reply)
+
+
+@pytest.mark.asyncio
+async def test_end_call_not_triggered_by_non_farewell(mock_good_intent: Any) -> None:
+    """End-call tool present but user does not say farewell → early exit does not fire.
+
+    We patch _select_active_tool to None so the downstream dispatch path doesn't
+    pick up the end_call step from book_service_appointment's workflow steps
+    and obscure the early-exit assertion.
+    """
+    orch = ConversationOrchestrator()
+    with patch.object(
+        ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="Sure!"
+    ):
+        with patch.object(ConversationOrchestrator, "_select_active_tool", return_value=None):
+            response = await orch.process_message(
+                _make_request_with_end_call_tool("I need help with my order")
+            )
+
+    assert response.status != "ended"
+
+
+@pytest.mark.asyncio
+async def test_end_call_reply_is_llm_farewell() -> None:
+    """The reply content comes from the LLM farewell, not a hardcoded string."""
+    orch = ConversationOrchestrator()
+    farewell_text = "It was great talking to you, take care!"
+    with patch.object(
+        ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value=farewell_text
+    ):
+        with patch.object(
+            ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock, return_value={}
+        ):
+            response = await orch.process_message(_make_request_with_end_call_tool("goodbye"))
+
+    assert response.reply.content == farewell_text
+
+
+# ---------------------------------------------------------------------------
+# Intent locking across turns
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_intent_locked_when_current_intent_name_set(mock_good_intent: Any) -> None:
+    """When current_intent_name matches a known intent and classifier agrees,
+    the locked intent is reused (confidence=1.0) and logged as intent_locked."""
+    from taskorbit.intent import _KNOWN_INTENTS
+
+    orch = ConversationOrchestrator()
+    locked_name = "technical_support_request"
+    # Router returns low confidence for a different intent so the lock holds.
+    low_conf_other = _intent_result(
+        name="general_inquiry", agent_name="general_inquiry", confidence=0.5
+    )
+
+    req = ConversationRequest(
+        conversation_id="conv-lock",
+        agent_config=AgentConfig(id="a", name="Bot", persona="p", greeting="hi"),
+        messages=[Message(role=MessageRole.USER, content="still having that error")],
+        current_intent_name=locked_name,
+    )
+
+    with patch.object(
+        orch._intent_router, "detect", new_callable=AsyncMock, return_value=low_conf_other
+    ):
+        with patch.object(
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+        ):
+            response = await orch.process_message(req)
+
+    assert response.selected_intent == locked_name
+    assert response.selected_agent == _KNOWN_INTENTS[locked_name].agent_name
+
+
+@pytest.mark.asyncio
+async def test_intent_lock_broken_on_high_confidence_new_intent() -> None:
+    """When a genuinely different intent arrives with confidence ≥ threshold,
+    the lock is broken and the new intent is used."""
+    orch = ConversationOrchestrator()
+    high_conf_new = _intent_result(
+        name="customer_dissatisfaction_inquiry",
+        agent_name="customer_dissatisfaction",
+        confidence=0.9,
+        requires_clarification=False,
+    )
+
+    req = ConversationRequest(
+        conversation_id="conv-break",
+        agent_config=AgentConfig(id="a", name="Bot", persona="p", greeting="hi"),
+        messages=[Message(role=MessageRole.USER, content="I'm really unhappy with this service")],
+        current_intent_name="technical_support_request",
+    )
+
+    with patch.object(
+        orch._intent_router, "detect", new_callable=AsyncMock, return_value=high_conf_new
+    ):
+        with patch.object(
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+        ):
+            response = await orch.process_message(req)
+
+    assert response.selected_intent == "customer_dissatisfaction_inquiry"
+    assert response.selected_agent == "customer_dissatisfaction"
+
+
+@pytest.mark.asyncio
+async def test_intent_lock_held_on_low_confidence_new_intent() -> None:
+    """Low-confidence classification does not break the lock even if the intent name differs."""
+    from taskorbit.intent import _KNOWN_INTENTS
+
+    orch = ConversationOrchestrator()
+    locked_name = "technical_support_request"
+    low_conf = _intent_result(
+        name="general_inquiry",
+        agent_name="general_inquiry",
+        confidence=0.4,
+        requires_clarification=True,
+    )
+
+    req = ConversationRequest(
+        conversation_id="conv-hold",
+        agent_config=AgentConfig(id="a", name="Bot", persona="p", greeting="hi"),
+        messages=[Message(role=MessageRole.USER, content="one more thing about the error")],
+        current_intent_name=locked_name,
+    )
+
+    with patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=low_conf):
+        with patch.object(
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+        ):
+            response = await orch.process_message(req)
+
+    assert response.selected_intent == locked_name
+    assert response.selected_agent == _KNOWN_INTENTS[locked_name].agent_name
+
+
+@pytest.mark.asyncio
+async def test_response_includes_locked_intent_name(mock_good_intent: Any) -> None:
+    """After a successful turn the response carries locked_intent_name for the
+    frontend to round-trip on the next request."""
+    orch = ConversationOrchestrator()
+    with patch.object(
+        ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+    ):
+        response = await orch.process_message(_make_request("I need tech support"))
+
+    # The locked name must be a known intent (not empty/None) after a successful turn.
+    assert response.locked_intent_name is not None
+    assert response.locked_intent_name != ""
+
+
+@pytest.mark.asyncio
+async def test_no_intent_lock_when_current_intent_name_absent(mock_good_intent: Any) -> None:
+    """With no current_intent_name the router runs normally (no lock path)."""
+    orch = ConversationOrchestrator()
+    with patch.object(
+        orch._intent_router, "detect", new_callable=AsyncMock, return_value=mock_good_intent
+    ) as mock_detect:
+        with patch.object(
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+        ):
+            req = ConversationRequest(
+                conversation_id="conv-nolock",
+                agent_config=AgentConfig(id="a", name="Bot", persona="p", greeting="hi"),
+                messages=[Message(role=MessageRole.USER, content="hello")],
+                current_intent_name=None,
+            )
+            response = await orch.process_message(req)
+
+    mock_detect.assert_called_once()
+    assert response.selected_intent == mock_good_intent.name

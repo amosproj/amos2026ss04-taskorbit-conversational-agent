@@ -7,10 +7,14 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from taskorbit.database.crud import (
+    create_conversation,
     create_conversation_message,
+    create_slot_extractions,
+    create_tool_execution,
     create_user,
     delete_conversation_message,
     delete_user,
+    get_conversation_history,
     get_messages_by_conversation,
     get_messages_by_user,
     get_user,
@@ -196,3 +200,96 @@ class TestConversationMessageCRUD:
         assert result is True
         deleted = await get_messages_by_conversation(db_session, "conv-del")
         assert len(deleted) == 0
+
+
+class TestConversationHistoryCRUD:
+    """Tests for conversation, slot extraction, tool execution, and history CRUD."""
+
+    @pytest.mark.asyncio
+    async def test_create_conversation(self, db_session):
+        conv = await create_conversation(db_session, agent_id="agent-1", agent_name="Bot")
+        assert conv is not None
+        assert conv.id is not None
+        assert conv.agent_id == "agent-1"
+        assert conv.agent_name == "Bot"
+        assert conv.started_at is not None
+
+    @pytest.mark.asyncio
+    async def test_create_slot_extractions_returns_one_row_per_field(self, db_session):
+        conv = await create_conversation(db_session, agent_id="agent-1", agent_name="Bot")
+        rows = await create_slot_extractions(
+            db_session,
+            conversation_id=conv.id,
+            tool_id="data_extraction",
+            slots={"name": "Alice", "email": "alice@example.com"},
+        )
+        assert len(rows) == 2
+        field_names = {r.field_name for r in rows}
+        assert field_names == {"name", "email"}
+        assert all(r.tool_id == "data_extraction" for r in rows)
+        assert all(r.conversation_id == conv.id for r in rows)
+
+    @pytest.mark.asyncio
+    async def test_create_slot_extractions_empty_slots_returns_empty(self, db_session):
+        conv = await create_conversation(db_session, agent_id="agent-1", agent_name="Bot")
+        rows = await create_slot_extractions(
+            db_session, conversation_id=conv.id, tool_id="data_extraction", slots={}
+        )
+        assert rows == []
+
+    @pytest.mark.asyncio
+    async def test_create_tool_execution(self, db_session):
+        conv = await create_conversation(db_session, agent_id="agent-1", agent_name="Bot")
+        execution = await create_tool_execution(
+            db_session,
+            conversation_id=conv.id,
+            tool_id="data_extraction",
+            tool_type="data_extraction",
+            result={"extracted_slots": {"name": "Alice"}},
+        )
+        assert execution is not None
+        assert execution.tool_id == "data_extraction"
+        assert execution.tool_type == "data_extraction"
+        assert execution.result == {"extracted_slots": {"name": "Alice"}}
+        assert execution.conversation_id == conv.id
+
+    @pytest.mark.asyncio
+    async def test_get_conversation_history_returns_none_for_unknown(self, db_session):
+        result = await get_conversation_history(db_session, "nonexistent-id")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_get_conversation_history_returns_full_data(self, db_session):
+        conv = await create_conversation(db_session, agent_id="agent-1", agent_name="Bot")
+        await create_conversation_message(
+            db_session, conversation_id=conv.id, role="user", content="Hello"
+        )
+        await create_conversation_message(
+            db_session, conversation_id=conv.id, role="assistant", content="Hi!"
+        )
+        await create_slot_extractions(
+            db_session,
+            conversation_id=conv.id,
+            tool_id="data_extraction",
+            slots={"name": "Alice"},
+        )
+        await create_tool_execution(
+            db_session,
+            conversation_id=conv.id,
+            tool_id="data_extraction",
+            tool_type="data_extraction",
+        )
+
+        history = await get_conversation_history(db_session, conv.id)
+
+        assert history is not None
+        assert history["conversation_id"] == conv.id
+        assert history["agent_name"] == "Bot"
+        assert len(history["messages"]) == 2
+        assert history["messages"][0]["role"] == "user"
+        assert history["messages"][1]["role"] == "assistant"
+        assert len(history["slot_extractions"]) == 1
+        assert history["slot_extractions"][0]["field_name"] == "name"
+        assert history["slot_extractions"][0]["tool_id"] == "data_extraction"
+        assert len(history["tool_executions"]) == 1
+        assert history["tool_executions"][0]["tool_id"] == "data_extraction"

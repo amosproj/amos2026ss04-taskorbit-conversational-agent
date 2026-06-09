@@ -19,6 +19,9 @@ export default defineConfig(({ mode }) => {
       host: true, // listen on 0.0.0.0 so Docker port-forwarding works
       port: 5173,
       strictPort: true,
+      watch: {
+        usePolling: true,
+      },
       // Proxy backend calls during development so the frontend can use
       // relative URLs like `/api/health` and avoid CORS hassle.
       proxy: {

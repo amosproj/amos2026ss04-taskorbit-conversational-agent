@@ -83,6 +83,49 @@ class ConversationOrchestrator:
         if not last_user or not last_user.content.strip():
             raise ValueError("No user message content found in request.")
 
+        # Step 0: User-initiated end-call — if the caller says goodbye and the agent
+        # has an end_call tool configured, skip the normal pipeline entirely.
+        from taskorbit.types import ConversationStatus, ToolType
+
+        end_call_tool = next(
+            (t for t in request.agent_config.tools if t.type == ToolType.END_CALL),
+            None,
+        )
+        logger.debug(
+            "end_call_check",
+            conversation_id=request.conversation_id,
+            tool_found=end_call_tool is not None,
+            tools_count=len(request.agent_config.tools),
+            tool_types=[t.type for t in request.agent_config.tools],
+            user_requested=self._user_requested_end_call(last_user.content),
+            message_snippet=last_user.content[:60],
+        )
+        if end_call_tool and self._user_requested_end_call(last_user.content):
+            farewell = await asyncio.wait_for(
+                self._call_llm(
+                    f"You are {request.agent_config.name}. "
+                    f"Persona: {request.agent_config.persona}\n"
+                    "The user wants to end the conversation. "
+                    "Say a brief, warm farewell in one sentence.",
+                    request.messages,
+                    request.agent_config.llm,
+                ),
+                timeout=self._settings.llm_timeout_seconds,
+            )
+            await self._dispatch_tool(end_call_tool, {})
+            logger.info(
+                "end_call_user_initiated",
+                conversation_id=request.conversation_id,
+            )
+            return ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message(farewell),
+                status=ConversationStatus.ENDED,
+                selected_intent="",
+                selected_agent="",
+                tool_invoked=end_call_tool,
+            )
+
         # Step 1: Intent detection — reuse locked intent when set, but still run
         # the classifier to allow genuine topic changes to break the lock.
         from dataclasses import replace as _replace
@@ -211,7 +254,15 @@ class ConversationOrchestrator:
             tool_data: dict[str, Any] = {}
             response_status = ConversationStatus.SUCCESS
 
-            if prep.active_tool and prep.slot_result.is_complete and prep.intent.required_inputs:
+            end_call_ready = (
+                prep.active_tool is not None and prep.active_tool.type == ToolType.END_CALL
+            )
+            slots_ready = (
+                prep.active_tool is not None
+                and prep.slot_result.is_complete
+                and bool(prep.intent.required_inputs)
+            )
+            if end_call_ready or slots_ready:
                 dispatch_context: dict[str, Any] = dict(prep.slot_result.to_dict())
                 if prep.active_tool.type == ToolType.AGENT_TRANSFER:
                     targets = prep.active_tool.parameters.get("targets") or []
@@ -717,6 +768,73 @@ class ConversationOrchestrator:
             data=result.data,
         )
         return result.data
+
+    _END_CALL_SIGNALS: frozenset[str] = frozenset(
+        {
+            # Unambiguous farewells
+            "goodbye",
+            "good bye",
+            "bye bye",
+            # Explicit end-call phrases
+            "end the call",
+            "end this call",
+            "end call",
+            "end the conversation",
+            "end this conversation",
+            "close the call",
+            "terminate the call",
+            "hang up",
+            "hangup",
+            "i want to hang up",
+            "i want to end the call",
+            "i want to end this call",
+            "please end the call",
+            "please hang up",
+            # Clearly finished
+            "that's all i needed",
+            "that is all i needed",
+            "that's everything i needed",
+            "that is everything i needed",
+            "no more questions",
+            "i have no more questions",
+            "i'm done for now",
+            "im done for now",
+            "we're done here",
+            "were done here",
+            "i'm ready to end",
+            "im ready to end",
+            # Wrap-up with explicit call reference
+            "wrap up the call",
+            "let's end the call",
+            "lets end the call",
+            # Done for the day / session
+            "done for the day",
+            "done for today",
+            "i'm done for the day",
+            "im done for the day",
+            "i am done for the day",
+            "am done for the day",
+            "i think i'm done",
+            "i think im done",
+            "i think am done",
+            "i think i am done",
+            "i think that's all",
+            "i think thats all",
+            "i think that's everything",
+            "i think thats everything",
+            "i think we're done",
+            "i think were done",
+            "i guess that's all",
+            "i guess thats all",
+            "that's it for today",
+            "thats it for today",
+        }
+    )
+
+    def _user_requested_end_call(self, message: str) -> bool:
+        """Return True when the user's message contains an explicit end-call signal."""
+        lowered = message.lower()
+        return any(signal in lowered for signal in self._END_CALL_SIGNALS)
 
     def _make_assistant_message(self, content: str) -> Message:
         return Message(role=MessageRole.ASSISTANT, content=content)

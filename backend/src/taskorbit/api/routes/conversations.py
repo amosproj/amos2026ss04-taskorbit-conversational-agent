@@ -11,13 +11,19 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from taskorbit.api.deps import get_current_user_id
 from taskorbit.config import Settings, get_settings
 from taskorbit.database import get_session
 from taskorbit.database.crud import (
+    create_conversation,
     create_conversation_message,
+    create_slot_extractions,
+    create_tool_execution,
+    get_conversation,
+    get_conversation_history,
     get_messages_by_conversation,
 )
-from taskorbit.database.models import Conversation
+from taskorbit.database.models import Conversation  # used in POST "" route
 from taskorbit.logging.setup import get_logger
 from taskorbit.orchestration import ConversationOrchestrator
 from taskorbit.types import ConversationRequest, ConversationResponse, MessageRole
@@ -38,53 +44,84 @@ async def process_conversation(
     request: ConversationRequest,
     orchestrator: ConversationOrchestrator = Depends(get_orchestrator),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
+    user_id: int = Depends(get_current_user_id),  # noqa: B008
 ) -> ConversationResponse:
     """Process one turn of a conversation through the TaskOrbit orchestration engine and persist messages."""
+    # Auto-create conversation when absent or unknown so the frontend never
+    # needs to call POST /v1/conversations explicitly before the first message.
+    conversation_id = request.conversation_id
+    if not conversation_id or not await get_conversation(db, conversation_id):
+        conv = await create_conversation(
+            db=db,
+            agent_id=request.agent_config.id,
+            agent_name=request.agent_config.name,
+        )
+        if conv is None:
+            raise HTTPException(status_code=500, detail="Failed to create conversation")
+        conversation_id = conv.id
+        request = request.model_copy(update={"conversation_id": conversation_id})
+        logger.info("conversation_auto_created", conversation_id=conversation_id)
+
     logger.info(
         "conversation_request_received",
-        conversation_id=request.conversation_id,
+        conversation_id=conversation_id,
         message_count=len(request.messages),
     )
     try:
         response = await orchestrator.process_message(request)
 
-        # Save user message (only the last message if it's from user)
+        # Save user message (last message in the list if sent by user)
         last_msg = request.messages[-1] if request.messages else None
         last_user = last_msg if last_msg and last_msg.role == MessageRole.USER else None
 
         if last_user:
-            result = await db.execute(
-                select(Conversation).where(Conversation.id == request.conversation_id)
-            )
-            conversation = result.scalar_one_or_none()
-            if not conversation:
-                logger.warning("conversation_not_found", conversation_id=request.conversation_id)
-
             saved = await create_conversation_message(
                 db=db,
-                conversation_id=request.conversation_id,
+                conversation_id=conversation_id,
                 role=last_user.role.value,
                 content=last_user.content,
+                user_id=user_id,
             )
             if saved is None:
-                logger.error("failed_to_save_user_message", conversation_id=request.conversation_id)
+                logger.error("failed_to_save_user_message", conversation_id=conversation_id)
 
         # Save assistant reply
         if response.reply:
             saved = await create_conversation_message(
                 db=db,
-                conversation_id=request.conversation_id,
+                conversation_id=conversation_id,
                 role=response.reply.role.value,
                 content=response.reply.content,
             )
             if saved is None:
-                logger.error(
-                    "failed_to_save_assistant_message", conversation_id=request.conversation_id
-                )
+                logger.error("failed_to_save_assistant_message", conversation_id=conversation_id)
+
+        # Persist slot extractions with tool attribution for history transparency
+        if response.extracted_slots:
+            tool_id = response.tool_invoked.id if response.tool_invoked else "orchestrator"
+            await create_slot_extractions(
+                db=db,
+                conversation_id=conversation_id,
+                tool_id=tool_id,
+                slots=response.extracted_slots,
+                user_id=user_id,
+            )
+
+        # Record tool invocation so the history endpoint can surface it
+        if response.tool_invoked:
+            await create_tool_execution(
+                db=db,
+                conversation_id=conversation_id,
+                tool_id=response.tool_invoked.id,
+                tool_type=response.tool_invoked.type.value,
+                result={"extracted_slots": response.extracted_slots}
+                if response.extracted_slots
+                else None,
+            )
 
         logger.info(
             "conversation_request_completed",
-            conversation_id=request.conversation_id,
+            conversation_id=conversation_id,
             intent=response.selected_intent,
             status=response.status,
         )
@@ -93,7 +130,7 @@ async def process_conversation(
     except NotImplementedError as exc:
         logger.warning(
             "orchestration_not_implemented",
-            conversation_id=request.conversation_id,
+            conversation_id=conversation_id,
         )
         raise HTTPException(
             status_code=501, detail="Orchestration engine not yet implemented."
@@ -190,7 +227,7 @@ async def stream_conversation(
 
 
 @router.post("", status_code=201)
-async def create_conversation(
+async def create_bare_conversation(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> dict:
     """Create a new conversation."""
@@ -234,6 +271,18 @@ async def get_conversations(
     except Exception as e:
         logger.error("get_conversations_failed", error=str(e))
         raise HTTPException(status_code=500, detail="Failed to retrieve conversations") from e
+
+
+@router.get("/{conversation_id}/history")
+async def get_history(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> dict:
+    """Return a conversation with all messages, tool executions, and slot extractions."""
+    history = await get_conversation_history(db=db, conversation_id=conversation_id)
+    if history is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return history
 
 
 @router.get("/{conversation_id}/messages")
