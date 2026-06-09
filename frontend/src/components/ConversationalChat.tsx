@@ -207,6 +207,14 @@ export function ConversationalChat() {
           const replyText = response.reply.content;
           call.appendAssistantTurn(replyText);
 
+          if (response.status === "ended") {
+            if (replyText) {
+              await playSynthesizedSpeech(replyText, { signal: controller.signal }).catch(() => {});
+            }
+            call.end();
+            return;
+          }
+
           // Agent handoff (#8 Task 6): backend's IntentRouter / dispatch decided
           // to transfer the conversation. Swap the displayed agent and add a
           // transcript marker so the user sees the switch.
@@ -468,6 +476,7 @@ export function ConversationalChat() {
             onSegment={handleSegment}
             onHandoff={handleVoiceHandoff}
             onAgentRouted={handleVoiceAgentRouted}
+            onSessionEnded={call.end}
           />
           {body}
         </LiveKitRoom>

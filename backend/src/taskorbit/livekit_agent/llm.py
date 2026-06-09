@@ -180,6 +180,7 @@ class OrchestratorAgent(Agent):
         self._t_commit: float | None = None
         self._locked_intent_name: str | None = None
         self._current_routed_agent: str = ""
+        self._call_ended: bool = False
         # Voice-path handoff hook (#8 Task 6): the most recent agent_transfer
         # target surfaced by the orchestrator. A future LiveKit data-channel
         # handler can read this to notify the client that the active agent
@@ -299,6 +300,8 @@ class OrchestratorAgent(Agent):
         else:
             log.info("voice_turn_db_persist_ok", conversation_id=conv_id)
 
+        if response.status == "ended":
+            self._call_ended = True
         status = "success" if response.status == "success" else "error"
         get_metrics().voice_pipeline_requests_total.labels(
             handler="/v1/conversations/process", status=status

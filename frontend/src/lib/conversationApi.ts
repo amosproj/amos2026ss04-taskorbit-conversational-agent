@@ -9,7 +9,11 @@
  * in dev without CORS configuration.
  */
 
-import type { AgentConfig, ToolDefinition as FrontendTool } from "@/types/agentConfig";
+import {
+  END_CALL_DEFAULT_DESCRIPTION,
+  type AgentConfig,
+  type ToolDefinition as FrontendTool,
+} from "@/types/agentConfig";
 import type { LiveTranscriptTurn } from "@/types/callState";
 
 // ---------------------------------------------------------------------------
@@ -115,7 +119,8 @@ function adaptTool(tool: FrontendTool): BackendTool {
     id: tool.name || tool.type,
     name: tool.name,
     type: tool.type,
-    description: tool.description,
+    description:
+      tool.description?.trim() || (tool.type === "end_call" ? END_CALL_DEFAULT_DESCRIPTION : ""),
     confirmation: { required: true, prompt: "" },
   };
   if (tool.type === "data_extraction") {
