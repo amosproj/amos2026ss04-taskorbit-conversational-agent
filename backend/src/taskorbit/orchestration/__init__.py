@@ -279,9 +279,6 @@ class ConversationOrchestrator:
                     if active_tool.type == ToolType.AGENT_TRANSFER:
                         targets = active_tool.parameters.get("targets") or []
                         if targets:
-                            # Template IDs are kebab-case with "-agent" suffix
-                            # (e.g. "customer-dissatisfaction-agent"); agent_name is
-                            # snake_case without the suffix (e.g. "customer_dissatisfaction").
                             raw = str(targets[0])
                             normalized = raw.removesuffix("-agent").replace("-", "_")
                             dispatch_context["target_agent_id"] = normalized
