@@ -21,6 +21,10 @@ export type UserAgentEntry = {
   is_customized: boolean;
 };
 
+type BackendToolWithParams = ToolDefinition & {
+  parameters?: { targets?: string[] };
+};
+
 type BackendAgentConfig = {
   id: string;
   name: string;
@@ -29,7 +33,7 @@ type BackendAgentConfig = {
   stt: { provider: string; language?: string; model: string };
   llm: { provider: string; model: string };
   tts: { provider: string; voice_id: string; model: string };
-  tools: any[]; // Using any[] here to allow mapping the parameters object
+  tools: BackendToolWithParams[];
   variables?: Record<string, string>;
   engine?: Record<string, unknown>;
   persona_constraints?: {
@@ -50,15 +54,17 @@ export function backendToFrontendAgent(entry: UserAgentEntry): AgentConfig {
   const c = entry.config;
 
   // Map backend tools to frontend shape
-  const frontendTools: ToolDefinition[] = (Array.isArray(c.tools) ? c.tools : []).map((t: any) => {
-    if (t.type === "agent_transfer") {
-      return {
-        ...t,
-        targets: t.parameters?.targets || t.targets || [],
-      };
-    }
-    return t as ToolDefinition;
-  });
+  const frontendTools: ToolDefinition[] = (Array.isArray(c.tools) ? c.tools : []).map(
+    (t: BackendToolWithParams) => {
+      if (t.type === "agent_transfer") {
+        return {
+          ...t,
+          targets: t.parameters?.targets || t.targets || [],
+        };
+      }
+      return t as ToolDefinition;
+    },
+  );
 
   const agent: AgentConfig = {
     agent_id: c.id,
@@ -87,9 +93,9 @@ function frontendToBackendConfig(agent: AgentConfig): BackendAgentConfig {
       return {
         ...rest,
         parameters: { targets },
-      };
+      } as BackendToolWithParams;
     }
-    return t;
+    return t as BackendToolWithParams;
   });
 
   const config: BackendAgentConfig = {
