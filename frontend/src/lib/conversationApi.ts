@@ -71,6 +71,22 @@ export type ConversationResponse = {
   next_active_tool_id: string | null;
 };
 
+export type StreamEvent =
+  | { type: "chunk"; text: string }
+  | {
+      type: "done";
+      intent: string;
+      status: "success" | "clarification" | "ended" | "error";
+      selected_agent: string;
+      slots: Record<string, unknown>;
+      missing_slots: string[];
+      conversation_id: string;
+      locked_intent_name: string | null;
+      next_active_tool_id: string | null;
+      tool_invoked: BackendTool | null;
+    }
+  | { type: "error"; message: string };
+
 type ConversationsResponse = {
   conversations: Array<{
     id: string;
@@ -187,4 +203,78 @@ export async function getConversations(): Promise<ConversationsResponse> {
     throw new Error("Failed to fetch conversations");
   }
   return response.json();
+}
+
+/**
+ * Stream one conversation turn via POST /api/v1/conversations/stream (SSE).
+ *
+ * Yields typed StreamEvent values as they arrive. Callers should iterate with
+ * `for await` and handle "chunk", "done", and "error" variants. Malformed
+ * SSE lines are silently skipped.
+ */
+export async function* sendMessageStream(
+  agent: AgentConfig,
+  transcript: LiveTranscriptTurn[],
+  conversationId: string,
+  signal?: AbortSignal,
+  lockedIntentName?: string | null,
+): AsyncGenerator<StreamEvent> {
+  const messages: BackendMessage[] = transcript.map((turn) => ({
+    role: turn.role === "user" ? "user" : "assistant",
+    content: turn.text,
+  }));
+
+  const body: ConversationRequest = {
+    conversation_id: conversationId,
+    agent_config: adaptAgentConfig(agent),
+    messages,
+    current_intent_name: lockedIntentName ?? null,
+  };
+
+  const res = await fetch("/api/v1/conversations/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(String(err.detail ?? `HTTP ${res.status}`));
+  }
+
+  if (!res.body) {
+    throw new Error("Response body is null");
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() ?? "";
+
+      for (const part of parts) {
+        for (const line of part.split("\n")) {
+          if (!line.startsWith("data: ")) continue;
+          const json = line.slice(6).trim();
+          if (!json) continue;
+          try {
+            yield JSON.parse(json) as StreamEvent;
+          } catch {
+            // malformed line — skip
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }
