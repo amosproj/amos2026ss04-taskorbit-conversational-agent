@@ -28,6 +28,7 @@ class ToolType(str, Enum):
     DATA_EXTRACTION = "data_extraction"
     AGENT_TRANSFER = "agent_transfer"
     END_CALL = "end_call"
+    EXTERNAL_API = "external_api"
 
 
 class ConversationStatus(str, Enum):
