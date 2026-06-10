@@ -77,20 +77,27 @@ class ConversationOrchestrator:
                 tools_count=len(request.agent_config.tools),
                 tool_types=[t.type for t in request.agent_config.tools],
                 user_requested=self._user_requested_end_call(last_user.content),
-                message_snippet=last_user.content[:60],
             )
             if end_call_tool and self._user_requested_end_call(last_user.content):
-                farewell = await asyncio.wait_for(
-                    self._call_llm(
-                        f"You are {request.agent_config.name}. "
-                        f"Persona: {request.agent_config.persona}\n"
-                        "The user wants to end the conversation. "
-                        "Say a brief, warm farewell in one sentence.",
-                        request.messages,
-                        request.agent_config.llm,
-                    ),
-                    timeout=self._settings.llm_timeout_seconds,
-                )
+                try:
+                    farewell = await asyncio.wait_for(
+                        self._call_llm(
+                            f"You are {request.agent_config.name}. "
+                            f"Persona: {request.agent_config.persona}\n"
+                            "The user wants to end the conversation. "
+                            "Say a brief, warm farewell in one sentence.",
+                            request.messages,
+                            request.agent_config.llm,
+                        ),
+                        timeout=self._settings.llm_timeout_seconds,
+                    )
+                except Exception:  # noqa: BLE001
+                    farewell = "Goodbye! Take care."
+                    logger.warning(
+                        "end_call_farewell_llm_failed",
+                        conversation_id=request.conversation_id,
+                        fallback=farewell,
+                    )
                 await self._dispatch_tool(end_call_tool, {})
                 logger.info(
                     "end_call_user_initiated",
@@ -662,10 +669,40 @@ class ConversationOrchestrator:
         }
     )
 
+    _NEGATION_PREFIXES: frozenset[str] = frozenset(
+        {
+            "don't",
+            "dont",
+            "do not",
+            "won't",
+            "wont",
+            "will not",
+            "can't",
+            "cant",
+            "cannot",
+            "not",
+            "never",
+            "please don't",
+            "please dont",
+        }
+    )
+
     def _user_requested_end_call(self, message: str) -> bool:
-        """Return True when the user's message contains an explicit end-call signal."""
-        lowered = message.lower()
-        return any(signal in lowered for signal in self._END_CALL_SIGNALS)
+        """Return True when the user's message contains an explicit end-call signal.
+
+        Negation guard: if a negation word immediately precedes the matched
+        signal (e.g. "please don't end the call"), the match is skipped.
+        """
+        lowered = message.lower().strip()
+        for signal in self._END_CALL_SIGNALS:
+            pos = lowered.find(signal)
+            if pos == -1:
+                continue
+            prefix = lowered[:pos].rstrip()
+            if any(prefix.endswith(neg) for neg in self._NEGATION_PREFIXES):
+                continue
+            return True
+        return False
 
     def _make_assistant_message(self, content: str) -> Message:
         return Message(role=MessageRole.ASSISTANT, content=content)
