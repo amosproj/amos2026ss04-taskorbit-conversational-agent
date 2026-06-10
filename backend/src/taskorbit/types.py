@@ -69,7 +69,7 @@ class Message(BaseModel):
 
 
 class ConfirmationConfig(BaseModel):
-    required: bool = True
+    required: bool = False
     prompt: str = ""
 
 

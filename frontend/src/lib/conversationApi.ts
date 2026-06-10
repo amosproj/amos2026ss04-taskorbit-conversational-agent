@@ -120,7 +120,7 @@ function toolNeedsConfirmation(
   toolName: string,
   confirmations: ConfirmationsConfig | undefined,
 ): boolean {
-  if (confirmations === undefined) return true; // no config → confirm everything (safe default)
+  if (confirmations === undefined) return false; // missing means legacy/disabled
   if (!confirmations.required) return false;
   return confirmations.tools.length === 0 || confirmations.tools.includes(toolName);
 }
