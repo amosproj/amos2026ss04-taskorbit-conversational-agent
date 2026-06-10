@@ -219,44 +219,94 @@ class ConversationOrchestrator:
             get_metrics().pipeline_latency_seconds.labels(stage="llm_call").observe(_llm_elapsed)
 
             # 5b. Dispatch active tool when slots are complete
-            from taskorbit.types import ConversationStatus, ToolType
+            from taskorbit.types import (
+                ConfirmationResponsePayload,
+                ConversationStatus,
+                ToolType,
+            )
 
             tool_data: dict[str, Any] = {}
             response_status = ConversationStatus.SUCCESS
 
-            end_call_ready = active_tool is not None and active_tool.type == ToolType.END_CALL
+            no_slots_tool_ready = active_tool is not None and active_tool.type in (
+                ToolType.END_CALL,
+                ToolType.AGENT_TRANSFER,
+            )
             slots_ready = (
                 active_tool is not None and slot_result.is_complete and bool(intent.required_inputs)
             )
-            if end_call_ready or slots_ready:
-                dispatch_context: dict[str, Any] = dict(slot_result.to_dict())
-                if active_tool.type == ToolType.AGENT_TRANSFER:
-                    targets = active_tool.parameters.get("targets") or []
-                    if targets:
-                        # Template IDs are kebab-case with "-agent" suffix
-                        # (e.g. "customer-dissatisfaction-agent"); agent_name is
-                        # snake_case without the suffix (e.g. "customer_dissatisfaction").
-                        raw = str(targets[0])
-                        normalized = raw.removesuffix("-agent").replace("-", "_")
-                        dispatch_context["target_agent_id"] = normalized
-                    dispatch_context["conversation_history"] = [
-                        {"role": m.role.value, "content": m.content} for m in request.messages
-                    ]
-                tool_data = await self._dispatch_tool(active_tool, dispatch_context)
-                logger.info(
-                    "tool_dispatch_complete",
-                    tool_type=active_tool.type,
-                    conversation_id=request.conversation_id,
-                )
-                if active_tool.type == ToolType.END_CALL:
-                    response_status = ConversationStatus.ENDED
-                elif active_tool.type == ToolType.AGENT_TRANSFER:
+
+            if no_slots_tool_ready or slots_ready:
+                # AC #49: mid-call confirmation logic (Dhruvin's contract).
+                is_decision_for_this_tool = request.confirmation_id == active_tool.id
+                has_decision = is_decision_for_this_tool and request.decision is not None
+
+                if active_tool.confirmation.required and not has_decision:
                     logger.info(
-                        "agent_handoff",
-                        from_agent=request.agent_config.name,
-                        to_agent=tool_data.get("transferred_to"),
+                        "confirmation_required",
+                        tool_id=active_tool.id,
                         conversation_id=request.conversation_id,
                     )
+                    return ConversationResponse(
+                        conversation_id=request.conversation_id,
+                        reply=self._make_assistant_message(
+                            active_tool.confirmation.prompt
+                            or f"I need your confirmation before I proceed with {active_tool.name}. Should I go ahead?"
+                        ),
+                        status=ConversationStatus.CONFIRMATION_REQUIRED,
+                        tool_invoked=active_tool,
+                        confirmation=ConfirmationResponsePayload(
+                            confirmation_id=active_tool.id,
+                            action=active_tool.name,
+                            description=active_tool.confirmation.prompt
+                            or f"Execute {active_tool.name}",
+                        ),
+                        selected_intent=intent.name,
+                        selected_agent=agent.agent_name,
+                        intent_confidence=intent.confidence,
+                        extracted_slots=slot_result.to_dict(),
+                        missing_slots=slot_result.missing,
+                        locked_intent_name=intent.name,
+                        next_active_tool_id=active_tool.id,
+                    )
+
+                if has_decision and request.decision == "reject":
+                    logger.info(
+                        "tool_execution_rejected",
+                        tool_id=active_tool.id,
+                        conversation_id=request.conversation_id,
+                    )
+                    response_status = ConversationStatus.REJECTED
+                    # Mark as "aborted" so we advance to the next tool/step
+                    tool_data = {"aborted": True}
+                    llm_text = "Understood. I've cancelled that action. How else can I help you?"
+                else:
+                    # Proceed either because it's confirmed or not required
+                    dispatch_context: dict[str, Any] = dict(slot_result.to_dict())
+                    if active_tool.type == ToolType.AGENT_TRANSFER:
+                        targets = active_tool.parameters.get("targets") or []
+                        if targets:
+                            raw = str(targets[0])
+                            normalized = raw.removesuffix("-agent").replace("-", "_")
+                            dispatch_context["target_agent_id"] = normalized
+                        dispatch_context["conversation_history"] = [
+                            {"role": m.role.value, "content": m.content} for m in request.messages
+                        ]
+                    tool_data = await self._dispatch_tool(active_tool, dispatch_context)
+                    logger.info(
+                        "tool_dispatch_complete",
+                        tool_type=active_tool.type,
+                        conversation_id=request.conversation_id,
+                    )
+                    if active_tool.type == ToolType.END_CALL:
+                        response_status = ConversationStatus.ENDED
+                    elif active_tool.type == ToolType.AGENT_TRANSFER:
+                        logger.info(
+                            "agent_handoff",
+                            from_agent=request.agent_config.name,
+                            to_agent=tool_data.get("transferred_to"),
+                            conversation_id=request.conversation_id,
+                        )
 
             # Advance to the next tool when the current one was dispatched,
             # so sequential workflows (e.g. data_extraction → end_call) complete.

@@ -16,6 +16,7 @@
 import {
   END_CALL_DEFAULT_DESCRIPTION,
   type AgentConfig,
+  type ConfirmationsConfig,
   type ToolDefinition as FrontendTool,
 } from "@/types/agentConfig";
 
@@ -28,14 +29,26 @@ type BackendTool = {
   parameters: Record<string, unknown>;
 };
 
-function adaptTool(tool: FrontendTool): BackendTool {
+function toolNeedsConfirmation(
+  toolName: string,
+  confirmations: ConfirmationsConfig | undefined,
+): boolean {
+  if (confirmations === undefined) return false; // missing means legacy/disabled
+  if (!confirmations.required) return false;
+  return confirmations.tools.length === 0 || confirmations.tools.includes(toolName);
+}
+
+function adaptTool(
+  tool: FrontendTool,
+  confirmations: ConfirmationsConfig | undefined,
+): BackendTool {
   const base = {
     id: tool.name || tool.type,
     name: tool.name,
     type: tool.type,
     description:
       tool.description?.trim() || (tool.type === "end_call" ? END_CALL_DEFAULT_DESCRIPTION : ""),
-    confirmation: { required: false, prompt: "" },
+    confirmation: { required: toolNeedsConfirmation(tool.name, confirmations), prompt: "" },
   };
   if (tool.type === "data_extraction") {
     return { ...base, parameters: { params: tool.params } };
@@ -67,7 +80,7 @@ export function buildLiveKitWorkerMetadata(agent: AgentConfig): Record<string, u
       voice_id: agent.tts.voice_id,
       model: agent.tts.model,
     },
-    tools: agent.tools.map(adaptTool),
+    tools: agent.tools.map((t) => adaptTool(t, agent.confirmations)),
     persona_constraints: agent.persona_constraints ?? null,
   };
 }

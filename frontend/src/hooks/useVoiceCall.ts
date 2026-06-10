@@ -37,16 +37,16 @@ export type VoiceCallApi = {
   clearSessionEndReason: () => void;
 
   /** Begin a new call: fetch token, transition to `connecting`. */
-  start: (options?: VoiceCallStartOptions) => void;
+  start: (options?: VoiceCallStartOptions) => string;
   /** End the call: tear down LiveKit, transition to `ended`. */
   end: () => void;
   /** Reset everything back to the pre-call surface. */
   restart: () => void;
 
-  /** Confirmation-prompt helpers (mocked tool flow). */
+  /** Confirmation-prompt helpers. */
   triggerConfirmation: (prompt: ConfirmationPromptState) => void;
-  approveConfirmation: (followup: string) => void;
-  denyConfirmation: (followup: string) => void;
+  approveConfirmation: () => void;
+  denyConfirmation: () => void;
 
   /** Called from inside LiveKitRoom to push phase changes upward. */
   setPhase: (phase: CallStatus) => void;
@@ -301,6 +301,8 @@ export function useVoiceCall(): VoiceCallApi {
           "Session closed due to inactivity (no speech detected for 7 minutes).",
         );
       }, INACTIVITY_TIMEOUT_MS);
+
+      return newConvId;
     },
     [clearTimer, clearSessionTimers, handleSessionTimeout],
   );
@@ -364,23 +366,15 @@ export function useVoiceCall(): VoiceCallApi {
     [clearTimer],
   );
 
-  const approveConfirmation = useCallback(
-    (followup: string) => {
-      setConfirmation(null);
-      appendAssistantTurn(followup);
-      setStatus("idle_in_call");
-    },
-    [appendAssistantTurn],
-  );
+  const approveConfirmation = useCallback(() => {
+    setConfirmation(null);
+    setStatus("thinking");
+  }, []);
 
-  const denyConfirmation = useCallback(
-    (followup: string) => {
-      setConfirmation(null);
-      appendAssistantTurn(followup);
-      setStatus("idle_in_call");
-    },
-    [appendAssistantTurn],
-  );
+  const denyConfirmation = useCallback(() => {
+    setConfirmation(null);
+    setStatus("thinking");
+  }, []);
 
   return {
     status,

@@ -19,7 +19,7 @@ import { buildLiveKitWorkerMetadata } from "@/lib/livekitAgentMetadata";
 import { sendMessage, getConversations } from "@/lib/conversationApi";
 import { playSynthesizedSpeech } from "@/lib/ttsApi";
 import { backendToFrontendAgent, fetchUserAgents } from "@/lib/userAgentsApi";
-import type { ConfirmationPromptState, LiveTranscriptTurn } from "@/types/callState";
+import type { LiveTranscriptTurn } from "@/types/callState";
 
 // Tidy up common Deepgram artefacts in user transcription before display.
 // Runs at render time only — does not mutate stored state.
@@ -56,12 +56,6 @@ function SessionEndedBanner({ message, onDismiss }: { message: string; onDismiss
   );
 }
 
-const mockConfirmationPrompt: ConfirmationPromptState = {
-  id: "demo-confirmation",
-  tool_name: "collect_user_info",
-  prompt: "I'll save the details we just discussed to your account. Is that okay?",
-};
-
 /**
  * Live call surface for the Meisterwerk-customer end of the agent
  * pipeline. Drives a `CallStatus` state machine fed by:
@@ -97,6 +91,7 @@ export function ConversationalChat() {
   const abortRef = useRef<AbortController | null>(null);
   const lastUserTurnIdRef = useRef<string | null>(null);
   const lockedIntentRef = useRef<string | null>(null);
+  const pendingConfirmationIdRef = useRef<string | null>(null);
   const [previousConversations, setPreviousConversations] = useState<
     Record<string, string | null>[]
   >([]);
@@ -224,6 +219,15 @@ export function ConversationalChat() {
 
   const handleSendText = useCallback(
     (text: string) => {
+      let convId = call.conversationId;
+      // If the user starts a session via the "Use text instead" input rather than the
+      // "Start session" button, the UI state is still 'idle'. We must explicitly
+      // initialize the session here (which transitions the UI and generates an ID)
+      // before dispatching the message.
+      if (call.status === "idle") {
+        convId = call.start();
+      }
+
       call.appendUserTurn(text);
       call.setPhase("thinking");
 
@@ -236,13 +240,20 @@ export function ConversationalChat() {
           const response = await sendMessage(
             agent,
             [...call.transcript, { id: "tmp", role: "user", text }],
-            call.conversationId,
+            convId,
             controller.signal,
             lockedIntentRef.current,
           );
           call.updateConversationId(response.conversation_id);
           lockedIntentRef.current = response.locked_intent_name ?? null;
           if (response.selected_agent) setRoutedAgent(response.selected_agent);
+
+          if (response.status === "confirmation_required" && response.confirmation) {
+            pendingConfirmationIdRef.current = response.confirmation.confirmation_id;
+            call.triggerConfirmation(response.confirmation);
+            return;
+          }
+
           const replyText = response.reply.content;
           call.appendAssistantTurn(replyText);
 
@@ -331,24 +342,77 @@ export function ConversationalChat() {
   }, []);
 
   const handleTriggerConfirmation = useCallback(() => {
-    call.triggerConfirmation(mockConfirmationPrompt);
-  }, [call]);
+    // Confirmation is triggered by the backend response, not a UI button.
+  }, []);
+
+  const handleSendDecision = useCallback(
+    (confirmationId: string, decision: "confirm" | "reject") => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      void Promise.resolve().then(async () => {
+        try {
+          const response = await sendMessage(
+            agent,
+            call.transcript,
+            call.conversationId,
+            controller.signal,
+            lockedIntentRef.current,
+            confirmationId,
+            decision,
+          );
+          lockedIntentRef.current = response.locked_intent_name ?? null;
+
+          if (response.status === "confirmation_required" && response.confirmation) {
+            pendingConfirmationIdRef.current = response.confirmation.confirmation_id;
+            call.triggerConfirmation(response.confirmation);
+            return;
+          }
+
+          const replyText = response.reply.content;
+          call.appendAssistantTurn(replyText);
+          const speakable =
+            replyText.trim().length > 0 && !replyText.startsWith("[Connection error");
+          if (speakable) {
+            call.setPhase("speaking");
+            try {
+              await playSynthesizedSpeech(replyText, { signal: controller.signal });
+            } catch (audioErr) {
+              if ((audioErr as Error).name !== "AbortError") {
+                console.warn("[ConversationalChat] ElevenLabs playback failed", audioErr);
+              }
+            }
+          }
+        } catch (err) {
+          if ((err as Error).name === "AbortError") return;
+          call.appendAssistantTurn(`[Connection error: ${(err as Error).message}]`);
+        } finally {
+          // Restore the idle UI state only if we aren't immediately blocked by another confirmation.
+          if (pendingConfirmationIdRef.current === null) {
+            call.setPhase("idle_in_call");
+          }
+        }
+      });
+    },
+    [agent, call],
+  );
 
   const handleApprove = useCallback(() => {
-    const followup = "Thanks for confirming — I've saved that. Anything else?";
-    call.approveConfirmation(followup);
-    void playSynthesizedSpeech(followup).catch(() => {
-      /* optional TTS */
-    });
-  }, [call]);
+    const confirmId = pendingConfirmationIdRef.current;
+    if (confirmId === null) return;
+    pendingConfirmationIdRef.current = null;
+    call.approveConfirmation();
+    handleSendDecision(confirmId, "confirm");
+  }, [call, handleSendDecision]);
 
   const handleDeny = useCallback(() => {
-    const followup = "Understood — I won't save that. Anything else?";
-    call.denyConfirmation(followup);
-    void playSynthesizedSpeech(followup).catch(() => {
-      /* optional TTS */
-    });
-  }, [call]);
+    const confirmId = pendingConfirmationIdRef.current;
+    if (confirmId === null) return;
+    pendingConfirmationIdRef.current = null;
+    call.denyConfirmation();
+    handleSendDecision(confirmId, "reject");
+  }, [call, handleSendDecision]);
 
   const handleRestart = useCallback(() => {
     lockedIntentRef.current = null;
@@ -468,14 +532,18 @@ export function ConversationalChat() {
         </Card>
       ) : null}
 
-      {call.confirmation !== null ? (
-        <ConfirmationPrompt
-          prompt={call.confirmation}
-          onApprove={handleApprove}
-          onDeny={handleDeny}
-        />
-      ) : isInCall ? (
-        call.livekitCredentials !== null ? (
+      {isInCall && call.livekitCredentials !== null ? (
+        // Wrapper for the bottom UI controls. We keep this sticky to the bottom of the viewport
+        // so that the confirmation prompt overlays the input area, preventing the UI from shifting
+        // dramatically when a critical action requires approval.
+        <div className="sticky bottom-0 z-10 -mx-4 flex flex-col gap-3 bg-background/95 px-4 pb-4 pt-2 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:-mx-6 sm:px-6">
+          {call.confirmation !== null ? (
+            <ConfirmationPrompt
+              prompt={call.confirmation}
+              onApprove={handleApprove}
+              onDeny={handleDeny}
+            />
+          ) : null}
           <InCallControls
             status={call.status}
             greetingInProgress={!greetingDone}
@@ -485,8 +553,8 @@ export function ConversationalChat() {
             onTriggerConfirmation={handleTriggerConfirmation}
             onMicError={call.setMicError}
           />
-        ) : null
-      ) : (
+        </div>
+      ) : isInCall ? null : (
         <CallControls
           status={call.status}
           onStart={handleStartSession}

@@ -451,6 +451,89 @@ async def test_unknown_intent_falls_back_via_clarification() -> None:
     mock_llm.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_process_message_confirmation_flow(mock_good_intent: Any) -> None:
+    """AC #49: End-to-end confirmation flow (pending -> approved -> rejected)."""
+    from taskorbit.types import (
+        ConfirmationConfig,
+        ConversationStatus,
+        ToolDefinition,
+        ToolType,
+    )
+
+    orch = ConversationOrchestrator()
+    req = _make_request("John")
+    # Add a tool that requires confirmation
+    req.agent_config.tools = [
+        ToolDefinition(
+            id="tool-1",
+            name="collect_info",
+            type=ToolType.DATA_EXTRACTION,
+            description="Collect info",
+            confirmation=ConfirmationConfig(required=True, prompt="Confirm save?"),
+        )
+    ]
+
+    # Mock intent to have required inputs so the tool triggers
+    mock_good_intent.required_inputs = [{"name": "name", "type": "string", "required": True}]
+
+    with patch.object(ConversationOrchestrator, "_call_llm", new_callable=AsyncMock) as mock_llm:
+        # 1. First turn: slots complete, should trigger confirmation
+        mock_llm.return_value = "Saving info..."
+        from taskorbit.slots import SlotExtractionResult
+
+        with patch.object(
+            ConversationOrchestrator, "_extract_slots", new_callable=AsyncMock
+        ) as mock_extract:
+            mock_extract.return_value = SlotExtractionResult(
+                filled={"name": MagicMock(value="John")}, missing=[]
+            )
+
+            response = await orch.process_message(req)
+
+            assert response.status == ConversationStatus.CONFIRMATION_REQUIRED
+            assert response.confirmation is not None
+            assert response.confirmation.confirmation_id == "tool-1"
+            assert response.confirmation.action == "collect_info"
+
+        # 2. Second turn: confirmed
+        req.confirmation_id = "tool-1"
+        req.decision = "confirm"
+        with patch.object(
+            ConversationOrchestrator, "_extract_slots", new_callable=AsyncMock
+        ) as mock_extract:
+            mock_extract.return_value = SlotExtractionResult(
+                filled={"name": MagicMock(value="John")}, missing=[]
+            )
+            with patch.object(
+                ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock
+            ) as mock_dispatch:
+                mock_dispatch.return_value = {"saved": True}
+
+                response = await orch.process_message(req)
+
+                assert response.status == ConversationStatus.SUCCESS
+                assert response.tool_invoked.id == "tool-1"
+                mock_dispatch.assert_called_once()
+
+        # 3. Third turn: rejected
+        req.decision = "reject"
+        with patch.object(
+            ConversationOrchestrator, "_extract_slots", new_callable=AsyncMock
+        ) as mock_extract:
+            mock_extract.return_value = SlotExtractionResult(
+                filled={"name": MagicMock(value="John")}, missing=[]
+            )
+            with patch.object(
+                ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock
+            ) as mock_dispatch:
+                response = await orch.process_message(req)
+
+                assert response.status == ConversationStatus.REJECTED
+                assert "cancelled" in response.reply.content.lower()
+                mock_dispatch.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # _user_requested_end_call — keyword detection
 # ---------------------------------------------------------------------------

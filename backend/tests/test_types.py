@@ -104,8 +104,9 @@ def test_conversation_response_defaults() -> None:
         reply=Message(role=MessageRole.ASSISTANT, content="Hello!"),
     )
     assert resp.tool_invoked is None
-    assert resp.requires_confirmation is False
-    assert resp.confirmation_prompt == ""
+    # #49: requires_confirmation/confirmation_prompt replaced by the structured
+    # `confirmation` payload, which defaults to None when no confirmation is pending.
+    assert resp.confirmation is None
 
 
 # ---------------------------------------------------------------------------
