@@ -16,7 +16,7 @@ import { useVoiceCall } from "@/hooks/useVoiceCall";
 import type { TranscriptionSegment } from "@/hooks/useAgentTranscription";
 import { useActiveAgent } from "@/components/active-agent-provider";
 import { buildLiveKitWorkerMetadata } from "@/lib/livekitAgentMetadata";
-import { sendMessage, getConversations } from "@/lib/conversationApi";
+import { sendMessage, getConversations, type ConversationResponse } from "@/lib/conversationApi";
 import { playSynthesizedSpeech } from "@/lib/ttsApi";
 import { backendToFrontendAgent, fetchUserAgents } from "@/lib/userAgentsApi";
 import type { LiveTranscriptTurn } from "@/types/callState";
@@ -217,6 +217,71 @@ export function ConversationalChat() {
     [call],
   );
 
+  const processResponse = useCallback(
+    async (response: ConversationResponse, controller: AbortController) => {
+      call.updateConversationId(response.conversation_id);
+      lockedIntentRef.current = response.locked_intent_name ?? null;
+      if (response.selected_agent) setRoutedAgent(response.selected_agent);
+
+      if (response.status === "confirmation_required" && response.confirmation) {
+        pendingConfirmationIdRef.current = response.confirmation.confirmation_id;
+        call.triggerConfirmation(response.confirmation);
+        return;
+      }
+
+      const replyText = response.reply.content;
+      call.appendAssistantTurn(replyText);
+
+      if (response.status === "ended") {
+        if (replyText) {
+          await playSynthesizedSpeech(replyText, { signal: controller.signal }).catch(() => {});
+        }
+        call.end();
+        return;
+      }
+
+      // Agent handoff (#8 Task 6): backend's IntentRouter / dispatch decided
+      // to transfer the conversation. Swap the displayed agent and add a
+      // transcript marker so the user sees the switch.
+      // On "rejected" the backend still echoes tool_invoked (its tool_data is
+      // set to {aborted: true}), so we must gate on status — a rejected
+      // agent_transfer must NOT swap the active agent (#49).
+      if (response.status !== "rejected" && response.tool_invoked?.type === "agent_transfer") {
+        const targets = (response.tool_invoked.parameters as { targets?: string[] })?.targets;
+        const targetId = targets?.[0];
+        if (targetId) {
+          try {
+            const entries = await fetchUserAgents(controller.signal);
+            const match = entries.find((e) => e.template_id === targetId || e.id === targetId);
+            if (match) {
+              const next = backendToFrontendAgent(match);
+              setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
+              call.appendAssistantTurn(`[Transferred to ${next.name}]`);
+            }
+          } catch (transferErr) {
+            if ((transferErr as Error).name !== "AbortError") {
+              console.warn("[ConversationalChat] agent transfer lookup failed", transferErr);
+            }
+          }
+        }
+      }
+
+      const speakable = replyText.trim().length > 0 && !replyText.startsWith("[Connection error");
+      if (speakable) {
+        call.setPhase("speaking");
+        try {
+          await playSynthesizedSpeech(replyText, { signal: controller.signal });
+        } catch (audioErr) {
+          if ((audioErr as Error).name !== "AbortError") {
+            console.warn("[ConversationalChat] ElevenLabs playback failed", audioErr);
+          }
+        }
+      }
+      call.setPhase("idle_in_call");
+    },
+    [call, setActiveAgent],
+  );
+
   const handleSendText = useCallback(
     (text: string) => {
       let convId = call.conversationId;
@@ -244,67 +309,8 @@ export function ConversationalChat() {
             controller.signal,
             lockedIntentRef.current,
           );
-          call.updateConversationId(response.conversation_id);
-          lockedIntentRef.current = response.locked_intent_name ?? null;
-          if (response.selected_agent) setRoutedAgent(response.selected_agent);
 
-          if (response.status === "confirmation_required" && response.confirmation) {
-            pendingConfirmationIdRef.current = response.confirmation.confirmation_id;
-            call.triggerConfirmation(response.confirmation);
-            return;
-          }
-
-          const replyText = response.reply.content;
-          call.appendAssistantTurn(replyText);
-
-          if (response.status === "ended") {
-            if (replyText) {
-              await playSynthesizedSpeech(replyText, { signal: controller.signal }).catch(() => {});
-            }
-            call.end();
-            return;
-          }
-
-          // Agent handoff (#8 Task 6): backend's IntentRouter / dispatch decided
-          // to transfer the conversation. Swap the displayed agent and add a
-          // transcript marker so the user sees the switch.
-          // NOTE: backend currently exposes only the agent's configured targets
-          // in tool_invoked.parameters; the actual transferred_to id from
-          // ToolResult.data is not propagated (orchestration/__init__.py:169).
-          // First target works for single-target configs (e.g. JOHN_DOE_AGENT).
-          if (response.tool_invoked?.type === "agent_transfer") {
-            const targets = (response.tool_invoked.parameters as { targets?: string[] })?.targets;
-            const targetId = targets?.[0];
-            if (targetId) {
-              try {
-                const entries = await fetchUserAgents(controller.signal);
-                const match = entries.find((e) => e.template_id === targetId || e.id === targetId);
-                if (match) {
-                  const next = backendToFrontendAgent(match);
-                  setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
-                  call.appendAssistantTurn(`[Transferred to ${next.name}]`);
-                }
-              } catch (transferErr) {
-                if ((transferErr as Error).name !== "AbortError") {
-                  console.warn("[ConversationalChat] agent transfer lookup failed", transferErr);
-                }
-              }
-            }
-          }
-
-          const speakable =
-            replyText.trim().length > 0 && !replyText.startsWith("[Connection error");
-          if (speakable) {
-            call.setPhase("speaking");
-            try {
-              await playSynthesizedSpeech(replyText, { signal: controller.signal });
-            } catch (audioErr) {
-              if ((audioErr as Error).name !== "AbortError") {
-                console.warn("[ConversationalChat] ElevenLabs playback failed", audioErr);
-              }
-            }
-          }
-          call.setPhase("idle_in_call");
+          await processResponse(response, controller);
         } catch (err) {
           if ((err as Error).name === "AbortError") return;
           call.appendAssistantTurn(`[Connection error: ${(err as Error).message}]`);
@@ -312,7 +318,7 @@ export function ConversationalChat() {
         }
       });
     },
-    [agent, call, setActiveAgent],
+    [agent, call, processResponse],
   );
 
   const handleRoomError = useCallback(
@@ -362,28 +368,8 @@ export function ConversationalChat() {
             confirmationId,
             decision,
           );
-          lockedIntentRef.current = response.locked_intent_name ?? null;
 
-          if (response.status === "confirmation_required" && response.confirmation) {
-            pendingConfirmationIdRef.current = response.confirmation.confirmation_id;
-            call.triggerConfirmation(response.confirmation);
-            return;
-          }
-
-          const replyText = response.reply.content;
-          call.appendAssistantTurn(replyText);
-          const speakable =
-            replyText.trim().length > 0 && !replyText.startsWith("[Connection error");
-          if (speakable) {
-            call.setPhase("speaking");
-            try {
-              await playSynthesizedSpeech(replyText, { signal: controller.signal });
-            } catch (audioErr) {
-              if ((audioErr as Error).name !== "AbortError") {
-                console.warn("[ConversationalChat] ElevenLabs playback failed", audioErr);
-              }
-            }
-          }
+          await processResponse(response, controller);
         } catch (err) {
           if ((err as Error).name === "AbortError") return;
           call.appendAssistantTurn(`[Connection error: ${(err as Error).message}]`);
@@ -395,7 +381,7 @@ export function ConversationalChat() {
         }
       });
     },
-    [agent, call],
+    [agent, call, processResponse],
   );
 
   const handleApprove = useCallback(() => {
