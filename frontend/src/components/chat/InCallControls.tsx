@@ -147,6 +147,7 @@ export function InCallControls({
     if (!continuousMode) return;
     if (greetingInProgress) return;
     if (status !== "speaking") return;
+    if (mic.enabled || mic.starting) return;
     void mic.enable();
   }, [status, continuousMode, greetingInProgress, mic]);
 
@@ -193,7 +194,7 @@ export function InCallControls({
   // speech so the agent audio stops and the user's new turn is recorded.
   // Disabled during the greeting so ambient noise can't interrupt it.
   useVoiceActivityMonitor({
-    active: status === "speaking" && !greetingInProgress,
+    active: status === "speaking" && !greetingInProgress && continuousMode,
     onSpeech: () => {
       void handleInterruptAndSpeak();
     },
@@ -221,8 +222,9 @@ export function InCallControls({
         // Mic may be open from the pre-warm effect (speaking phase) or a
         // previous recording phase — disable it regardless of current status.
         void mic.disable();
-        if (status === "speaking") void mic.sendInterrupt();
-        onPhase("idle_in_call");
+        if (status !== "speaking") {
+          onPhase("idle_in_call");
+        }
       }
       return;
     }
@@ -235,18 +237,23 @@ export function InCallControls({
 
   const voiceBtnCls = (() => {
     if (status === "thinking") return "processing";
-    if (status === "speaking") return "speaking";
+    if (status === "speaking" && continuousMode) return "speaking";
     if (status === "recording" || continuousMode) return "listening";
     return "";
   })();
 
+  const thinking = status === "thinking";
+  const awaitingConfirmation = status === "awaiting_confirmation";
+  const textDisabled = awaitingConfirmation || (status !== "idle_in_call" && status !== "speaking");
+
   // Allow stopping continuous mode at any non-network phase; keep disabled
   // only for actual connection states and while the mic track is initialising.
   const voiceBtnDisabled =
-    greetingInProgress || mic.starting || status === "connecting" || status === "reconnecting";
-
-  const thinking = status === "thinking";
-  const textDisabled = status !== "idle_in_call" && status !== "speaking";
+    greetingInProgress ||
+    mic.starting ||
+    status === "connecting" ||
+    status === "reconnecting" ||
+    awaitingConfirmation;
 
   return (
     <div className="rounded-xl border bg-card p-3.5">
@@ -277,7 +284,11 @@ export function InCallControls({
                 handleSendText();
               }
             }}
-            placeholder="Ask from Orbit."
+            placeholder={
+              awaitingConfirmation
+                ? "Approve or deny the action above to continue…"
+                : "Ask from Orbit."
+            }
             autoComplete="off"
             disabled={textDisabled}
             className={cn(

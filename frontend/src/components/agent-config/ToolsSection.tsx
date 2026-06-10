@@ -358,18 +358,22 @@ function AgentTransferEditor({
 }) {
   const [draft, setDraft] = useState("");
 
+  // Safe fallback: Prevents the UI from crashing with a "Cannot read properties of undefined (reading 'length')"
+  // error if the backend data is malformed or missing the targets array.
+  const targets = Array.isArray(tool.targets) ? tool.targets : [];
+
   const addTarget = () => {
     const t = draft.trim();
-    if (!t || tool.targets.includes(t)) {
+    if (!t || targets.includes(t)) {
       setDraft("");
       return;
     }
-    onChange({ ...tool, targets: [...tool.targets, t] });
+    onChange({ ...tool, targets: [...targets, t] });
     setDraft("");
   };
 
   const removeTarget = (target: string) => {
-    onChange({ ...tool, targets: tool.targets.filter((t) => t !== target) });
+    onChange({ ...tool, targets: targets.filter((t) => t !== target) });
   };
 
   return (
@@ -414,9 +418,9 @@ function AgentTransferEditor({
               Add
             </Button>
           </div>
-          {tool.targets.length > 0 ? (
+          {targets.length > 0 ? (
             <ul className="mt-2 flex flex-wrap gap-1.5">
-              {tool.targets.map((target) => (
+              {targets.map((target) => (
                 <li key={target}>
                   <Badge variant="secondary" className="gap-1.5 font-mono">
                     {target}

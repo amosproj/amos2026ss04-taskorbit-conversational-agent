@@ -1,9 +1,16 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { Conversation } from "@/lib/mockConversations";
+
+export type ConversationRow = {
+  id: string;
+  agent_name: string;
+  started_at: string;
+  duration_seconds: number | null;
+  tool_count: number;
+};
 
 type Props = {
-  conversation: Conversation;
+  conversation: ConversationRow;
   selected: boolean;
   onSelect: () => void;
   formatRelativeStart: (iso: string) => string;
@@ -23,7 +30,7 @@ export function ConversationListItem({
   formatRelativeStart,
   formatDuration,
 }: Props) {
-  const toolCount = conversation.tool_firings.length;
+  const toolCount = conversation.tool_count;
   return (
     <button
       type="button"
@@ -43,9 +50,10 @@ export function ConversationListItem({
             {formatRelativeStart(conversation.started_at)}
           </span>
         </div>
-        <span className="truncate text-sm text-muted-foreground">{conversation.caller_label}</span>
         <div className="flex flex-wrap items-center gap-1.5 pt-1">
-          <Badge variant="secondary">{formatDuration(conversation.duration_seconds)}</Badge>
+          {conversation.duration_seconds !== null && (
+            <Badge variant="secondary">{formatDuration(conversation.duration_seconds)}</Badge>
+          )}
           {toolCount > 0 ? (
             <Badge variant="outline">
               {toolCount} {toolCount === 1 ? "tool" : "tools"}

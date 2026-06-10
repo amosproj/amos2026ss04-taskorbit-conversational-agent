@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { getConversationHistory } from "@/lib/conversationApi";
 import { fetchLiveKitToken } from "@/lib/livekitToken";
 import type { CallStatus, ConfirmationPromptState, LiveTranscriptTurn } from "@/types/callState";
 
@@ -36,21 +37,24 @@ export type VoiceCallApi = {
   clearSessionEndReason: () => void;
 
   /** Begin a new call: fetch token, transition to `connecting`. */
-  start: (options?: VoiceCallStartOptions) => void;
+  start: (options?: VoiceCallStartOptions) => string;
   /** End the call: tear down LiveKit, transition to `ended`. */
   end: () => void;
   /** Reset everything back to the pre-call surface. */
   restart: () => void;
 
-  /** Confirmation-prompt helpers (mocked tool flow). */
+  /** Confirmation-prompt helpers. */
   triggerConfirmation: (prompt: ConfirmationPromptState) => void;
-  approveConfirmation: (followup: string) => void;
-  denyConfirmation: (followup: string) => void;
+  approveConfirmation: () => void;
+  denyConfirmation: () => void;
 
   /** Called from inside LiveKitRoom to push phase changes upward. */
   setPhase: (phase: CallStatus) => void;
   /** Called from inside LiveKitRoom on permission errors. */
   setMicError: (message: string | null) => void;
+
+  /** Sync the backend-assigned conversation ID and persist it to localStorage. */
+  updateConversationId: (id: string) => void;
 
   /** Append a final user transcript turn (called when STT segment is final). */
   appendUserTurn: (text: string) => void;
@@ -68,6 +72,7 @@ export type VoiceCallApi = {
   removeTurnById: (id: string) => void;
 };
 
+const CONV_ID_STORAGE_KEY = "taskorbit_conversation_id";
 const CONNECTING_TIMEOUT_MS = 800;
 const INACTIVITY_TIMEOUT_MS =
   Number(import.meta.env.VITE_INACTIVITY_TIMEOUT_MINUTES ?? 7) * 60 * 1000;
@@ -88,7 +93,9 @@ export function useVoiceCall(): VoiceCallApi {
   const [status, setStatus] = useState<CallStatus>("idle");
   const [transcript, setTranscript] = useState<LiveTranscriptTurn[]>([]);
   const [confirmation, setConfirmation] = useState<ConfirmationPromptState | null>(null);
-  const [conversationId, setConversationId] = useState<string>("");
+  const [conversationId, setConversationId] = useState<string>(
+    () => localStorage.getItem(CONV_ID_STORAGE_KEY) ?? "",
+  );
   const [livekitCredentials, setLivekitCredentials] = useState<LiveKitCredentials | null>(null);
   const [micError, setMicError] = useState<string | null>(null);
   const [sessionEndReason, setSessionEndReason] = useState<string | null>(null);
@@ -111,6 +118,41 @@ export function useVoiceCall(): VoiceCallApi {
       abortRef.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    if (conversationId) {
+      localStorage.setItem(CONV_ID_STORAGE_KEY, conversationId);
+    } else {
+      localStorage.removeItem(CONV_ID_STORAGE_KEY);
+    }
+  }, [conversationId]);
+
+  const updateConversationId = useCallback((id: string) => {
+    setConversationId(id);
+  }, []);
+
+  // On mount, if a previous conversation ID is stored, fetch its history and
+  // restore the transcript so the user sees prior turns on reload.
+  useEffect(() => {
+    const storedId = localStorage.getItem(CONV_ID_STORAGE_KEY);
+    if (!storedId) return;
+
+    void getConversationHistory(storedId)
+      .then((history) => {
+        const turns: LiveTranscriptTurn[] = history.messages.map((m) => ({
+          id: `restored-${m.id}`,
+          role: m.role === "user" ? "user" : "assistant",
+          text: m.content,
+          isFinal: true,
+        }));
+        setTranscript(turns);
+      })
+      .catch(() => {
+        // Backend unreachable or conversation deleted — start clean.
+        localStorage.removeItem(CONV_ID_STORAGE_KEY);
+        setConversationId("");
+      });
+  }, []); // intentionally empty — runs once on mount only
 
   const clearTimer = useCallback(() => {
     if (timerRef.current !== null) {
@@ -259,6 +301,8 @@ export function useVoiceCall(): VoiceCallApi {
           "Session closed due to inactivity (no speech detected for 7 minutes).",
         );
       }, INACTIVITY_TIMEOUT_MS);
+
+      return newConvId;
     },
     [clearTimer, clearSessionTimers, handleSessionTimeout],
   );
@@ -267,6 +311,7 @@ export function useVoiceCall(): VoiceCallApi {
     clearTimer();
     clearSessionTimers();
     abortRef.current?.abort();
+    setConversationId("");
     setConfirmation(null);
     setLivekitCredentials(null);
     setStatus("ended");
@@ -321,23 +366,15 @@ export function useVoiceCall(): VoiceCallApi {
     [clearTimer],
   );
 
-  const approveConfirmation = useCallback(
-    (followup: string) => {
-      setConfirmation(null);
-      appendAssistantTurn(followup);
-      setStatus("idle_in_call");
-    },
-    [appendAssistantTurn],
-  );
+  const approveConfirmation = useCallback(() => {
+    setConfirmation(null);
+    setStatus("thinking");
+  }, []);
 
-  const denyConfirmation = useCallback(
-    (followup: string) => {
-      setConfirmation(null);
-      appendAssistantTurn(followup);
-      setStatus("idle_in_call");
-    },
-    [appendAssistantTurn],
-  );
+  const denyConfirmation = useCallback(() => {
+    setConfirmation(null);
+    setStatus("thinking");
+  }, []);
 
   return {
     status,
@@ -356,6 +393,7 @@ export function useVoiceCall(): VoiceCallApi {
     denyConfirmation,
     setPhase,
     setMicError,
+    updateConversationId,
     appendUserTurn,
     appendAssistantTurn,
     upsertTurnById,

@@ -1,14 +1,20 @@
-import { Fragment, useEffect, useRef, useState } from "react";
-import { DatabaseZap, MessageSquareDashed } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { DatabaseZap, Loader2, MessageSquareDashed } from "lucide-react";
 
-import { ConversationListItem } from "@/components/history/ConversationListItem";
+import {
+  ConversationListItem,
+  type ConversationRow,
+} from "@/components/history/ConversationListItem";
+import { SlotExtractionCard } from "@/components/history/SlotExtractionCard";
 import { TranscriptBubble } from "@/components/history/TranscriptBubble";
-import { TranscriptToolMarker } from "@/components/history/TranscriptToolMarker";
 import { Empty } from "@/components/Empty";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MOCK_CONVERSATIONS, type Conversation, type ToolFiring } from "@/lib/mockConversations";
+import {
+  getConversationHistory,
+  getConversations,
+  type ConversationHistory,
+} from "@/lib/conversationApi";
 
 const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -31,10 +37,7 @@ function formatRelativeStart(iso: string): string {
   const now = new Date();
   const then = new Date(iso);
   const diffDays = Math.round((startOfDay(now).getTime() - startOfDay(then).getTime()) / dayMs);
-  const time = then.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const time = then.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   if (diffDays === 0) return `Today, ${time}`;
   if (diffDays === 1) return `Yesterday, ${time}`;
   if (diffDays > 1 && diffDays < 7) return `${diffDays}d ago, ${time}`;
@@ -47,53 +50,71 @@ function formatDuration(seconds: number): string {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
-const languageDisplayNames =
-  typeof Intl !== "undefined" && "DisplayNames" in Intl
-    ? new Intl.DisplayNames(undefined, { type: "language" })
-    : null;
-
-function formatLanguage(tag: string): string {
-  return languageDisplayNames?.of(tag) ?? tag.toUpperCase();
+function durationSeconds(startedAt: string, endedAt: string | null): number | null {
+  if (!endedAt) return null;
+  return Math.round((new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000);
 }
 
-function groupFiringsByTurn(firings: ToolFiring[]): Map<string, ToolFiring[]> {
-  const map = new Map<string, ToolFiring[]>();
-  for (const firing of firings) {
-    const list = map.get(firing.triggered_after_turn_id) ?? [];
-    list.push(firing);
-    map.set(firing.triggered_after_turn_id, list);
-  }
-  return map;
-}
-
-// `lg` in Tailwind v4 is the 1024px breakpoint — anything below collapses
-// the two-pane grid into a single column. On mobile/tablet the detail pane
-// renders below the list, so we scroll it into view when a call is picked.
 const lgBreakpointPx = 1024;
 
 export function HistoryPage() {
+  const [conversations, setConversations] = useState<ConversationRow[]>([]);
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedHistory, setSelectedHistory] = useState<ConversationHistory | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
   const detailRef = useRef<HTMLDivElement>(null);
 
-  const selected: Conversation | null =
-    selectedId !== null ? (MOCK_CONVERSATIONS.find((c) => c.id === selectedId) ?? null) : null;
-
-  const extractionRows: Array<[string, string | number | boolean]> = selected
-    ? selected.tool_firings.flatMap((f) =>
-        f.type === "data_extraction" ? Object.entries(f.values) : [],
-      )
-    : [];
-
-  const firingsByTurn = selected
-    ? groupFiringsByTurn(selected.tool_firings)
-    : new Map<string, ToolFiring[]>();
-
   useEffect(() => {
-    if (selectedId === null) return;
-    if (typeof window === "undefined") return;
-    if (window.innerWidth >= lgBreakpointPx) return;
-    detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [selectedId]);
+    getConversations()
+      .then((data) => {
+        setConversations(
+          data.conversations.map((c) => ({
+            id: c.id,
+            agent_name: c.agent_name,
+            started_at: c.started_at,
+            duration_seconds: durationSeconds(c.started_at, c.ended_at),
+            tool_count: 0,
+          })),
+        );
+      })
+      .catch(() => setListError("Failed to load conversations."))
+      .finally(() => setListLoading(false));
+  }, []);
+
+  const handleSelect = (id: string) => {
+    setSelectedId(id);
+    setDetailLoading(true);
+    setSelectedHistory(null);
+
+    if (typeof window !== "undefined" && window.innerWidth < lgBreakpointPx) {
+      detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    getConversationHistory(id)
+      .then((h) => {
+        setSelectedHistory(h);
+        // Update tool_count in list once detail is loaded
+        setConversations((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, tool_count: h.tool_executions.length } : c)),
+        );
+      })
+      .catch(() => setSelectedHistory(null))
+      .finally(() => setDetailLoading(false));
+  };
+
+  const selectedMeta = conversations.find((c) => c.id === selectedId) ?? null;
+
+  const transcriptTurns =
+    selectedHistory?.messages.map((m) => ({
+      id: String(m.id),
+      role: m.role as "user" | "assistant",
+      text: m.content,
+      isFinal: true as const,
+    })) ?? [];
 
   return (
     <section className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
@@ -109,87 +130,104 @@ export function HistoryPage() {
       </header>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)_18rem]">
+        {/* Left: conversation list */}
         <aside aria-label="Past conversations">
           <ScrollArea className="h-[min(70vh,40rem)] pr-2">
-            <ul className="flex flex-col gap-3">
-              {MOCK_CONVERSATIONS.map((c) => (
-                <li key={c.id}>
-                  <ConversationListItem
-                    conversation={c}
-                    selected={c.id === selectedId}
-                    onSelect={() => setSelectedId(c.id)}
-                    formatRelativeStart={formatRelativeStart}
-                    formatDuration={formatDuration}
-                  />
-                </li>
-              ))}
-            </ul>
+            {listLoading ? (
+              <div className="flex items-center justify-center py-12 text-muted-foreground">
+                <Loader2 className="size-5 animate-spin" />
+              </div>
+            ) : listError ? (
+              <p className="py-8 text-center text-sm text-destructive">{listError}</p>
+            ) : conversations.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                No conversations yet.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-3">
+                {conversations.map((c) => (
+                  <li key={c.id}>
+                    <ConversationListItem
+                      conversation={c}
+                      selected={c.id === selectedId}
+                      onSelect={() => handleSelect(c.id)}
+                      formatRelativeStart={formatRelativeStart}
+                      formatDuration={formatDuration}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
           </ScrollArea>
         </aside>
 
+        {/* Centre: transcript */}
         <div ref={detailRef} className="flex min-w-0 flex-col gap-6">
-          {selected !== null ? (
-            <Card>
-              <CardHeader className="border-b">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="space-y-1">
-                    <CardTitle>
-                      {selected.agent_name} · {selected.caller_label}
-                    </CardTitle>
-                    <CardDescription>
-                      {formatStartedAt(selected.started_at)} ·{" "}
-                      {formatDuration(selected.duration_seconds)}
-                    </CardDescription>
-                  </div>
-                  <Badge variant="outline">{formatLanguage(selected.language)}</Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-6">
-                <ScrollArea className="h-[min(50vh,28rem)] pr-3">
-                  <ul className="flex flex-col gap-4" aria-label="Transcript">
-                    {selected.transcript.map((turn) => {
-                      const firings = firingsByTurn.get(turn.id) ?? [];
-                      return (
-                        <Fragment key={turn.id}>
-                          <TranscriptBubble turn={turn} />
-                          {firings.map((firing, i) => (
-                            <TranscriptToolMarker key={`${turn.id}-firing-${i}`} firing={firing} />
-                          ))}
-                        </Fragment>
-                      );
-                    })}
-                  </ul>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          ) : (
+          {selectedId === null ? (
             <Empty
               icon={MessageSquareDashed}
               title="Pick a conversation"
               description="Select a past call from the list to view the transcript and any data extracted during the call."
             />
+          ) : detailLoading ? (
+            <div className="flex items-center justify-center py-20 text-muted-foreground">
+              <Loader2 className="size-5 animate-spin" />
+            </div>
+          ) : selectedHistory !== null ? (
+            <Card>
+              <CardHeader className="border-b">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="space-y-1">
+                    <CardTitle>{selectedMeta?.agent_name ?? selectedHistory.agent_name}</CardTitle>
+                    <CardDescription>
+                      {formatStartedAt(selectedHistory.started_at)}
+                      {selectedMeta?.duration_seconds != null &&
+                        ` · ${formatDuration(selectedMeta.duration_seconds)}`}
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <ScrollArea className="h-[min(50vh,28rem)] pr-3">
+                  {transcriptTurns.length > 0 ? (
+                    <ul className="flex flex-col gap-4" aria-label="Transcript">
+                      {transcriptTurns.map((turn) => (
+                        <TranscriptBubble key={turn.id} turn={turn} history />
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="py-8 text-center text-sm text-muted-foreground">
+                      No messages recorded for this conversation.
+                    </p>
+                  )}
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          ) : (
+            <p className="py-8 text-center text-sm text-destructive">
+              Failed to load conversation detail.
+            </p>
           )}
         </div>
 
+        {/* Right: extracted data with tool attribution */}
         <aside aria-label="Extracted data" className="min-w-0">
-          {selected !== null ? (
+          {selectedId !== null && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Extracted data</CardTitle>
                 <CardDescription>
-                  Values the agent saved during the call via data extraction tools.
+                  Values the agent saved during the call, attributed to the tool that extracted
+                  them.
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {extractionRows.length > 0 ? (
-                  <dl className="flex flex-col gap-3">
-                    {extractionRows.map(([key, value]) => (
-                      <div key={key} className="flex flex-col gap-0.5">
-                        <dt className="text-xs text-muted-foreground">{key}</dt>
-                        <dd className="font-mono text-sm break-all">{String(value)}</dd>
-                      </div>
-                    ))}
-                  </dl>
+                {detailLoading ? (
+                  <div className="flex justify-center py-6 text-muted-foreground">
+                    <Loader2 className="size-4 animate-spin" />
+                  </div>
+                ) : selectedHistory && selectedHistory.slot_extractions.length > 0 ? (
+                  <SlotExtractionCard extractions={selectedHistory.slot_extractions} />
                 ) : (
                   <Empty
                     icon={DatabaseZap}
@@ -199,7 +237,7 @@ export function HistoryPage() {
                 )}
               </CardContent>
             </Card>
-          ) : null}
+          )}
         </aside>
       </div>
     </section>

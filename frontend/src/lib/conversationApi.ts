@@ -12,6 +12,7 @@
 import {
   END_CALL_DEFAULT_DESCRIPTION,
   type AgentConfig,
+  type ConfirmationsConfig,
   type ToolDefinition as FrontendTool,
 } from "@/types/agentConfig";
 import type { LiveTranscriptTurn } from "@/types/callState";
@@ -60,15 +61,16 @@ type ConversationRequest = {
   agent_config: BackendAgentConfig;
   messages: BackendMessage[];
   current_intent_name?: string | null;
+  confirmation_id?: string | null;
+  decision?: "confirm" | "reject" | null;
 };
 
 export type ConversationResponse = {
   conversation_id: string;
   reply: { role: string; content: string; timestamp: string | null };
   tool_invoked: BackendTool | null;
-  requires_confirmation: boolean;
-  confirmation_prompt: string;
-  status: "success" | "clarification" | "ended" | "error";
+  confirmation?: { confirmation_id: string; action: string; description: string };
+  status: "success" | "clarification" | "ended" | "error" | "confirmation_required" | "rejected";
   selected_intent: string;
   selected_agent: string;
   locked_intent_name: string | null;
@@ -86,18 +88,54 @@ type ConversationsResponse = {
   total: number;
 };
 
+export type ConversationHistory = {
+  conversation_id: string;
+  agent_id: string;
+  agent_name: string;
+  started_at: string;
+  ended_at: string | null;
+  messages: Array<{ id: number; role: string; content: string; created_at: string }>;
+  tool_executions: Array<{
+    id: number;
+    tool_id: string;
+    tool_type: string;
+    confirmed: boolean;
+    executed_at: string;
+    result: Record<string, unknown> | null;
+  }>;
+  slot_extractions: Array<{
+    id: number;
+    tool_id: string;
+    field_name: string;
+    field_value: string | null;
+    extracted_at: string;
+  }>;
+};
+
 // ---------------------------------------------------------------------------
 // Adapters: frontend schema → backend wire schema
 // ---------------------------------------------------------------------------
 
-function adaptTool(tool: FrontendTool): BackendTool {
+function toolNeedsConfirmation(
+  toolName: string,
+  confirmations: ConfirmationsConfig | undefined,
+): boolean {
+  if (confirmations === undefined) return false; // missing means legacy/disabled
+  if (!confirmations.required) return false;
+  return confirmations.tools.length === 0 || confirmations.tools.includes(toolName);
+}
+
+function adaptTool(
+  tool: FrontendTool,
+  confirmations: ConfirmationsConfig | undefined,
+): BackendTool {
   const base = {
     id: tool.name || tool.type,
     name: tool.name,
     type: tool.type,
     description:
       tool.description?.trim() || (tool.type === "end_call" ? END_CALL_DEFAULT_DESCRIPTION : ""),
-    confirmation: { required: true, prompt: "" },
+    confirmation: { required: toolNeedsConfirmation(tool.name, confirmations), prompt: "" },
   };
   if (tool.type === "data_extraction") {
     return { ...base, parameters: { params: tool.params } };
@@ -126,7 +164,7 @@ function adaptAgentConfig(agent: AgentConfig): BackendAgentConfig {
     stt: { provider: agent.stt.provider, language: "multi", model: agent.stt.model },
     llm: { provider: llmProvider, model: agent.llm.model },
     tts: { provider: agent.tts.provider, voice_id: agent.tts.voice_id, model: agent.tts.model },
-    tools: agent.tools.map(adaptTool),
+    tools: agent.tools.map((t) => adaptTool(t, agent.confirmations)),
   };
   if (agent.persona_constraints) {
     out.persona_constraints = agent.persona_constraints;
@@ -155,6 +193,8 @@ export async function sendMessage(
   conversationId: string,
   signal?: AbortSignal,
   lockedIntentName?: string | null,
+  confirmationId?: string | null,
+  decision?: "confirm" | "reject" | null,
 ): Promise<ConversationResponse> {
   // STEP A: Map transcript -> backend Message[]
   const messages: BackendMessage[] = transcript.map((turn) => ({
@@ -168,6 +208,8 @@ export async function sendMessage(
     agent_config: adaptAgentConfig(agent),
     messages,
     current_intent_name: lockedIntentName ?? null,
+    confirmation_id: confirmationId ?? null,
+    decision: decision ?? null,
   };
 
   const res = await fetch("/api/v1/conversations/process", {
@@ -196,6 +238,18 @@ export async function getConversations(): Promise<ConversationsResponse> {
   const response = await fetch("/api/v1/conversations");
   if (!response.ok) {
     throw new Error("Failed to fetch conversations");
+  }
+  return response.json();
+}
+
+/**
+ * Fetch full history for a single conversation — messages, tool executions,
+ * and slot extractions. Used on reload to restore a previous session.
+ */
+export async function getConversationHistory(conversationId: string): Promise<ConversationHistory> {
+  const response = await fetch(`/api/v1/conversations/${conversationId}/history`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch history for conversation ${conversationId}`);
   }
   return response.json();
 }
