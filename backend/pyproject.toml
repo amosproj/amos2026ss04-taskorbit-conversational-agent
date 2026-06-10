@@ -102,6 +102,13 @@ plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra -q"
+# `-m "not integration"` keeps integration tests out of the default CI run
+# because they hit real external services (e.g. httpbin.org) whose
+# availability is not under our control. Run them explicitly with
+# `poetry run pytest -m integration` when you want the end-to-end coverage.
+addopts = "-ra -q -m 'not integration'"
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "integration: end-to-end test that hits a real external service; opt-in via -m integration.",
+]

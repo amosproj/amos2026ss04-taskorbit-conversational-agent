@@ -292,6 +292,18 @@ class ConversationOrchestrator:
                         dispatch_context["conversation_history"] = [
                             {"role": m.role.value, "content": m.content} for m in request.messages
                         ]
+                    elif active_tool.type == ToolType.EXTERNAL_API:
+                        # GenericApiTool (#66) reads its config from the same
+                        # parameters dict it expects on ToolDefinition.parameters,
+                        # plus runtime args under an `args` key. The slot dict
+                        # carries the LLM-extracted values; surface them as
+                        # `args` so they substitute into the template, and
+                        # overlay the tool's static config (request, response,
+                        # auth, error_mapping, args_schema).
+                        dispatch_context = {
+                            **active_tool.parameters,
+                            "args": dict(slot_result.to_dict()),
+                        }
                     tool_data = await self._dispatch_tool(active_tool, dispatch_context)
                     logger.info(
                         "tool_dispatch_complete",
@@ -575,12 +587,14 @@ class ConversationOrchestrator:
         from taskorbit.tools.agent_transfer import AgentTransferTool
         from taskorbit.tools.data_extraction import DataExtractionTool
         from taskorbit.tools.end_call import EndCallTool
+        from taskorbit.tools.generic_api import GenericApiTool
         from taskorbit.types import ToolType
 
         dispatch: dict[ToolType, type] = {
             ToolType.DATA_EXTRACTION: DataExtractionTool,
             ToolType.AGENT_TRANSFER: AgentTransferTool,
             ToolType.END_CALL: EndCallTool,
+            ToolType.EXTERNAL_API: GenericApiTool,
         }
 
         tool_cls = dispatch.get(tool.type)

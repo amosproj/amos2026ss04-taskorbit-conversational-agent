@@ -123,3 +123,80 @@ def test_schema_rejects_unknown_field_inside_persona_constraints(
     }
     with pytest.raises(ValidationError):
         validate(instance=data, schema=schema)
+
+
+# ---------------------------------------------------------------------------
+# external_api tool (ticket #66)
+# ---------------------------------------------------------------------------
+
+
+def _example_external_api_tool() -> dict[str, Any]:
+    return {
+        "type": "external_api",
+        "name": "lookup_thing",
+        "description": "Look something up.",
+        "parameters": {
+            "request": {
+                "method": "GET",
+                "url": "https://api.example.com/things/{{args.id}}",
+                "headers": {"X-API-Key": "{{env.MY_KEY}}"},
+                "timeout_seconds": 5,
+            },
+            "response": {
+                "extract": {"name": "data.name"},
+                "success_when": {"status_in": [200]},
+            },
+            "auth": {"allowed_env": ["MY_KEY"]},
+            "error_mapping": {"HTTP_4XX": "Not found."},
+            "args_schema": {
+                "type": "object",
+                "required": ["id"],
+                "properties": {"id": {"type": "string"}},
+            },
+        },
+    }
+
+
+def test_schema_accepts_external_api_tool(
+    schema: dict[str, Any], valid_example: dict[str, Any]
+) -> None:
+    """A fully populated external_api tool validates."""
+    data = deepcopy(valid_example)
+    data["agent"]["tools"].append(_example_external_api_tool())
+    validate(instance=data, schema=schema)
+
+
+def test_schema_external_api_requires_request(
+    schema: dict[str, Any], valid_example: dict[str, Any]
+) -> None:
+    """parameters.request is the only required block; dropping it must fail."""
+    tool = _example_external_api_tool()
+    del tool["parameters"]["request"]
+    data = deepcopy(valid_example)
+    data["agent"]["tools"].append(tool)
+    with pytest.raises(ValidationError):
+        validate(instance=data, schema=schema)
+
+
+def test_schema_external_api_rejects_unknown_method(
+    schema: dict[str, Any], valid_example: dict[str, Any]
+) -> None:
+    """Method enum is constrained to GET/POST/PUT/PATCH/DELETE."""
+    tool = _example_external_api_tool()
+    tool["parameters"]["request"]["method"] = "TRACE"
+    data = deepcopy(valid_example)
+    data["agent"]["tools"].append(tool)
+    with pytest.raises(ValidationError):
+        validate(instance=data, schema=schema)
+
+
+def test_schema_external_api_rejects_unknown_parameters_key(
+    schema: dict[str, Any], valid_example: dict[str, Any]
+) -> None:
+    """externalApiParameters has additionalProperties=false — unknown keys fail."""
+    tool = _example_external_api_tool()
+    tool["parameters"]["bogus_top_level"] = "nope"
+    data = deepcopy(valid_example)
+    data["agent"]["tools"].append(tool)
+    with pytest.raises(ValidationError):
+        validate(instance=data, schema=schema)
