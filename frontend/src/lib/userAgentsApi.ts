@@ -77,6 +77,8 @@ export function backendToFrontendAgent(entry: UserAgentEntry): AgentConfig {
     tools: frontendTools,
     variables: c.variables ?? {},
     engine: c.engine ?? {},
+    workflow_dependencies: [],
+    allowed_handoffs: [],
     persona_constraints: c.persona_constraints ?? undefined,
   };
   if (c.confirmations) agent.confirmations = c.confirmations;

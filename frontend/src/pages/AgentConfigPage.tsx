@@ -10,6 +10,7 @@ import { InstructionsSection } from "@/components/agent-config/InstructionsSecti
 import { PipelineSection } from "@/components/agent-config/PipelineSection";
 import { ToolsSection } from "@/components/agent-config/ToolsSection";
 import { VariablesSection } from "@/components/agent-config/VariablesSection";
+import { WorkflowSection } from "@/components/agent-config/WorkflowSection";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -131,6 +132,8 @@ export function AgentConfigPage() {
         tools: raw.tools ?? [],
         variables: raw.variables ?? {},
         engine: raw.engine ?? {},
+        workflow_dependencies: raw.workflow_dependencies ?? [],
+        allowed_handoffs: raw.allowed_handoffs ?? [],
       };
       setActiveAgent(normalized, saved.id);
       setShowErrors(false);
@@ -272,6 +275,17 @@ export function AgentConfigPage() {
         />
 
         <ToolsSection value={agent.tools} onChange={(tools) => setAgent({ ...agent, tools })} />
+
+        <WorkflowSection
+          workflowDependencies={agent.workflow_dependencies}
+          allowedHandoffs={agent.allowed_handoffs}
+          onWorkflowDependenciesChange={(workflow_dependencies) =>
+            setAgent({ ...agent, workflow_dependencies })
+          }
+          onAllowedHandoffsChange={(allowed_handoffs) =>
+            setAgent({ ...agent, allowed_handoffs })
+          }
+        />
 
         <ConfirmationsSection
           value={agent.confirmations}
