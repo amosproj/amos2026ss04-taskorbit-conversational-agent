@@ -981,3 +981,116 @@ async def test_no_intent_lock_when_current_intent_name_absent(mock_good_intent: 
 
     mock_detect.assert_called_once()
     assert response.selected_intent == mock_good_intent.name
+
+
+# ---------------------------------------------------------------------------
+# Manual transfer — UI-initiated handoff to a custom agent
+# ---------------------------------------------------------------------------
+
+
+def _fake_agent_record(agent_id: str = "abc123", name: str = "Custom Bot") -> Any:
+    record = MagicMock()
+    record.id = agent_id
+    record.config = {"id": agent_id, "name": name, "persona": "Custom.", "greeting": "Hi!"}
+    return record
+
+
+@pytest.mark.asyncio
+async def test_manual_transfer_succeeds(mock_good_intent: Any) -> None:
+    from taskorbit.types import ManualTransferRequest
+
+    orch = ConversationOrchestrator()
+    req = ConversationRequest(
+        conversation_id="conv-mt",
+        agent_config=AgentConfig(id="original", name="Original", persona="p", greeting="hi"),
+        messages=[Message(role=MessageRole.USER, content="transfer me")],
+        manual_transfer=ManualTransferRequest(target_agent_id="abc123"),
+    )
+    with (
+        patch(
+            "taskorbit.database.crud.get_agent_configuration_by_id",
+            new_callable=AsyncMock,
+            return_value=_fake_agent_record(),
+        ),
+        patch.object(
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+        ),
+    ):
+        response = await orch.process_message(req, db=AsyncMock())
+
+    assert response.status != "error"
+
+
+@pytest.mark.asyncio
+async def test_manual_transfer_unknown_agent_returns_error() -> None:
+    from taskorbit.types import ConversationStatus, ManualTransferRequest
+
+    orch = ConversationOrchestrator()
+    req = ConversationRequest(
+        conversation_id="conv-mt-bad",
+        agent_config=AgentConfig(id="original", name="Original", persona="p", greeting="hi"),
+        messages=[Message(role=MessageRole.USER, content="transfer me")],
+        manual_transfer=ManualTransferRequest(target_agent_id="does_not_exist"),
+    )
+    with patch(
+        "taskorbit.database.crud.get_agent_configuration_by_id",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        response = await orch.process_message(req, db=AsyncMock())
+
+    assert response.status == ConversationStatus.ERROR
+
+
+@pytest.mark.asyncio
+async def test_manual_transfer_no_db_returns_error() -> None:
+    from taskorbit.types import ConversationStatus, ManualTransferRequest
+
+    orch = ConversationOrchestrator()
+    req = ConversationRequest(
+        conversation_id="conv-mt-nodb",
+        agent_config=AgentConfig(id="original", name="Original", persona="p", greeting="hi"),
+        messages=[Message(role=MessageRole.USER, content="transfer me")],
+        manual_transfer=ManualTransferRequest(target_agent_name="Some Agent"),
+    )
+    response = await orch.process_message(req, db=None)
+
+    assert response.status == ConversationStatus.ERROR
+
+
+@pytest.mark.asyncio
+async def test_manual_transfer_clears_manual_transfer_on_retry(mock_good_intent: Any) -> None:
+    from taskorbit.types import ManualTransferRequest
+
+    orch = ConversationOrchestrator()
+    req = ConversationRequest(
+        conversation_id="conv-mt-clear",
+        agent_config=AgentConfig(id="original", name="Original", persona="p", greeting="hi"),
+        messages=[Message(role=MessageRole.USER, content="hi")],
+        manual_transfer=ManualTransferRequest(target_agent_id="abc123"),
+    )
+    seen_requests: list[ConversationRequest] = []
+
+    original = ConversationOrchestrator.process_message
+
+    async def capture(self: Any, request: ConversationRequest, db: Any = None) -> Any:
+        seen_requests.append(request)
+        if request.manual_transfer is None:
+            return ConversationResponse(
+                conversation_id=request.conversation_id or "",
+                reply=Message(role=MessageRole.ASSISTANT, content="ok"),
+            )
+        return await original(self, request, db)
+
+    with (
+        patch(
+            "taskorbit.database.crud.get_agent_configuration_by_id",
+            new_callable=AsyncMock,
+            return_value=_fake_agent_record(),
+        ),
+        patch.object(ConversationOrchestrator, "process_message", capture),
+    ):
+        await orch.process_message(req, db=AsyncMock())
+
+    # Second call must have manual_transfer cleared to avoid infinite recursion.
+    assert seen_requests[-1].manual_transfer is None

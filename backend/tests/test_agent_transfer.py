@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from unittest.mock import patch
 
 from taskorbit.tools.agent_transfer import AgentTransferTool
 
@@ -103,3 +104,72 @@ def test_validate_returns_false_for_empty_id(tool: AgentTransferTool) -> None:
 
 def test_validate_returns_false_for_missing_key(tool: AgentTransferTool) -> None:
     assert tool.validate_parameters({}) is False
+
+
+# ---------------------------------------------------------------------------
+# Custom agent transfer — DB-backed validation
+# ---------------------------------------------------------------------------
+
+
+async def test_transfer_to_custom_agent_succeeds_with_db() -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    from taskorbit.database.models import AgentConfiguration
+
+    fake_record = MagicMock(spec=AgentConfiguration)
+    mock_db = AsyncMock()
+
+    with patch(
+        "taskorbit.database.crud.get_agent_configuration_by_id",
+        new_callable=AsyncMock,
+        return_value=fake_record,
+    ):
+        tool = AgentTransferTool(db=mock_db)
+        result = await tool.execute({"target_agent_id": "abc123customagent"})
+
+    assert result.success is True
+    assert result.data["transferred_to"] == "abc123customagent"
+    assert result.data["history_preserved"] is True
+
+
+async def test_transfer_to_unknown_custom_agent_fails_with_db() -> None:
+    from unittest.mock import AsyncMock
+
+    mock_db = AsyncMock()
+
+    with patch(
+        "taskorbit.database.crud.get_agent_configuration_by_id",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        tool = AgentTransferTool(db=mock_db)
+        result = await tool.execute({"target_agent_id": "nonexistent_custom_id"})
+
+    assert result.success is False
+    assert "nonexistent_custom_id" in result.error
+
+
+async def test_transfer_to_custom_agent_fails_without_db() -> None:
+    tool = AgentTransferTool(db=None)
+    result = await tool.execute({"target_agent_id": "some_custom_id_not_builtin"})
+    assert result.success is False
+
+
+async def test_custom_agent_history_preserved_with_db() -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    from taskorbit.database.models import AgentConfiguration
+
+    fake_record = MagicMock(spec=AgentConfiguration)
+    mock_db = AsyncMock()
+    history = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}]
+
+    with patch(
+        "taskorbit.database.crud.get_agent_configuration_by_id",
+        new_callable=AsyncMock,
+        return_value=fake_record,
+    ):
+        tool = AgentTransferTool(db=mock_db)
+        result = await tool.execute({"target_agent_id": "abc123", "conversation_history": history})
+
+    assert result.data["message_count"] == 2

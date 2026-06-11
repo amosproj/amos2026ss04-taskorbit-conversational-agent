@@ -245,7 +245,9 @@ class AgentRegistry:
         return cls.create(config, orchestrator)
 
     @classmethod
-    def create_custom(cls, config: AgentConfig, orchestrator: ConversationOrchestrator) -> BaseAgent:
+    def create_custom(
+        cls, config: AgentConfig, orchestrator: ConversationOrchestrator
+    ) -> BaseAgent:
         """Construct a CustomAgent from a DB-resolved AgentConfig.
 
         Called by the orchestrator after it has loaded the config from the
