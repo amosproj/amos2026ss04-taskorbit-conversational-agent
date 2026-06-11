@@ -11,6 +11,7 @@ from taskorbit.types import (
     AgentConfig,
     ContextLimitConfig,
     ConversationRequest,
+    ConversationResponse,
     Message,
     MessageRole,
     PersonaConstraints,
