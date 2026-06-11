@@ -66,7 +66,7 @@ async def process_conversation(
         message_count=len(request.messages),
     )
     try:
-        response = await orchestrator.process_message(request)
+        response = await orchestrator.process_message(request, db=db)
 
         # Save user message (last message in the list if sent by user)
         last_msg = request.messages[-1] if request.messages else None

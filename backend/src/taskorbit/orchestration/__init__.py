@@ -23,6 +23,8 @@ import time
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from taskorbit.agents import BaseAgent
 
 from taskorbit.config import Settings, get_settings
@@ -51,10 +53,18 @@ class ConversationOrchestrator:
         self._settings = settings or get_settings()
         self._intent_router = IntentRouter()
 
-    async def process_message(self, request: ConversationRequest) -> ConversationResponse:
+    async def process_message(
+        self, request: ConversationRequest, db: AsyncSession | None = None
+    ) -> ConversationResponse:
         """Main entry point called by the API layer and agent workers."""
         _pipeline_start = time.perf_counter()
         try:
+            # 0a. Manual transfer: UI-initiated handoff bypasses intent detection entirely.
+            if request.manual_transfer and (
+                request.manual_transfer.target_agent_id or request.manual_transfer.target_agent_name
+            ):
+                return await self._handle_manual_transfer(request, db)
+
             last_user = next(
                 (m for m in reversed(request.messages) if m.role == MessageRole.USER),
                 None,
@@ -423,6 +433,101 @@ class ConversationOrchestrator:
                 status="error",
                 error=str(exc),
             )
+
+    async def _handle_manual_transfer(
+        self,
+        request: ConversationRequest,
+        db: AsyncSession | None,
+    ) -> ConversationResponse:
+        """Handle a UI-initiated transfer to a specific agent by ID or name.
+
+        Resolves the target AgentConfiguration from the DB, swaps the config on
+        the request, clears the manual_transfer field to avoid recursion, then
+        re-enters the normal pipeline so intent detection, slot extraction, and
+        the LLM call all run under the new agent's persona and tools.
+        """
+        from taskorbit.database.crud import (
+            get_agent_configuration_by_id,
+            get_agent_configuration_by_name,
+        )
+        from taskorbit.types import ConversationStatus
+
+        mt = request.manual_transfer
+        target_id = mt.target_agent_id if mt else None
+
+        # Resolve by name when only a name was given.
+        if not target_id and mt and mt.target_agent_name and db is not None:
+            record = await get_agent_configuration_by_name(db, mt.target_agent_name)
+            if record:
+                target_id = record.id
+
+        if not target_id:
+            logger.warning(
+                "manual_transfer_agent_not_found",
+                target_id=mt.target_agent_id if mt else None,
+                target_name=mt.target_agent_name if mt else None,
+                conversation_id=request.conversation_id,
+            )
+            return ConversationResponse(
+                conversation_id=request.conversation_id or "",
+                reply=self._make_assistant_message(
+                    "I couldn't find the requested agent. Please try again."
+                ),
+                status=ConversationStatus.ERROR,
+                error="manual_transfer_agent_not_found",
+            )
+
+        # Load the target config from DB.
+        if db is not None:
+            record = await get_agent_configuration_by_id(db, target_id)
+        else:
+            record = None
+
+        if record is None:
+            logger.warning(
+                "manual_transfer_agent_config_missing",
+                target_id=target_id,
+                conversation_id=request.conversation_id,
+            )
+            return ConversationResponse(
+                conversation_id=request.conversation_id or "",
+                reply=self._make_assistant_message(
+                    "I couldn't load the requested agent's configuration."
+                ),
+                status=ConversationStatus.ERROR,
+                error="manual_transfer_agent_config_missing",
+            )
+
+        try:
+            target_config = AgentConfig(**record.config)
+        except Exception as exc:
+            logger.error(
+                "manual_transfer_invalid_config",
+                target_id=target_id,
+                error=str(exc),
+                conversation_id=request.conversation_id,
+            )
+            return ConversationResponse(
+                conversation_id=request.conversation_id or "",
+                reply=self._make_assistant_message(
+                    "The requested agent has an invalid configuration."
+                ),
+                status=ConversationStatus.ERROR,
+                error=str(exc),
+            )
+
+        logger.info(
+            "manual_transfer_executing",
+            from_agent=request.agent_config.id,
+            to_agent=target_id,
+            conversation_id=request.conversation_id,
+        )
+
+        # Re-enter the pipeline with the new agent config; full history is preserved.
+        updated_request = request.model_copy(
+            update={"agent_config": target_config, "manual_transfer": None}
+        )
+        return await self.process_message(updated_request, db)
 
     def _build_system_prompt(
         self,
