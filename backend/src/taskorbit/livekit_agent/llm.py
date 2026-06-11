@@ -186,6 +186,9 @@ class OrchestratorAgent(Agent):
         # handler can read this to notify the client that the active agent
         # changed mid-call without dropping the room.
         self._pending_handoff_target: str | None = None
+        # #71: Workflow state for voice path
+        self._completed_workflow_steps: list[str] = []
+        self._pending_confirmation_id: str | None = None
 
     def request_reply(self, t_commit: float | None = None) -> None:
         """Signal that the next ``llm_node`` call should actually produce a reply.
@@ -233,14 +236,35 @@ class OrchestratorAgent(Agent):
         last_user = next((m for m in reversed(messages) if m.role == MessageRole.USER), None)
         if last_user:
             log.debug("stt_transcript_received", length=len(last_user.content))
+
+        # #71: Simple voice-path confirmation detection. If we have a pending
+        # confirmation, we check if the user said something affirmative.
+        decision = None
+        if self._pending_confirmation_id and last_user:
+            content = last_user.content.lower()
+            if any(word in content for word in ["yes", "proceed", "sure", "ok", "go ahead"]):
+                decision = "confirm"
+            elif any(word in content for word in ["no", "stop", "cancel", "wait"]):
+                decision = "reject"
+
         request = ConversationRequest(
             conversation_id=self._conversation_id,
             agent_config=self._agent_config,
             messages=messages,
             current_intent_name=self._locked_intent_name,
+            selected_agent=self._current_routed_agent,
+            completed_workflow_steps=self._completed_workflow_steps,
+            confirmation_id=self._pending_confirmation_id if decision else None,
+            decision=decision,
         )
         response = await self._orchestrator.process_message(request)
         self._locked_intent_name = response.locked_intent_name
+        self._completed_workflow_steps = response.completed_workflow_steps
+        if response.status == "workflow_confirmation_required" and response.confirmation:
+            self._pending_confirmation_id = response.confirmation.confirmation_id
+        else:
+            self._pending_confirmation_id = None
+
         if response.selected_agent:
             self._current_routed_agent = response.selected_agent
 

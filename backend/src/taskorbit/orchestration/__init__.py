@@ -32,13 +32,16 @@ from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import get_metrics
 from taskorbit.types import (
     AgentConfig,
+    ConfirmationResponsePayload,
     ContextLimitConfig,
     ConversationRequest,
     ConversationResponse,
+    ConversationStatus,
     LLMConfig,
     Message,
     MessageRole,
     ToolDefinition,
+    ToolType,
 )
 
 logger = get_logger(__name__)
@@ -162,7 +165,6 @@ class ConversationOrchestrator:
             # Short-circuit: ask for clarification instead of guessing
             if intent.requires_clarification:
                 from taskorbit.intent import _CLARIFICATION_REPLY
-                from taskorbit.types import ConversationStatus
 
                 return ConversationResponse(
                     conversation_id=request.conversation_id,
@@ -177,11 +179,114 @@ class ConversationOrchestrator:
             from taskorbit.agents import AgentRegistry
 
             agent = AgentRegistry.create_by_name(intent.agent_name, request.agent_config, self)
+            
+            # #71: Handoff check
+            # We only enforce handoffs if:
+            # 1. The current session already has a selected agent (not the first turn)
+            # 2. The new agent is different from the current one
+            # 3. allowed_handoffs is NOT empty (if empty, we assume all are allowed for flexibility)
+            if (
+                request.selected_agent  # indicates not the first turn
+                and intent.agent_name != request.selected_agent
+                and request.agent_config.allowed_handoffs
+                and intent.agent_name not in request.agent_config.allowed_handoffs
+            ):
+                logger.warning(
+                    "handoff_blocked",
+                    current=request.selected_agent,
+                    target=intent.agent_name,
+                    conversation_id=request.conversation_id,
+                )
+                # If handoff is blocked, we stick with the current agent
+                # We re-create the agent using request.selected_agent
+                agent = AgentRegistry.create_by_name(request.selected_agent, request.agent_config, self)
+                # We also revert the intent name to match the selected agent's intent
+                # (This is a bit simplified, but ensures consistency)
+                intent = _replace(_KNOWN_INTENTS[request.current_intent_name], confidence=1.0) if request.current_intent_name else intent
+
             logger.info(
                 "agent_selected",
                 agent=agent.agent_name,
                 conversation_id=request.conversation_id,
             )
+
+            # 2b. #71: Resolve workflow dependencies
+            from taskorbit.types import ConversationStatus
+
+            missing_dependencies = [
+                dep
+                for dep in request.agent_config.workflow_dependencies
+                if dep not in request.completed_workflow_steps
+            ]
+
+            if missing_dependencies:
+                # AC #71: Request confirmation for the first missing dependency
+                # In a real system, we might want to plan the whole workflow,
+                # but for this sprint we'll handle them sequentially.
+                next_dep = missing_dependencies[0]
+                logger.info(
+                    "workflow_dependency_missing",
+                    dependency=next_dep,
+                    conversation_id=request.conversation_id,
+                )
+
+                # Check if the user already confirmed this dependency
+                is_decision_for_this_workflow = request.confirmation_id == f"workflow_{next_dep}"
+                has_decision = is_decision_for_this_workflow and request.decision is not None
+
+                if not has_decision:
+                    return ConversationResponse(
+                        conversation_id=request.conversation_id,
+                        reply=self._make_assistant_message(
+                            f"Before we proceed with {request.agent_config.name}, I'll need to complete some prerequisite steps regarding {next_dep.replace('-', ' ')}. Shall I start with that?"
+                        ),
+                        status=ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED,
+                        confirmation=ConfirmationResponsePayload(
+                            confirmation_id=f"workflow_{next_dep}",
+                            action=f"Start {next_dep} workflow",
+                            description=f"Prerequisite: {next_dep}",
+                        ),
+                        selected_intent=intent.name,
+                        selected_agent=agent.agent_name,
+                        intent_confidence=intent.confidence,
+                        completed_workflow_steps=request.completed_workflow_steps,
+                    )
+
+                if request.decision == "reject":
+                    logger.info(
+                        "workflow_dependency_rejected",
+                        dependency=next_dep,
+                        conversation_id=request.conversation_id,
+                    )
+                    return ConversationResponse(
+                        conversation_id=request.conversation_id,
+                        reply=self._make_assistant_message(
+                            "Understood. I can't proceed without those prerequisite steps. Is there anything else I can help you with?"
+                        ),
+                        status=ConversationStatus.REJECTED,
+                        selected_intent=intent.name,
+                        selected_agent=agent.agent_name,
+                        completed_workflow_steps=request.completed_workflow_steps,
+                    )
+                else:
+                    # User confirmed. We want to "switch" to the dependency agent.
+                    # We return a response with selected_agent = next_dep so the frontend knows to swap configs.
+                    logger.info(
+                        "workflow_dependency_confirmed",
+                        dependency=next_dep,
+                        conversation_id=request.conversation_id,
+                    )
+                    return ConversationResponse(
+                        conversation_id=request.conversation_id,
+                        reply=self._make_assistant_message(
+                            f"Understood. Let's start with the {next_dep.replace('-', ' ')} steps."
+                        ),
+                        status=ConversationStatus.SUCCESS,
+                        selected_intent=intent.name,
+                        selected_agent=next_dep, # Tell frontend to switch to the dependency
+                        intent_confidence=1.0,
+                        completed_workflow_steps=request.completed_workflow_steps,
+                    )
 
             # 3. Select active tool
             active_tool = self._select_active_tool(
@@ -219,12 +324,6 @@ class ConversationOrchestrator:
             get_metrics().pipeline_latency_seconds.labels(stage="llm_call").observe(_llm_elapsed)
 
             # 5b. Dispatch active tool when slots are complete
-            from taskorbit.types import (
-                ConfirmationResponsePayload,
-                ConversationStatus,
-                ToolType,
-            )
-
             tool_data: dict[str, Any] = {}
             response_status = ConversationStatus.SUCCESS
 
@@ -268,6 +367,7 @@ class ConversationOrchestrator:
                         missing_slots=slot_result.missing,
                         locked_intent_name=intent.name,
                         next_active_tool_id=active_tool.id,
+                        completed_workflow_steps=request.completed_workflow_steps,
                     )
 
                 if has_decision and request.decision == "reject":
@@ -322,7 +422,19 @@ class ConversationOrchestrator:
 
             # Advance to the next tool when the current one was dispatched,
             # so sequential workflows (e.g. data_extraction → end_call) complete.
-            if tool_data and active_tool:
+            updated_completed_steps = list(request.completed_workflow_steps)
+            if tool_data and active_tool and not tool_data.get("aborted"):
+                # If a tool was executed successfully, and it's not a rejection,
+                # we consider this step of the workflow potentially "complete".
+                # For simplicity, we'll mark the agent itself as a completed step.
+                if request.agent_config.id not in updated_completed_steps:
+                    updated_completed_steps.append(request.agent_config.id)
+                    logger.info(
+                        "workflow_step_completed",
+                        step=request.agent_config.id,
+                        conversation_id=request.conversation_id,
+                    )
+
                 all_tools = agent.get_task_definitions()
                 current_idx = next(
                     (i for i, t in enumerate(all_tools) if t.id == active_tool.id), -1
@@ -355,6 +467,7 @@ class ConversationOrchestrator:
                 tool_invoked=active_tool if tool_data else None,
                 locked_intent_name=intent.name,
                 next_active_tool_id=next_active_tool_id,
+                completed_workflow_steps=updated_completed_steps,
             )
 
         except LLMConfigError as exc:

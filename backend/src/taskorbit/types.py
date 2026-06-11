@@ -35,6 +35,7 @@ class ConversationStatus(str, Enum):
     SUCCESS = "success"
     CLARIFICATION = "clarification"
     CONFIRMATION_REQUIRED = "confirmation_required"
+    WORKFLOW_CONFIRMATION_REQUIRED = "workflow_confirmation_required"
     REJECTED = "rejected"
     ENDED = "ended"
     ERROR = "error"
@@ -152,6 +153,8 @@ class AgentConfig(BaseModel):
     tools: list[ToolDefinition] = Field(default_factory=list)
     persona_constraints: PersonaConstraints | None = None
     context_limit: ContextLimitConfig | None = None
+    workflow_dependencies: list[str] = Field(default_factory=list)
+    allowed_handoffs: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -170,10 +173,13 @@ class ConversationRequest(BaseModel):
     agent_config: AgentConfig
     messages: list[Message]
     current_intent_name: str | None = None
+    selected_agent: str | None = None
     active_tool_id: str | None = None
     # AC #49: Decision fields
     confirmation_id: str | None = None
     decision: Literal["confirm", "reject"] | None = None
+    # #71: Workflow state
+    completed_workflow_steps: list[str] = Field(default_factory=list)
 
 
 class ConversationResponse(BaseModel):
@@ -191,6 +197,8 @@ class ConversationResponse(BaseModel):
     missing_slots: list[str] = Field(default_factory=list)
     locked_intent_name: str | None = None
     next_active_tool_id: str | None = None
+    # #71: Workflow state
+    completed_workflow_steps: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

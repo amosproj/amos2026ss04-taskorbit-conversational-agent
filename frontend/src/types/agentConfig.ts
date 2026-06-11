@@ -150,6 +150,8 @@ export type AgentConfig = {
   llm: { provider: LlmProvider; model: string };
   tools: ToolDefinition[];
   engine: Record<string, unknown>;
+  workflow_dependencies: string[];
+  allowed_handoffs: string[];
 
   // Architecture-driven optional extensions (kept off Preet's wire format
   // unless the user opts in via the Advanced/Confirmations sections):
@@ -173,6 +175,8 @@ export function serializeAgent(agent: AgentConfig): Record<string, unknown> {
     llm: agent.llm,
     tools: agent.tools,
     engine: agent.engine,
+    workflow_dependencies: agent.workflow_dependencies,
+    allowed_handoffs: agent.allowed_handoffs,
   };
   if (agent.confirmations) out.confirmations = agent.confirmations;
   if (agent.language) out.language = agent.language;
