@@ -15,15 +15,44 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import { listAgentConfigs } from "@/lib/agentConfigApi";
-import type { SavedAgentConfigSummary } from "@/lib/agentConfigApi";
+import { listAgentConfigs, loadAgentConfig } from "@/lib/agentConfigApi";
+
+// ── Types ────────────────────────────────────────────────────────────────────
 
 type Props = {
   workflowDependencies?: string[];
   allowedHandoffs?: string[];
   onWorkflowDependenciesChange: (next: string[]) => void;
   onAllowedHandoffsChange: (next: string[]) => void;
+  /** Logical agent_id of the config currently being edited — used to detect cycles. */
+  currentAgentId?: string;
 };
+
+/** Resolved from each saved config's blob: logical id + display name. */
+type AgentOption = { agentId: string; name: string };
+
+// ── Cycle detection ──────────────────────────────────────────────────────────
+
+/**
+ * DFS from `from` through `depGraph`.
+ * Returns true when `target` is reachable, meaning adding `from` as a
+ * prerequisite of `target` would close a cycle.
+ */
+function wouldCreateCycle(
+  from: string,
+  depGraph: Map<string, string[]>,
+  target: string,
+  visited = new Set<string>(),
+): boolean {
+  if (from === target) return true;
+  if (visited.has(from)) return false;
+  visited.add(from);
+  return (depGraph.get(from) ?? []).some((n) =>
+    wouldCreateCycle(n, depGraph, target, visited),
+  );
+}
+
+// ── Shared sub-components ────────────────────────────────────────────────────
 
 function SectionHeader({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
   return (
@@ -36,28 +65,63 @@ function SectionHeader({ icon: Icon, label }: { icon: LucideIcon; label: string 
 
 type AgentListEditorProps = {
   ids: string[];
-  agents: SavedAgentConfigSummary[];
+  agents: AgentOption[];
+  loading: boolean;
   onChange: (next: string[]) => void;
   icon: LucideIcon;
   label: string;
+  /** When provided alongside depGraph, cycle detection is active. */
+  currentAgentId?: string;
+  depGraph?: Map<string, string[]>;
 };
 
-function AgentListEditor({ ids, agents, onChange, icon, label }: AgentListEditorProps) {
+function AgentListEditor({
+  ids,
+  agents,
+  loading,
+  onChange,
+  icon,
+  label,
+  currentAgentId,
+  depGraph,
+}: AgentListEditorProps) {
   const [pending, setPending] = useState("");
+  const [cycleError, setCycleError] = useState<string | null>(null);
 
-  const available = agents.filter((a) => !ids.includes(a.id));
+  // Only agents not already in this list appear in the dropdown.
+  const available = agents.filter((a) => !ids.includes(a.agentId));
+
+  function handleValueChange(v: string) {
+    setPending(v);
+    setCycleError(null);
+  }
 
   function add() {
     if (!pending || ids.includes(pending)) return;
+
+    // Cycle detection — runs only for the deps list (currentAgentId + depGraph present).
+    if (currentAgentId && depGraph) {
+      if (pending === currentAgentId) {
+        setCycleError("An agent cannot depend on itself.");
+        return;
+      }
+      if (wouldCreateCycle(pending, depGraph, currentAgentId)) {
+        setCycleError("Adding this agent would create a circular dependency.");
+        return;
+      }
+    }
+
+    setCycleError(null);
     onChange([...ids, pending]);
     setPending("");
   }
 
   function remove(id: string) {
+    setCycleError(null);
     onChange(ids.filter((x) => x !== id));
   }
 
-  const nameOf = (id: string) => agents.find((a) => a.id === id)?.name ?? id;
+  const nameOf = (id: string) => agents.find((a) => a.agentId === id)?.name ?? id;
 
   return (
     <FieldSet>
@@ -68,16 +132,24 @@ function AgentListEditor({ ids, agents, onChange, icon, label }: AgentListEditor
           <div className="flex gap-2">
             <Select
               value={pending}
-              onValueChange={setPending}
-              disabled={available.length === 0}
+              onValueChange={handleValueChange}
+              disabled={loading || available.length === 0}
             >
               <SelectTrigger className="min-w-0 flex-1">
-                <SelectValue placeholder="Select an agent…" />
+                <SelectValue
+                  placeholder={
+                    loading
+                      ? "Loading agents…"
+                      : available.length === 0
+                        ? "No agents available"
+                        : "Select an agent…"
+                  }
+                />
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
                   {available.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
+                    <SelectItem key={a.agentId} value={a.agentId}>
                       {a.name}
                     </SelectItem>
                   ))}
@@ -88,12 +160,15 @@ function AgentListEditor({ ids, agents, onChange, icon, label }: AgentListEditor
               type="button"
               variant="outline"
               size="sm"
-              disabled={!pending}
+              disabled={loading || !pending}
               onClick={add}
             >
               Add
             </Button>
           </div>
+          {cycleError !== null && (
+            <p className="mt-1 text-sm text-destructive">{cycleError}</p>
+          )}
         </Field>
         {ids.length > 0 && (
           <Field>
@@ -120,26 +195,66 @@ function AgentListEditor({ ids, agents, onChange, icon, label }: AgentListEditor
   );
 }
 
+// ── Exported component ───────────────────────────────────────────────────────
+
 export function WorkflowSection({
   workflowDependencies,
   allowedHandoffs,
   onWorkflowDependenciesChange,
   onAllowedHandoffsChange,
+  currentAgentId,
 }: Props) {
   const deps = workflowDependencies ?? [];
   const handoffs = allowedHandoffs ?? [];
 
-  const [agents, setAgents] = useState<SavedAgentConfigSummary[]>([]);
+  const [agents, setAgents] = useState<AgentOption[]>([]);
+  const [depGraph, setDepGraph] = useState<Map<string, string[]>>(new Map());
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const controller = new AbortController();
-    listAgentConfigs(controller.signal)
-      .then(setAgents)
+    const { signal } = controller;
+
+    setLoading(true);
+
+    listAgentConfigs(signal)
+      .then(async (summaries) => {
+        // Load every agent's full config blob in parallel so we have both
+        // their logical agent_id (the value the backend uses in dependencies)
+        // and their own workflow_dependencies (needed to build the dep graph).
+        const fullConfigs = await Promise.all(
+          summaries.map((s) => loadAgentConfig(s.id, signal)),
+        );
+
+        const options: AgentOption[] = [];
+        const graph = new Map<string, string[]>();
+
+        for (const saved of fullConfigs) {
+          const c = saved.config as {
+            agent_id?: string;
+            name?: string;
+            workflow_dependencies?: string[];
+          };
+          const agentId = c.agent_id;
+          if (!agentId) continue; // skip malformed entries
+          options.push({ agentId, name: c.name ?? saved.name });
+          graph.set(agentId, c.workflow_dependencies ?? []);
+        }
+
+        setAgents(options);
+        setDepGraph(graph);
+      })
       .catch((err: unknown) => {
         if (err instanceof Error && err.name !== "AbortError") {
           console.error("Failed to load agent list:", err);
         }
+      })
+      .finally(() => {
+        // Only clear the loading state when the fetch was NOT aborted — if it
+        // was aborted the component is unmounting and the state update is moot.
+        if (!signal.aborted) setLoading(false);
       });
+
     return () => controller.abort();
   }, []);
 
@@ -159,13 +274,17 @@ export function WorkflowSection({
         <AgentListEditor
           ids={deps}
           agents={agents}
+          loading={loading}
           onChange={onWorkflowDependenciesChange}
           icon={GitFork}
           label="Prerequisite Steps"
+          currentAgentId={currentAgentId}
+          depGraph={depGraph}
         />
         <AgentListEditor
           ids={handoffs}
           agents={agents}
+          loading={loading}
           onChange={onAllowedHandoffsChange}
           icon={ArrowRightLeft}
           label="Allowed Handoffs"

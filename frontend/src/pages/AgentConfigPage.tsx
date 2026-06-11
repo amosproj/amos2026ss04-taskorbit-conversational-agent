@@ -277,6 +277,7 @@ export function AgentConfigPage() {
         <ToolsSection value={agent.tools} onChange={(tools) => setAgent({ ...agent, tools })} />
 
         <WorkflowSection
+          currentAgentId={agent.agent_id}
           workflowDependencies={agent.workflow_dependencies}
           allowedHandoffs={agent.allowed_handoffs}
           onWorkflowDependenciesChange={(workflow_dependencies) =>
