@@ -730,6 +730,37 @@ async def copy_on_write_user_agent(
         return None
 
 
+async def get_agent_configuration_by_id(
+    db: AsyncSession, agent_id: str
+) -> AgentConfiguration | None:
+    """Look up a single AgentConfiguration by its primary key (async)."""
+    try:
+        result = await db.execute(
+            select(AgentConfiguration).where(AgentConfiguration.id == agent_id)
+        )
+        return result.scalar_one_or_none()
+    except SQLAlchemyError as e:
+        logger.error("get_agent_configuration_by_id_failed", agent_id=agent_id, error=str(e))
+        return None
+
+
+async def get_agent_configuration_by_name(
+    db: AsyncSession, name: str, user_id: int | None = None
+) -> AgentConfiguration | None:
+    """Look up a single AgentConfiguration by name, optionally scoped to a user."""
+    try:
+        query = select(AgentConfiguration).where(AgentConfiguration.name == name)
+        if user_id is not None:
+            query = query.where(AgentConfiguration.user_id == user_id)
+        result = await db.execute(query)
+        return result.scalar_one_or_none()
+    except SQLAlchemyError as e:
+        logger.error(
+            "get_agent_configuration_by_name_failed", name=name, user_id=user_id, error=str(e)
+        )
+        return None
+
+
 async def list_user_agents_merged(db: AsyncSession, user_id: int) -> list[dict]:
     """Return all agents for a user — their customised copies AND all templates.
 

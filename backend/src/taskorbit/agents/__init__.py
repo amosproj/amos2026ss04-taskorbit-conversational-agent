@@ -138,6 +138,23 @@ class CustomerDissatisfactionAgent(BaseAgent):
         return self.config.tools
 
 
+class CustomAgent(BaseAgent):
+    """Thin wrapper for user-defined agents loaded from the database.
+
+    Carries a user-supplied AgentConfig without any specialised class logic.
+    All behaviour is driven by the config (persona, tools, etc.) through the
+    shared orchestrator pipeline, exactly like the built-in agents.
+    """
+
+    agent_name = "custom"
+
+    async def handle_message(self, request: ConversationRequest) -> ConversationResponse:
+        return await self.orchestrator.process_message(request)
+
+    def get_task_definitions(self) -> list[ToolDefinition]:
+        return self.config.tools
+
+
 # ---------------------------------------------------------------------------
 # Registry / constructor
 # ---------------------------------------------------------------------------
@@ -198,6 +215,11 @@ class AgentRegistry:
         return cls._DEFAULT(config, orchestrator)
 
     @classmethod
+    def known_agent_names(cls) -> frozenset[str]:
+        """Return the set of built-in agent_name strings."""
+        return frozenset(agent_cls.agent_name for _, agent_cls in cls._REGISTRY)
+
+    @classmethod
     def create_by_name(
         cls,
         agent_name: str,
@@ -221,6 +243,18 @@ class AgentRegistry:
                 )
                 return agent_cls(config, orchestrator)
         return cls.create(config, orchestrator)
+
+    @classmethod
+    def create_custom(cls, config: AgentConfig, orchestrator: ConversationOrchestrator) -> BaseAgent:
+        """Construct a CustomAgent from a DB-resolved AgentConfig.
+
+        Called by the orchestrator after it has loaded the config from the
+        agent_configurations table. Built-in routing is not consulted.
+        """
+        _agent_call_counts["custom"] += 1
+        count = _agent_call_counts["custom"]
+        logger.info("agent_selected", agent="custom", config_id=config.id, total_calls=count)
+        return CustomAgent(config, orchestrator)
 
     # Keep the old name available so existing call sites don't break.
     @classmethod
