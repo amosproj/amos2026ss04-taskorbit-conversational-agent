@@ -57,7 +57,7 @@ export function InCallControls({
   onEnd,
   onSendText,
   onRoutingTargetChange,
-  onTriggerConfirmation,
+  onTriggerConfirmation: _onTriggerConfirmation,
   onMicError,
 }: Props) {
   const mic = useMicRecorder();
