@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowUp, Check, Mic, PhoneOff, Wand2, X } from "lucide-react";
+import { ArrowUp, Check, Mic, PhoneOff, UserRoundCog, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useMicRecorder } from "@/hooks/useMicRecorder";
@@ -44,6 +44,8 @@ type Props = {
     text: string,
     manualTransfer?: { target_agent_id: string; target_agent_name: string } | null,
   ) => void;
+  /** Fires immediately when the user picks (or clears) an agent from the @route menu. */
+  onRoutingTargetChange?: (target: { id: string; name: string } | null) => void;
   onTriggerConfirmation: () => void;
   onMicError: (message: string | null) => void;
 };
@@ -54,6 +56,7 @@ export function InCallControls({
   onPhase,
   onEnd,
   onSendText,
+  onRoutingTargetChange,
   onTriggerConfirmation,
   onMicError,
 }: Props) {
@@ -90,6 +93,7 @@ export function InCallControls({
 
   const selectAgent = (agent: RoutingTarget) => {
     setRoutingTarget(agent);
+    onRoutingTargetChange?.(agent);
     setMenuOpen(false);
     // Remove any trailing @-mention text from draft
     if (atMentionStartRef.current !== null) {
@@ -101,6 +105,7 @@ export function InCallControls({
 
   const clearRouting = () => {
     setRoutingTarget(null);
+    onRoutingTargetChange?.(null);
     setMenuOpen(false);
     atMentionStartRef.current = null;
   };
@@ -334,13 +339,94 @@ export function InCallControls({
   return (
     <div className="rounded-xl border bg-card p-3.5">
       <div className="flex items-center gap-2.5">
-        {/* ── Pill input (always text mode) ── */}
-        <div className="relative flex-1">
-          {/* Routing dropdown menu */}
+        {/* ── Pill input ── */}
+        <div
+          className={cn(
+            "flex flex-1 items-end gap-2 rounded-full border bg-background px-5 py-2 transition-colors",
+            "focus-within:border-primary/40",
+          )}
+        >
+          <label htmlFor={inputId} className="sr-only">
+            Message
+          </label>
+          <textarea
+            ref={textareaRef}
+            id={inputId}
+            rows={1}
+            value={draft}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              e.target.style.height = "auto";
+              e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSendText();
+              }
+            }}
+            placeholder={
+              awaitingConfirmation
+                ? "Approve or deny the action above to continue…"
+                : "Ask from Orbit."
+            }
+            autoComplete="off"
+            disabled={textDisabled}
+            className={cn(
+              "flex-1 resize-none bg-transparent py-2 text-sm outline-none",
+              "max-h-[160px] overflow-y-auto leading-relaxed",
+              "placeholder:text-muted-foreground/60",
+              "disabled:cursor-not-allowed disabled:opacity-50",
+            )}
+          />
+          <button
+            type="button"
+            onClick={handleSendText}
+            disabled={textDisabled || !draft.trim()}
+            aria-label="Send message"
+            className={cn(
+              "flex size-9 shrink-0 items-center justify-center rounded-full transition-all",
+              "bg-primary text-primary-foreground hover:bg-primary/90 active:scale-95",
+              "disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground",
+            )}
+          >
+            <ArrowUp size={16} />
+          </button>
+        </div>
+
+        {/* ── Mic toggle button ── */}
+        <button
+          type="button"
+          onClick={handleVoiceBtnClick}
+          disabled={voiceBtnDisabled}
+          aria-pressed={continuousMode}
+          aria-label={continuousMode ? "Stop listening" : "Start voice mode"}
+          className={cn(
+            "flex size-11 shrink-0 items-center justify-center rounded-full border",
+            "transition-all duration-200",
+            "disabled:cursor-not-allowed disabled:opacity-50",
+            voiceBtnCls === "" && "border-border bg-card text-foreground hover:bg-muted",
+            voiceBtnCls === "listening" &&
+              "border-transparent bg-primary text-primary-foreground shadow-[0_0_0_4px_hsl(var(--primary)/0.18)]",
+            voiceBtnCls === "speaking" &&
+              "border-transparent bg-violet-500 text-white shadow-[0_0_0_4px_rgb(139_92_246/0.22)]",
+            voiceBtnCls === "processing" &&
+              "border-transparent bg-amber-500 text-white shadow-[0_0_0_4px_rgb(245_158_11/0.22)]",
+          )}
+        >
+          {voiceBtnCls === "listening" || voiceBtnCls === "speaking" ? (
+            <VoiceWaveBars />
+          ) : (
+            <Mic size={18} />
+          )}
+        </button>
+
+        {/* ── Agent routing button + dropdown ── */}
+        <div className="relative shrink-0">
           {menuOpen && (
             <div
               ref={menuRef}
-              className="absolute bottom-full mb-2 left-0 z-50 w-56 rounded-xl border bg-popover shadow-lg py-1.5"
+              className="absolute bottom-full right-0 mb-2 z-50 w-56 rounded-xl border bg-popover shadow-lg py-1.5"
             >
               <p className="px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                 Route to agent
@@ -381,157 +467,22 @@ export function InCallControls({
               )}
             </div>
           )}
-
-          <div
+          <button
+            type="button"
+            onClick={openMenu}
+            aria-label="Route to agent"
+            title={routingTarget ? `Routed to ${routingTarget.name}` : "Route to agent"}
             className={cn(
-              "flex flex-1 items-end gap-2 rounded-full border bg-background px-5 py-2 transition-colors",
-              "focus-within:border-primary/40",
+              "flex size-11 shrink-0 items-center justify-center rounded-full border transition-all",
+              routingTarget
+                ? "border-transparent text-white"
+                : "border-border bg-card text-foreground hover:bg-muted",
             )}
+            style={routingTarget ? { background: AGENT_COLORS[0] } : undefined}
           >
-            {/* @route chip or routed agent chip */}
-            {routingTarget ? (
-              <button
-                type="button"
-                onClick={openMenu}
-                className="mb-2 inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium text-white transition-colors hover:opacity-80"
-                style={{ background: AGENT_COLORS[0] }}
-              >
-                @{routingTarget.name}
-                <span
-                  role="button"
-                  aria-label="Clear routing"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    clearRouting();
-                  }}
-                  className="ml-0.5 cursor-pointer"
-                >
-                  <X size={11} />
-                </span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={openMenu}
-                disabled={textDisabled}
-                aria-label="Route to agent"
-                className={cn(
-                  "mb-2 inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors",
-                  "border-muted-foreground/30 text-muted-foreground hover:border-primary/50 hover:text-primary",
-                  "disabled:pointer-events-none disabled:opacity-40",
-                )}
-              >
-                @route
-              </button>
-            )}
-
-            <label htmlFor={inputId} className="sr-only">
-              Message
-            </label>
-            <textarea
-              ref={textareaRef}
-              id={inputId}
-              rows={1}
-              value={draft}
-              onChange={(e) => {
-                const val = e.target.value;
-                setDraft(val);
-                e.target.style.height = "auto";
-                e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
-
-                // Detect @ trigger for agent routing menu
-                const cursor = e.target.selectionStart ?? val.length;
-                const lastAt = val.lastIndexOf("@", cursor - 1);
-                if (lastAt !== -1 && (lastAt === 0 || val[lastAt - 1] === " ")) {
-                  const fragment = val.slice(lastAt + 1, cursor);
-                  atMentionStartRef.current = lastAt;
-                  setMenuFilter(fragment);
-                  if (!menuOpen) void loadAgents().then(() => setMenuOpen(true));
-                } else if (menuOpen) {
-                  setMenuOpen(false);
-                  atMentionStartRef.current = null;
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Escape" && menuOpen) {
-                  e.preventDefault();
-                  setMenuOpen(false);
-                  atMentionStartRef.current = null;
-                  return;
-                }
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendText();
-                }
-              }}
-              placeholder={
-                awaitingConfirmation
-                  ? "Approve or deny the action above to continue…"
-                  : "Ask from Orbit."
-              }
-              autoComplete="off"
-              disabled={textDisabled}
-              className={cn(
-                "flex-1 resize-none bg-transparent py-2 text-sm outline-none",
-                "max-h-[160px] overflow-y-auto leading-relaxed",
-                "placeholder:text-muted-foreground/60",
-                "disabled:cursor-not-allowed disabled:opacity-50",
-              )}
-            />
-            <button
-              type="button"
-              onClick={handleSendText}
-              disabled={textDisabled || !draft.trim()}
-              aria-label="Send message"
-              className={cn(
-                "flex size-9 shrink-0 items-center justify-center rounded-full transition-all",
-                "bg-primary text-primary-foreground hover:bg-primary/90 active:scale-95",
-                "disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground",
-              )}
-            >
-              <ArrowUp size={16} />
-            </button>
-          </div>
+            <UserRoundCog size={16} />
+          </button>
         </div>
-        {/* end relative flex-1 wrapper */}
-
-        {/* ── Mic toggle button ── */}
-        <button
-          type="button"
-          onClick={handleVoiceBtnClick}
-          disabled={voiceBtnDisabled}
-          aria-pressed={continuousMode}
-          aria-label={continuousMode ? "Stop listening" : "Start voice mode"}
-          className={cn(
-            "flex size-11 shrink-0 items-center justify-center rounded-full border",
-            "transition-all duration-200",
-            "disabled:cursor-not-allowed disabled:opacity-50",
-            voiceBtnCls === "" && "border-border bg-card text-foreground hover:bg-muted",
-            voiceBtnCls === "listening" &&
-              "border-transparent bg-primary text-primary-foreground shadow-[0_0_0_4px_hsl(var(--primary)/0.18)]",
-            voiceBtnCls === "speaking" &&
-              "border-transparent bg-violet-500 text-white shadow-[0_0_0_4px_rgb(139_92_246/0.22)]",
-            voiceBtnCls === "processing" &&
-              "border-transparent bg-amber-500 text-white shadow-[0_0_0_4px_rgb(245_158_11/0.22)]",
-          )}
-        >
-          {voiceBtnCls === "listening" || voiceBtnCls === "speaking" ? (
-            <VoiceWaveBars />
-          ) : (
-            <Mic size={18} />
-          )}
-        </button>
-
-        {/* ── Demo confirmation (icon-only) ── */}
-        <button
-          type="button"
-          onClick={onTriggerConfirmation}
-          aria-label="Demo: trigger agent confirmation"
-          title="Demo: simulate the agent asking for confirmation"
-          className="flex size-9 shrink-0 items-center justify-center rounded-full border bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <Wand2 size={15} />
-        </button>
 
         {/* ── End call ── */}
         <button
