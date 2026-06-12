@@ -218,7 +218,10 @@ export function ConversationalChat() {
   );
 
   const handleSendText = useCallback(
-    (text: string) => {
+    (
+      text: string,
+      manualTransfer?: { target_agent_id: string; target_agent_name: string } | null,
+    ) => {
       let convId = call.conversationId;
       // If the user starts a session via the "Use text instead" input rather than the
       // "Start session" button, the UI state is still 'idle'. We must explicitly
@@ -243,6 +246,9 @@ export function ConversationalChat() {
             convId,
             controller.signal,
             lockedIntentRef.current,
+            null,
+            null,
+            manualTransfer ?? null,
           );
           call.updateConversationId(response.conversation_id);
           lockedIntentRef.current = response.locked_intent_name ?? null;

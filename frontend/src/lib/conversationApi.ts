@@ -56,6 +56,11 @@ type BackendAgentConfig = {
 
 type BackendMessage = { role: "user" | "assistant" | "system"; content: string };
 
+type ManualTransfer = {
+  target_agent_id?: string;
+  target_agent_name?: string;
+};
+
 type ConversationRequest = {
   conversation_id: string;
   agent_config: BackendAgentConfig;
@@ -63,6 +68,7 @@ type ConversationRequest = {
   current_intent_name?: string | null;
   confirmation_id?: string | null;
   decision?: "confirm" | "reject" | null;
+  manual_transfer?: ManualTransfer | null;
 };
 
 export type ConversationResponse = {
@@ -195,6 +201,7 @@ export async function sendMessage(
   lockedIntentName?: string | null,
   confirmationId?: string | null,
   decision?: "confirm" | "reject" | null,
+  manualTransfer?: ManualTransfer | null,
 ): Promise<ConversationResponse> {
   // STEP A: Map transcript -> backend Message[]
   const messages: BackendMessage[] = transcript.map((turn) => ({
@@ -210,6 +217,7 @@ export async function sendMessage(
     current_intent_name: lockedIntentName ?? null,
     confirmation_id: confirmationId ?? null,
     decision: decision ?? null,
+    manual_transfer: manualTransfer ?? null,
   };
 
   const res = await fetch("/api/v1/conversations/process", {
