@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import type { AgentConfig, LlmProvider } from "@/types/agentConfig";
+import type { AgentConfig, LlmProvider, SttProvider, TtsProvider } from "@/types/agentConfig";
 
 type Value = Pick<AgentConfig, "stt" | "tts" | "llm">;
 
@@ -30,6 +30,22 @@ type Props = {
 const LLM_MODEL_DEFAULTS: Record<LlmProvider, string> = {
   openai: "gpt-4o-mini",
   gemini: "gemini-2.5-flash",
+};
+
+// Same reset-on-switch rule for STT/TTS (#135). The elevenlabs STT default
+// must stay scribe_v2_realtime: it is the only Scribe model the voice
+// worker's streaming turn handling supports (batch models are rejected by
+// the backend factory and fall back to it anyway).
+const STT_MODEL_DEFAULTS: Record<SttProvider, string> = {
+  deepgram: "nova-3",
+  elevenlabs: "scribe_v2_realtime",
+};
+
+// Deepgram Aura encodes the voice in the model name (aura-2-<voice>-en),
+// so the Voice ID field only applies to ElevenLabs.
+const TTS_MODEL_DEFAULTS: Record<TtsProvider, string> = {
+  elevenlabs: "eleven_multilingual_v2",
+  deepgram: "aura-2-andromeda-en",
 };
 
 function StageHeader({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
@@ -68,9 +84,13 @@ export function PipelineSection({ value, onChange }: Props) {
               <FieldLabel>Provider</FieldLabel>
               <Select
                 value={value.stt.provider}
-                onValueChange={(v) =>
-                  onChange({ ...value, stt: { ...value.stt, provider: v as "deepgram" } })
-                }
+                onValueChange={(v) => {
+                  const provider = v as SttProvider;
+                  onChange({
+                    ...value,
+                    stt: { ...value.stt, provider, model: STT_MODEL_DEFAULTS[provider] },
+                  });
+                }}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -78,6 +98,7 @@ export function PipelineSection({ value, onChange }: Props) {
                 <SelectContent>
                   <SelectGroup>
                     <SelectItem value="deepgram">Deepgram</SelectItem>
+                    <SelectItem value="elevenlabs">ElevenLabs</SelectItem>
                   </SelectGroup>
                 </SelectContent>
               </Select>
@@ -90,7 +111,7 @@ export function PipelineSection({ value, onChange }: Props) {
                 onChange={(e) =>
                   onChange({ ...value, stt: { ...value.stt, model: e.target.value } })
                 }
-                placeholder="nova-3"
+                placeholder={STT_MODEL_DEFAULTS[value.stt.provider]}
                 className="font-mono text-sm"
               />
             </Field>
@@ -147,9 +168,13 @@ export function PipelineSection({ value, onChange }: Props) {
               <FieldLabel>Provider</FieldLabel>
               <Select
                 value={value.tts.provider}
-                onValueChange={(v) =>
-                  onChange({ ...value, tts: { ...value.tts, provider: v as "elevenlabs" } })
-                }
+                onValueChange={(v) => {
+                  const provider = v as TtsProvider;
+                  onChange({
+                    ...value,
+                    tts: { ...value.tts, provider, model: TTS_MODEL_DEFAULTS[provider] },
+                  });
+                }}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -157,6 +182,7 @@ export function PipelineSection({ value, onChange }: Props) {
                 <SelectContent>
                   <SelectGroup>
                     <SelectItem value="elevenlabs">ElevenLabs</SelectItem>
+                    <SelectItem value="deepgram">Deepgram</SelectItem>
                   </SelectGroup>
                 </SelectContent>
               </Select>
@@ -169,22 +195,24 @@ export function PipelineSection({ value, onChange }: Props) {
                 onChange={(e) =>
                   onChange({ ...value, tts: { ...value.tts, model: e.target.value } })
                 }
-                placeholder="eleven_turbo_v2"
+                placeholder={TTS_MODEL_DEFAULTS[value.tts.provider]}
                 className="font-mono text-sm"
               />
             </Field>
-            <Field>
-              <FieldLabel htmlFor={idTtsVoice}>Voice ID</FieldLabel>
-              <Input
-                id={idTtsVoice}
-                value={value.tts.voice_id}
-                onChange={(e) =>
-                  onChange({ ...value, tts: { ...value.tts, voice_id: e.target.value } })
-                }
-                placeholder="rachel"
-                className="font-mono text-sm"
-              />
-            </Field>
+            {value.tts.provider === "elevenlabs" && (
+              <Field>
+                <FieldLabel htmlFor={idTtsVoice}>Voice ID</FieldLabel>
+                <Input
+                  id={idTtsVoice}
+                  value={value.tts.voice_id}
+                  onChange={(e) =>
+                    onChange({ ...value, tts: { ...value.tts, voice_id: e.target.value } })
+                  }
+                  placeholder="JBFqnCBsd6RMkjVDRZzb"
+                  className="font-mono text-sm"
+                />
+              </Field>
+            )}
           </FieldGroup>
         </FieldSet>
       </CardContent>
