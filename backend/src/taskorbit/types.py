@@ -54,7 +54,7 @@ class LLMProvider(str, Enum):
 
 
 class TTSProvider(str, Enum):
-    """Text-to-speech providers. Mirror of STTProvider — both vendors are
+    """Text-to-speech providers. Mirror of STTProvider: both vendors are
     dual-capability, enabling the full interchangeable matrix (#135)."""
 
     ELEVENLABS = "elevenlabs"
