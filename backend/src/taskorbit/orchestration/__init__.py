@@ -186,7 +186,9 @@ class ConversationOrchestrator:
             # 2. Select agent based on detected intent, not config.id
             from taskorbit.agents import AgentRegistry
 
-            agent = AgentRegistry.create_by_name(intent.agent_name, request.agent_config, self)
+            agent = await AgentRegistry.create_by_name(
+                intent.agent_name, request.agent_config, self, db=db
+            )
             logger.info(
                 "agent_selected",
                 agent=agent.agent_name,

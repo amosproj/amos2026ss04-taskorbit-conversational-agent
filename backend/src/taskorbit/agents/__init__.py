@@ -16,6 +16,9 @@ from typing import TYPE_CHECKING
 from taskorbit.logging.setup import get_logger
 from taskorbit.types import AgentConfig, ConversationRequest, ConversationResponse, ToolDefinition
 
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
 logger = get_logger(__name__)
 
 # Tracks how many times each agent type has been invoked this process lifetime.
@@ -220,15 +223,19 @@ class AgentRegistry:
         return frozenset(agent_cls.agent_name for _, agent_cls in cls._REGISTRY)
 
     @classmethod
-    def create_by_name(
+    async def create_by_name(
         cls,
         agent_name: str,
         config: AgentConfig,
         orchestrator: ConversationOrchestrator,
+        db: AsyncSession | None = None,
     ) -> BaseAgent:
-        """Construct an agent directly by agent_name (e.g. from an IntentResult).
+        """Construct an agent by agent_name (e.g. from an IntentResult).
 
-        Falls back to the default agent if agent_name is empty or unrecognised.
+        Resolution order:
+          1. Built-in agents matched by agent_name.
+          2. Custom agents looked up by name in agent_configurations (when db given).
+          3. Default agent fallback.
         """
         for _, agent_cls in cls._REGISTRY:
             if agent_cls.agent_name == agent_name:
@@ -242,6 +249,21 @@ class AgentRegistry:
                     "agent_selected", agent=agent_cls.agent_name, total_calls=count, via="intent"
                 )
                 return agent_cls(config, orchestrator)
+
+        # Fall back to DB for custom agents
+        if db is not None:
+            from taskorbit.database.crud import get_agent_configuration_by_name
+            from taskorbit.types import AgentConfig as AgentConfigType
+
+            record = await get_agent_configuration_by_name(db, agent_name)
+            if record is not None:
+                custom_config = AgentConfigType(**record.config)
+                logger.info(
+                    "agent_selected", agent="custom", config_name=agent_name, via="db_fallback"
+                )
+                return cls.create_custom(custom_config, orchestrator)
+
+        logger.warning("agent_not_found", agent_name=agent_name, fallback="default")
         return cls.create(config, orchestrator)
 
     @classmethod
