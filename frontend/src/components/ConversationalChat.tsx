@@ -387,7 +387,9 @@ export function ConversationalChat() {
       const badgeName = target.name.replace(/\s+[Aa]gent$/i, "").trim();
       manualRoutingLockRef.current = true;
       setRoutedAgent(badgeName);
-      call.appendAssistantTurn(`Transferring you to ${target.name} upon your request.`);
+      const transferMsg = `Transferring you to ${target.name} upon your request.`;
+      call.appendAssistantTurn(transferMsg);
+      playSynthesizedSpeech(transferMsg).catch(() => {});
       try {
         const entries = await fetchUserAgents();
         const match = entries.find((e) => e.id === target.id || e.template_id === target.id);

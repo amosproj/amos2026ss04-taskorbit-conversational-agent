@@ -470,15 +470,21 @@ export function InCallControls({
           <button
             type="button"
             onClick={openMenu}
+            disabled={status !== "idle_in_call"}
             aria-label="Route to agent"
             title={routingTarget ? `Routed to ${routingTarget.name}` : "Route to agent"}
             className={cn(
               "flex size-11 shrink-0 items-center justify-center rounded-full border transition-all",
+              "disabled:cursor-not-allowed disabled:opacity-40",
               routingTarget
                 ? "border-transparent text-white"
                 : "border-border bg-card text-foreground hover:bg-muted",
             )}
-            style={routingTarget ? { background: AGENT_COLORS[0] } : undefined}
+            style={
+              routingTarget && status === "idle_in_call"
+                ? { background: AGENT_COLORS[0] }
+                : undefined
+            }
           >
             <UserRoundCog size={16} />
           </button>
