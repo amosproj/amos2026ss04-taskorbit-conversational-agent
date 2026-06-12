@@ -41,7 +41,11 @@ class ConversationStatus(str, Enum):
 
 
 class STTProvider(str, Enum):
+    """Speech-to-text providers. Both entries support STT and TTS (#135),
+    so either can be selected independently of the TTS choice."""
+
     DEEPGRAM = "deepgram"
+    ELEVENLABS = "elevenlabs"
 
 
 class LLMProvider(str, Enum):
@@ -50,7 +54,11 @@ class LLMProvider(str, Enum):
 
 
 class TTSProvider(str, Enum):
+    """Text-to-speech providers. Mirror of STTProvider — both vendors are
+    dual-capability, enabling the full interchangeable matrix (#135)."""
+
     ELEVENLABS = "elevenlabs"
+    DEEPGRAM = "deepgram"
 
 
 # ---------------------------------------------------------------------------
