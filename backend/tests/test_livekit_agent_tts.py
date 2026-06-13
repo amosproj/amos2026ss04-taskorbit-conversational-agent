@@ -88,31 +88,3 @@ def test_build_agent_session_elevenlabs_tts_respects_custom_voice(
     assert tts_kwargs["model"] == _FAKE_MODEL
     assert mock_vad.load.called
     assert mock_stt.called
-
-
-def test_build_agent_session_respects_agent_config_override(
-    tts_settings: None,
-) -> None:
-    """agent_config.tts.voice_id should override global env settings (#100)."""
-    from taskorbit.types import AgentConfig, TTSConfig
-
-    cfg = AgentConfig(
-        id="overrider",
-        name="Overrider",
-        persona="test",
-        greeting="test",
-        tts=TTSConfig(voice_id="override-voice-id", model="override-model"),
-    )
-
-    with (
-        patch("taskorbit.livekit_agent.session.silero.VAD"),
-        patch("taskorbit.livekit_agent.session.deepgram.STT"),
-        patch("taskorbit.livekit_agent.session.elevenlabs.TTS") as mock_tts,
-        patch("taskorbit.livekit_agent.session.AgentSession"),
-    ):
-        build_agent_session(agent_config=cfg)
-
-    mock_tts.assert_called_once()
-    tts_kwargs = mock_tts.call_args.kwargs
-    assert tts_kwargs["voice_id"] == "override-voice-id"
-    assert tts_kwargs["model"] == "override-model"

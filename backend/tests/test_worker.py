@@ -519,8 +519,8 @@ async def test_interrupt_after_completed_task_does_not_raise(configured_settings
 @pytest.mark.asyncio
 async def test_entrypoint_parses_agent_config_from_metadata(configured_settings: None) -> None:
     """entrypoint() should parse participant metadata into an AgentConfig and
-    forward it to build_agent_session and build_default_agent, so the voice path
-    uses the user's saved configuration instead of fallbacks (#100).
+    forward it to build_default_agent, so the voice path uses the user's saved
+    configuration instead of the hardcoded _default_agent_config fallback (#100).
     """
     ctx, _ = _make_ctx()
     mock_session = _make_session_mock()
@@ -546,18 +546,18 @@ async def test_entrypoint_parses_agent_config_from_metadata(configured_settings:
     ctx.wait_for_participant = AsyncMock(return_value=participant)
 
     with (
-        patch("taskorbit.worker.build_agent_session", return_value=mock_session) as mock_build_session,
-        patch("taskorbit.worker.build_default_agent", return_value=mock_agent) as mock_build_agent,
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent) as mock_build,
     ):
         await entrypoint(ctx)
 
-    # Verify build_agent_session received the config
-    session_kwargs = mock_build_session.call_args.kwargs
-    assert session_kwargs["agent_config"].id == "pizza-bot"
-
-    # Verify build_default_agent received the config
-    agent_kwargs = mock_build_agent.call_args.kwargs
-    assert agent_kwargs["agent_config"].id == "pizza-bot"
+    build_kwargs = mock_build.call_args.kwargs
+    assert "agent_config" in build_kwargs
+    parsed = build_kwargs["agent_config"]
+    assert parsed is not None
+    assert parsed.id == "pizza-bot"
+    assert parsed.name == "PizzaBot"
+    assert parsed.persona == "You are a pizza expert. Only pizza."
 
 
 @pytest.mark.asyncio

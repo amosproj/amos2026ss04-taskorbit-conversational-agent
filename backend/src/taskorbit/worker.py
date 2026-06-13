@@ -90,7 +90,7 @@ async def entrypoint(ctx: JobContext) -> None:
     except Exception:  # noqa: BLE001
         pass
 
-    session = build_agent_session(settings=cfg, agent_config=agent_config)
+    session = build_agent_session(settings=cfg)
     agent = build_default_agent(
         settings=cfg,
         agent_config=agent_config,

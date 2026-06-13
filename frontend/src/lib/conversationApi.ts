@@ -52,8 +52,6 @@ type BackendAgentConfig = {
   tools: BackendTool[];
   persona_constraints?: BackendPersonaConstraints;
   context_limit?: BackendContextLimit;
-  workflow_dependencies: string[];
-  allowed_handoffs: string[];
 };
 
 type BackendMessage = { role: "user" | "assistant" | "system"; content: string };
@@ -63,10 +61,8 @@ type ConversationRequest = {
   agent_config: BackendAgentConfig;
   messages: BackendMessage[];
   current_intent_name?: string | null;
-  selected_agent?: string | null;
   confirmation_id?: string | null;
   decision?: "confirm" | "reject" | null;
-  completed_workflow_steps: string[];
 };
 
 export type ConversationResponse = {
@@ -74,19 +70,11 @@ export type ConversationResponse = {
   reply: { role: string; content: string; timestamp: string | null };
   tool_invoked: BackendTool | null;
   confirmation?: { confirmation_id: string; action: string; description: string };
-  status:
-    | "success"
-    | "clarification"
-    | "ended"
-    | "error"
-    | "confirmation_required"
-    | "rejected"
-    | "workflow_confirmation_required";
+  status: "success" | "clarification" | "ended" | "error" | "confirmation_required" | "rejected";
   selected_intent: string;
   selected_agent: string;
   locked_intent_name: string | null;
   next_active_tool_id: string | null;
-  completed_workflow_steps: string[];
 };
 
 type ConversationsResponse = {
@@ -177,8 +165,6 @@ function adaptAgentConfig(agent: AgentConfig): BackendAgentConfig {
     llm: { provider: llmProvider, model: agent.llm.model },
     tts: { provider: agent.tts.provider, voice_id: agent.tts.voice_id, model: agent.tts.model },
     tools: agent.tools.map((t) => adaptTool(t, agent.confirmations)),
-    workflow_dependencies: agent.workflow_dependencies,
-    allowed_handoffs: agent.allowed_handoffs,
   };
   if (agent.persona_constraints) {
     out.persona_constraints = agent.persona_constraints;
@@ -209,8 +195,6 @@ export async function sendMessage(
   lockedIntentName?: string | null,
   confirmationId?: string | null,
   decision?: "confirm" | "reject" | null,
-  completedWorkflowSteps: string[] = [],
-  selectedAgent?: string | null,
 ): Promise<ConversationResponse> {
   // STEP A: Map transcript -> backend Message[]
   const messages: BackendMessage[] = transcript.map((turn) => ({
@@ -224,10 +208,8 @@ export async function sendMessage(
     agent_config: adaptAgentConfig(agent),
     messages,
     current_intent_name: lockedIntentName ?? null,
-    selected_agent: selectedAgent ?? null,
     confirmation_id: confirmationId ?? null,
     decision: decision ?? null,
-    completed_workflow_steps: completedWorkflowSteps,
   };
 
   const res = await fetch("/api/v1/conversations/process", {
