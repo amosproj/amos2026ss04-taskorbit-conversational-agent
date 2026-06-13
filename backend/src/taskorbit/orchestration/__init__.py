@@ -451,6 +451,7 @@ class ConversationOrchestrator:
         from taskorbit.database.crud import (
             get_agent_configuration_by_id,
             get_agent_configuration_by_name,
+            get_default_agent_template,
         )
         from taskorbit.types import ConversationStatus
 
@@ -479,13 +480,20 @@ class ConversationOrchestrator:
                 error="manual_transfer_agent_not_found",
             )
 
-        # Load the target config from DB.
+        # Load target config — try user's copy first, then built-in template.
+        # Built-in (un-customized) agents live in default_agent_templates, not
+        # agent_configurations, so we need both lookups to cover all dropdown entries.
+        config_dict: dict | None = None
         if db is not None:
             record = await get_agent_configuration_by_id(db, target_id)
-        else:
-            record = None
+            if record is not None:
+                config_dict = record.config
+            else:
+                template = await get_default_agent_template(db, target_id)
+                if template is not None:
+                    config_dict = template.config
 
-        if record is None:
+        if config_dict is None:
             logger.warning(
                 "manual_transfer_agent_config_missing",
                 target_id=target_id,
@@ -501,7 +509,7 @@ class ConversationOrchestrator:
             )
 
         try:
-            target_config = AgentConfig(**record.config)
+            target_config = AgentConfig(**config_dict)
         except Exception as exc:
             logger.error(
                 "manual_transfer_invalid_config",

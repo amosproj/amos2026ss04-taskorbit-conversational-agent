@@ -75,20 +75,22 @@ export function InCallControls({
   const atMentionStartRef = useRef<number | null>(null);
 
   // Fetch all agents (built-in templates + user DB copies) once when menu first opens.
-  // De-duplicate by template_id: prefer the user's customized copy over the raw template.
+  // Load all agents: every custom agent + every built-in template, deduplicated by id only.
+  // We intentionally show both a user's custom copy AND the original built-in so the user
+  // can route to any of them independently.
   const loadAgents = async () => {
     if (agents.length > 0) return;
     try {
       const entries = await fetchUserAgents();
-      const seen = new Map<string, RoutingTarget>();
+      const seen = new Set<string>();
+      const result: RoutingTarget[] = [];
       for (const e of entries) {
-        const key = e.template_id ?? e.id;
-        // Customized copies take priority over raw templates for the same key.
-        if (!seen.has(key) || e.is_customized) {
-          seen.set(key, { id: e.id, name: e.name });
+        if (!seen.has(e.id)) {
+          seen.add(e.id);
+          result.push({ id: e.id, name: e.name });
         }
       }
-      setAgents([...seen.values()]);
+      setAgents(result);
     } catch {
       // silently ignore — menu stays empty
     }
