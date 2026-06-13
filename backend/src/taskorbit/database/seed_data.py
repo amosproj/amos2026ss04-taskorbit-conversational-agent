@@ -17,7 +17,7 @@ _DEFAULT_STT: dict = {"provider": "deepgram", "language": "en-US", "model": "nov
 _DEFAULT_LLM: dict = {"provider": "openai", "model": "gpt-4o-mini"}
 _DEFAULT_TTS: dict = {
     "provider": "elevenlabs",
-    "voice_id": "21m00Tcm4TlvDq8ikWAM",
+    "voice_id": "JBFqnCBsd6RMkjVDRZzb",
     "model": "eleven_multilingual_v2",
 }
 

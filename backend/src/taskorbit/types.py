@@ -97,7 +97,7 @@ class LLMConfig(BaseModel):
 
 class TTSConfig(BaseModel):
     provider: TTSProvider = TTSProvider.ELEVENLABS
-    voice_id: str = "21m00Tcm4TlvDq8ikWAM"
+    voice_id: str = "JBFqnCBsd6RMkjVDRZzb"
     model: str = "eleven_multilingual_v2"
 
 

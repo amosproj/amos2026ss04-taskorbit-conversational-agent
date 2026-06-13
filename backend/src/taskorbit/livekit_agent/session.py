@@ -32,6 +32,7 @@ from taskorbit.types import AgentConfig
 def build_agent_session(
     *,
     settings: Settings | None = None,
+    agent_config: AgentConfig | None = None,
 ) -> AgentSession[Any]:
     """Construct an ``AgentSession`` from the current settings.
 
@@ -40,6 +41,13 @@ def build_agent_session(
     responsible for ``session.start(...)`` and ``session.aclose()``.
     """
     cfg = settings or get_settings()
+
+    # Prioritize agent-specific configuration if available (#100)
+    voice_id = cfg.elevenlabs_voice_id
+    model = cfg.elevenlabs_model
+    if agent_config and agent_config.tts:
+        voice_id = agent_config.tts.voice_id
+        model = agent_config.tts.model
 
     return AgentSession(
         vad=silero.VAD.load(
@@ -65,8 +73,8 @@ def build_agent_session(
         ),
         tts=elevenlabs.TTS(
             api_key=cfg.elevenlabs_api_key,
-            voice_id=cfg.elevenlabs_voice_id,
-            model=cfg.elevenlabs_model,
+            voice_id=voice_id,
+            model=model,
             # Plugin default is mp3_22050_32 (22 kHz / 32 kbps) which sounds
             # noticeably different from the REST endpoint used for the greeting
             # (which returns mp3_44100_128 by default). Match that quality here

@@ -59,7 +59,7 @@ class Settings(BaseSettings):
 
     # --- ElevenLabs (TTS) ---
     elevenlabs_api_key: str = ""
-    elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
+    elevenlabs_voice_id: str = "JBFqnCBsd6RMkjVDRZzb"
     elevenlabs_model: str = "eleven_multilingual_v2"
 
     # --- LLM ---
