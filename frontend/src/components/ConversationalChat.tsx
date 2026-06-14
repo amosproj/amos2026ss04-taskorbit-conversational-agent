@@ -92,6 +92,7 @@ export function ConversationalChat() {
   const lastUserTurnIdRef = useRef<string | null>(null);
   const lockedIntentRef = useRef<string | null>(null);
   const pendingConfirmationIdRef = useRef<string | null>(null);
+  const [completedWorkflowSteps, setCompletedWorkflowSteps] = useState<string[]>([]);
   const [previousConversations, setPreviousConversations] = useState<
     Record<string, string | null>[]
   >([]);
@@ -243,14 +244,39 @@ export function ConversationalChat() {
             convId,
             controller.signal,
             lockedIntentRef.current,
+            null,
+            null,
+            completedWorkflowSteps,
+            routedAgent,
           );
           call.updateConversationId(response.conversation_id);
           lockedIntentRef.current = response.locked_intent_name ?? null;
-          if (response.selected_agent) setRoutedAgent(response.selected_agent);
+          setCompletedWorkflowSteps(response.completed_workflow_steps);
+          if (response.selected_agent) {
+            setRoutedAgent(response.selected_agent);
+            // Swapping card if agent changed after decision
+            if (response.selected_agent !== agent.agent_id) {
+              const entries = await fetchUserAgents(controller.signal);
+              const match = entries.find(
+                (e) => e.template_id === response.selected_agent || e.id === response.selected_agent,
+              );
+              if (match) {
+                const next = backendToFrontendAgent(match);
+                setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
+              }
+            }
+          }
 
-          if (response.status === "confirmation_required" && response.confirmation) {
+          if (
+            (response.status === "confirmation_required" ||
+              response.status === "workflow_confirmation_required") &&
+            response.confirmation
+          ) {
             pendingConfirmationIdRef.current = response.confirmation.confirmation_id;
-            call.triggerConfirmation(response.confirmation);
+            call.triggerConfirmation({
+              ...response.confirmation,
+              type: response.status === "workflow_confirmation_required" ? "workflow" : "tool",
+            });
             return;
           }
 
@@ -272,7 +298,7 @@ export function ConversationalChat() {
           // in tool_invoked.parameters; the actual transferred_to id from
           // ToolResult.data is not propagated (orchestration/__init__.py:169).
           // First target works for single-target configs (e.g. JOHN_DOE_AGENT).
-          if (response.tool_invoked?.type === "agent_transfer") {
+          if (response.status !== "rejected" && response.tool_invoked?.type === "agent_transfer") {
             const targets = (response.tool_invoked.parameters as { targets?: string[] })?.targets;
             const targetId = targets?.[0];
             if (targetId) {
@@ -312,7 +338,7 @@ export function ConversationalChat() {
         }
       });
     },
-    [agent, call, setActiveAgent],
+    [agent, call, setActiveAgent, completedWorkflowSteps, routedAgent],
   );
 
   const handleRoomError = useCallback(
@@ -361,12 +387,36 @@ export function ConversationalChat() {
             lockedIntentRef.current,
             confirmationId,
             decision,
+            completedWorkflowSteps,
+            routedAgent,
           );
           lockedIntentRef.current = response.locked_intent_name ?? null;
+          setCompletedWorkflowSteps(response.completed_workflow_steps);
+          if (response.selected_agent) {
+            setRoutedAgent(response.selected_agent);
+            // Swapping card if agent changed after decision
+            if (response.selected_agent !== agent.agent_id) {
+              const entries = await fetchUserAgents(controller.signal);
+              const match = entries.find(
+                (e) => e.template_id === response.selected_agent || e.id === response.selected_agent,
+              );
+              if (match) {
+                const next = backendToFrontendAgent(match);
+                setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
+              }
+            }
+          }
 
-          if (response.status === "confirmation_required" && response.confirmation) {
+          if (
+            (response.status === "confirmation_required" ||
+              response.status === "workflow_confirmation_required") &&
+            response.confirmation
+          ) {
             pendingConfirmationIdRef.current = response.confirmation.confirmation_id;
-            call.triggerConfirmation(response.confirmation);
+            call.triggerConfirmation({
+              ...response.confirmation,
+              type: response.status === "workflow_confirmation_required" ? "workflow" : "tool",
+            });
             return;
           }
 
@@ -395,7 +445,7 @@ export function ConversationalChat() {
         }
       });
     },
-    [agent, call],
+    [agent, call, setActiveAgent, completedWorkflowSteps, routedAgent],
   );
 
   const handleApprove = useCallback(() => {
@@ -417,6 +467,7 @@ export function ConversationalChat() {
   const handleRestart = useCallback(() => {
     lockedIntentRef.current = null;
     setRoutedAgent(null);
+    setCompletedWorkflowSteps([]);
     call.restart();
   }, [call]);
 
@@ -424,6 +475,7 @@ export function ConversationalChat() {
     // console.log("[greeting] handleStartSession fired");
     lockedIntentRef.current = null;
     setRoutedAgent(null);
+    setCompletedWorkflowSteps([]);
     call.start({ tokenMetadata: buildLiveKitWorkerMetadata(agent) });
     setGreetingDone(false);
     greetingSeenSpeakingRef.current = false;

@@ -58,4 +58,6 @@ export type ConfirmationPromptState = {
   confirmation_id: string;
   action: string;
   description: string;
+  /** 'workflow' for prerequisite step confirmations, 'tool' (default) for sensitive tool calls. */
+  type?: "tool" | "workflow";
 };
