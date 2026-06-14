@@ -226,7 +226,7 @@ export function WorkflowSection({
           summaries.map((s) => loadAgentConfig(s.id, signal)),
         );
 
-        const options: AgentOption[] = [];
+        const optionsMap = new Map<string, string>();
         const graph = new Map<string, string[]>();
 
         for (const saved of fullConfigs) {
@@ -237,9 +237,19 @@ export function WorkflowSection({
           };
           const agentId = c.agent_id;
           if (!agentId) continue; // skip malformed entries
-          options.push({ agentId, name: c.name ?? saved.name });
+
+          // Deduplicate: if we already saw this agentId, skip adding to options
+          // but still update the graph (though they should have the same deps).
+          if (!optionsMap.has(agentId)) {
+            optionsMap.set(agentId, c.name ?? saved.name);
+          }
           graph.set(agentId, c.workflow_dependencies ?? []);
         }
+
+        const options: AgentOption[] = Array.from(optionsMap.entries()).map(([agentId, name]) => ({
+          agentId,
+          name,
+        }));
 
         setAgents(options);
         setDepGraph(graph);
