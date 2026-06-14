@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ---------------------------------------------------------------------------
 # Enumerations
@@ -175,6 +175,14 @@ class ManualTransferRequest(BaseModel):
 
     target_agent_id: str | None = None
     target_agent_name: str | None = None
+
+    @model_validator(mode="after")
+    def require_at_least_one_target(self) -> ManualTransferRequest:
+        if not (self.target_agent_id or self.target_agent_name):
+            raise ValueError(
+                "ManualTransferRequest requires at least one of target_agent_id or target_agent_name"
+            )
+        return self
 
 
 class ConversationRequest(BaseModel):

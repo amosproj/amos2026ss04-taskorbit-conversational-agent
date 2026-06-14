@@ -229,6 +229,7 @@ class AgentRegistry:
         config: AgentConfig,
         orchestrator: ConversationOrchestrator,
         db: AsyncSession | None = None,
+        user_id: int | None = None,
     ) -> BaseAgent:
         """Construct an agent by agent_name (e.g. from an IntentResult).
 
@@ -250,14 +251,25 @@ class AgentRegistry:
                 )
                 return agent_cls(config, orchestrator)
 
-        # Fall back to DB for custom agents
+        # Fall back to DB for custom agents — scope by user_id to prevent cross-user leakage.
         if db is not None:
+            from pydantic import ValidationError
+
             from taskorbit.database.crud import get_agent_configuration_by_name
             from taskorbit.types import AgentConfig as AgentConfigType
 
-            record = await get_agent_configuration_by_name(db, agent_name)
+            record = await get_agent_configuration_by_name(db, agent_name, user_id=user_id)
             if record is not None:
-                custom_config = AgentConfigType(**record.config)
+                try:
+                    custom_config = AgentConfigType(**record.config)
+                except (ValidationError, Exception) as exc:
+                    logger.error(
+                        "custom_agent_invalid_config",
+                        agent_name=agent_name,
+                        error=str(exc),
+                    )
+                    logger.warning("agent_not_found", agent_name=agent_name, fallback="default")
+                    return cls.create(config, orchestrator)
                 logger.info(
                     "agent_selected", agent="custom", config_name=agent_name, via="db_fallback"
                 )

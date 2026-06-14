@@ -1074,14 +1074,16 @@ async def test_manual_transfer_clears_manual_transfer_on_retry(mock_good_intent:
 
     original = ConversationOrchestrator.process_message
 
-    async def capture(self: Any, request: ConversationRequest, db: Any = None) -> Any:
+    async def capture(
+        self: Any, request: ConversationRequest, db: Any = None, **kwargs: Any
+    ) -> Any:
         seen_requests.append(request)
         if request.manual_transfer is None:
             return ConversationResponse(
                 conversation_id=request.conversation_id or "",
                 reply=Message(role=MessageRole.ASSISTANT, content="ok"),
             )
-        return await original(self, request, db)
+        return await original(self, request, db, **kwargs)
 
     with (
         patch(

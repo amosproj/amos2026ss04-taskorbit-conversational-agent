@@ -239,7 +239,20 @@ class OrchestratorAgent(Agent):
             messages=messages,
             current_intent_name=self._locked_intent_name,
         )
-        response = await self._orchestrator.process_message(request)
+
+        # Open the DB session before process_message so that manual transfers
+        # and custom-agent DB lookups work in the voice path too.
+        try:
+            async with AsyncSessionLocal() as db:
+                response = await self._orchestrator.process_message(request, db=db)
+        except Exception as exc:
+            log.error(
+                "voice_turn_orchestrator_failed",
+                error=str(exc),
+                conversation_id=self._conversation_id,
+            )
+            raise
+
         self._locked_intent_name = response.locked_intent_name
         if response.selected_agent:
             self._current_routed_agent = response.selected_agent

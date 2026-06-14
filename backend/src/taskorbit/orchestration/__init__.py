@@ -54,7 +54,10 @@ class ConversationOrchestrator:
         self._intent_router = IntentRouter()
 
     async def process_message(
-        self, request: ConversationRequest, db: AsyncSession | None = None
+        self,
+        request: ConversationRequest,
+        db: AsyncSession | None = None,
+        user_id: int | None = None,
     ) -> ConversationResponse:
         """Main entry point called by the API layer and agent workers."""
         _pipeline_start = time.perf_counter()
@@ -63,7 +66,7 @@ class ConversationOrchestrator:
             if request.manual_transfer and (
                 request.manual_transfer.target_agent_id or request.manual_transfer.target_agent_name
             ):
-                return await self._handle_manual_transfer(request, db)
+                return await self._handle_manual_transfer(request, db, user_id=user_id)
 
             last_user = next(
                 (m for m in reversed(request.messages) if m.role == MessageRole.USER),
@@ -187,7 +190,7 @@ class ConversationOrchestrator:
             from taskorbit.agents import AgentRegistry
 
             agent = await AgentRegistry.create_by_name(
-                intent.agent_name, request.agent_config, self, db=db
+                intent.agent_name, request.agent_config, self, db=db, user_id=user_id
             )
             logger.info(
                 "agent_selected",
@@ -440,6 +443,7 @@ class ConversationOrchestrator:
         self,
         request: ConversationRequest,
         db: AsyncSession | None,
+        user_id: int | None = None,
     ) -> ConversationResponse:
         """Handle a UI-initiated transfer to a specific agent by ID or name.
 
@@ -458,9 +462,12 @@ class ConversationOrchestrator:
         mt = request.manual_transfer
         target_id = mt.target_agent_id if mt else None
 
-        # Resolve by name when only a name was given.
+        # Resolve by name when only a name was given — scope to caller's user_id
+        # so one user can never be routed to another user's agent config.
         if not target_id and mt and mt.target_agent_name and db is not None:
-            record = await get_agent_configuration_by_name(db, mt.target_agent_name)
+            record = await get_agent_configuration_by_name(
+                db, mt.target_agent_name, user_id=user_id
+            )
             if record:
                 target_id = record.id
 
@@ -537,7 +544,7 @@ class ConversationOrchestrator:
         updated_request = request.model_copy(
             update={"agent_config": target_config, "manual_transfer": None}
         )
-        return await self.process_message(updated_request, db)
+        return await self.process_message(updated_request, db, user_id=user_id)
 
     def _build_system_prompt(
         self,
