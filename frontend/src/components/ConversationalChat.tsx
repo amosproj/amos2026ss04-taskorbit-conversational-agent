@@ -16,7 +16,7 @@ import { useVoiceCall } from "@/hooks/useVoiceCall";
 import type { TranscriptionSegment } from "@/hooks/useAgentTranscription";
 import { useActiveAgent } from "@/components/active-agent-provider";
 import { buildLiveKitWorkerMetadata } from "@/lib/livekitAgentMetadata";
-import { sendMessageStream, getConversations } from "@/lib/conversationApi";
+import { sendMessage, sendMessageStream, getConversations } from "@/lib/conversationApi";
 import { playSynthesizedSpeech } from "@/lib/ttsApi";
 import { backendToFrontendAgent, fetchUserAgents } from "@/lib/userAgentsApi";
 import type { LiveTranscriptTurn } from "@/types/callState";
