@@ -451,6 +451,164 @@ async def test_unknown_intent_falls_back_via_clarification() -> None:
     mock_llm.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_external_api_dispatch_passes_full_config_plus_args() -> None:
+    """#66 wiring: EXTERNAL_API tools receive the full tool.parameters config
+    merged with the extracted slot values under an `args` key, so the adapter
+    can substitute templates and validate args without the orchestrator having
+    to understand the adapter's internal contract."""
+    from taskorbit.slots.models import SlotExtractionResult, SlotValue
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    orch = ConversationOrchestrator()
+    intent = _intent_result(required_inputs=[{"name": "city", "type": "string", "required": True}])
+    external_api_tool = ToolDefinition(
+        id="lookup-weather",
+        name="lookup_weather",
+        type=ToolType.EXTERNAL_API,
+        description="weather lookup",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={
+            "request": {"method": "GET", "url": "https://x/{{args.city}}"},
+            "response": {"extract": {"temp": "current.temp_c"}},
+            "args_schema": {
+                "type": "object",
+                "required": ["city"],
+                "properties": {"city": {"type": "string"}},
+            },
+        },
+    )
+    slot_result = SlotExtractionResult(
+        filled={"city": SlotValue(name="city", value="Berlin", slot_type="string")},
+        missing=[],
+    )
+
+    dispatch_calls: list[dict[str, Any]] = []
+
+    async def _capture_dispatch(
+        _self: ConversationOrchestrator, _tool: ToolDefinition, ctx: dict[str, Any]
+    ) -> dict[str, Any]:
+        dispatch_calls.append(ctx)
+        return {"status": 200, "data": {"temp": 18.3}}
+
+    with (
+        patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
+        patch.object(
+            ConversationOrchestrator, "_select_active_tool", return_value=external_api_tool
+        ),
+        patch.object(
+            ConversationOrchestrator,
+            "_extract_slots",
+            new_callable=AsyncMock,
+            return_value=slot_result,
+        ),
+        patch.object(
+            ConversationOrchestrator,
+            "_dispatch_tool",
+            new=_capture_dispatch,
+        ),
+        patch.object(
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+        ),
+    ):
+        response = await orch.process_message(_make_request("weather please"))
+
+    assert response.tool_invoked is not None
+    assert response.tool_invoked.type == ToolType.EXTERNAL_API
+    # The dispatch context must carry the tool's static config (so the adapter
+    # can find request/response/args_schema) AND the LLM-extracted args under
+    # the `args` key (so {{args.city}} substitutes correctly).
+    assert len(dispatch_calls) == 1
+    ctx = dispatch_calls[0]
+    assert "request" in ctx and ctx["request"]["method"] == "GET"
+    assert "response" in ctx
+    assert "args_schema" in ctx
+    assert ctx["args"] == {"city": "Berlin"}
+
+
+@pytest.mark.asyncio
+async def test_process_message_confirmation_flow(mock_good_intent: Any) -> None:
+    """AC #49: End-to-end confirmation flow (pending -> approved -> rejected)."""
+    from taskorbit.types import (
+        ConfirmationConfig,
+        ConversationStatus,
+        ToolDefinition,
+        ToolType,
+    )
+
+    orch = ConversationOrchestrator()
+    req = _make_request("John")
+    # Add a tool that requires confirmation
+    req.agent_config.tools = [
+        ToolDefinition(
+            id="tool-1",
+            name="collect_info",
+            type=ToolType.DATA_EXTRACTION,
+            description="Collect info",
+            confirmation=ConfirmationConfig(required=True, prompt="Confirm save?"),
+        )
+    ]
+
+    # Mock intent to have required inputs so the tool triggers
+    mock_good_intent.required_inputs = [{"name": "name", "type": "string", "required": True}]
+
+    with patch.object(ConversationOrchestrator, "_call_llm", new_callable=AsyncMock) as mock_llm:
+        # 1. First turn: slots complete, should trigger confirmation
+        mock_llm.return_value = "Saving info..."
+        from taskorbit.slots import SlotExtractionResult
+
+        with patch.object(
+            ConversationOrchestrator, "_extract_slots", new_callable=AsyncMock
+        ) as mock_extract:
+            mock_extract.return_value = SlotExtractionResult(
+                filled={"name": MagicMock(value="John")}, missing=[]
+            )
+
+            response = await orch.process_message(req)
+
+            assert response.status == ConversationStatus.CONFIRMATION_REQUIRED
+            assert response.confirmation is not None
+            assert response.confirmation.confirmation_id == "tool-1"
+            assert response.confirmation.action == "collect_info"
+
+        # 2. Second turn: confirmed
+        req.confirmation_id = "tool-1"
+        req.decision = "confirm"
+        with patch.object(
+            ConversationOrchestrator, "_extract_slots", new_callable=AsyncMock
+        ) as mock_extract:
+            mock_extract.return_value = SlotExtractionResult(
+                filled={"name": MagicMock(value="John")}, missing=[]
+            )
+            with patch.object(
+                ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock
+            ) as mock_dispatch:
+                mock_dispatch.return_value = {"saved": True}
+
+                response = await orch.process_message(req)
+
+                assert response.status == ConversationStatus.SUCCESS
+                assert response.tool_invoked.id == "tool-1"
+                mock_dispatch.assert_called_once()
+
+        # 3. Third turn: rejected
+        req.decision = "reject"
+        with patch.object(
+            ConversationOrchestrator, "_extract_slots", new_callable=AsyncMock
+        ) as mock_extract:
+            mock_extract.return_value = SlotExtractionResult(
+                filled={"name": MagicMock(value="John")}, missing=[]
+            )
+            with patch.object(
+                ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock
+            ) as mock_dispatch:
+                response = await orch.process_message(req)
+
+                assert response.status == ConversationStatus.REJECTED
+                assert "cancelled" in response.reply.content.lower()
+                mock_dispatch.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # process_message_stream
 # ---------------------------------------------------------------------------
@@ -612,6 +770,28 @@ def test_user_requested_end_call_does_not_match_normal_phrases(phrase: str) -> N
     assert orch._user_requested_end_call(phrase) is False
 
 
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "please don't end the call",
+        "don't hang up",
+        "dont hang up",
+        "do not end the call",
+        "please don't hang up",
+        "won't end the call",
+        "will not hang up",
+        "can't end the call",
+        "cannot hang up",
+        "never end the call",
+        "not goodbye",
+    ],
+)
+def test_user_requested_end_call_negation_guard(phrase: str) -> None:
+    """Negated farewell phrases must NOT trigger end-call detection."""
+    orch = ConversationOrchestrator()
+    assert orch._user_requested_end_call(phrase) is False
+
+
 # ---------------------------------------------------------------------------
 # End-call early exit in process_message
 # ---------------------------------------------------------------------------
@@ -726,6 +906,50 @@ async def test_end_call_reply_is_llm_farewell() -> None:
             response = await orch.process_message(_make_request_with_end_call_tool("goodbye"))
 
     assert response.reply.content == farewell_text
+
+
+@pytest.mark.asyncio
+async def test_end_call_uses_fallback_farewell_on_llm_timeout() -> None:
+    """If the farewell LLM call times out, the call still ends with a hardcoded farewell."""
+    from taskorbit.config import Settings
+    from taskorbit.types import ConversationStatus
+
+    orch = ConversationOrchestrator(settings=Settings(llm_timeout_seconds=0.01))
+
+    async def slow_llm(*args: Any, **kwargs: Any) -> str:
+        await asyncio.sleep(1.0)
+        return "too slow"
+
+    with patch.object(ConversationOrchestrator, "_call_llm", side_effect=slow_llm):
+        with patch.object(
+            ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock, return_value={}
+        ):
+            response = await orch.process_message(_make_request_with_end_call_tool("goodbye"))
+
+    assert response.status == ConversationStatus.ENDED
+    assert response.reply.content == "Goodbye! Take care."
+
+
+@pytest.mark.asyncio
+async def test_end_call_uses_fallback_farewell_on_llm_error() -> None:
+    """If the farewell LLM call raises any error, the call still ends with a hardcoded farewell."""
+    from taskorbit.types import ConversationStatus
+
+    orch = ConversationOrchestrator()
+
+    with patch.object(
+        ConversationOrchestrator,
+        "_call_llm",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("LLM unavailable"),
+    ):
+        with patch.object(
+            ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock, return_value={}
+        ):
+            response = await orch.process_message(_make_request_with_end_call_tool("hang up"))
+
+    assert response.status == ConversationStatus.ENDED
+    assert response.reply.content == "Goodbye! Take care."
 
 
 # ---------------------------------------------------------------------------

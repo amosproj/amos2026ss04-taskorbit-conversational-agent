@@ -28,11 +28,14 @@ class ToolType(str, Enum):
     DATA_EXTRACTION = "data_extraction"
     AGENT_TRANSFER = "agent_transfer"
     END_CALL = "end_call"
+    EXTERNAL_API = "external_api"
 
 
 class ConversationStatus(str, Enum):
     SUCCESS = "success"
     CLARIFICATION = "clarification"
+    CONFIRMATION_REQUIRED = "confirmation_required"
+    REJECTED = "rejected"
     ENDED = "ended"
     ERROR = "error"
 
@@ -67,7 +70,7 @@ class Message(BaseModel):
 
 
 class ConfirmationConfig(BaseModel):
-    required: bool = True
+    required: bool = False
     prompt: str = ""
 
 
@@ -156,20 +159,29 @@ class AgentConfig(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class ConfirmationResponsePayload(BaseModel):
+    confirmation_id: str
+    action: str
+    description: str
+
+
 class ConversationRequest(BaseModel):
     conversation_id: str | None = None  # omit on first message; backend assigns and returns one
     agent_config: AgentConfig
     messages: list[Message]
     current_intent_name: str | None = None
     active_tool_id: str | None = None
+    # AC #49: Decision fields
+    confirmation_id: str | None = None
+    decision: Literal["confirm", "reject"] | None = None
 
 
 class ConversationResponse(BaseModel):
     conversation_id: str
     reply: Message
     tool_invoked: ToolDefinition | None = None
-    requires_confirmation: bool = False
-    confirmation_prompt: str = ""  # e.g. "I'll save your contact info. OK?"
+    # AC #49: Detailed confirmation payload
+    confirmation: ConfirmationResponsePayload | None = None
     selected_intent: str = ""
     selected_agent: str = ""
     intent_confidence: float = 0.0

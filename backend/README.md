@@ -8,7 +8,9 @@ exactly:
 |---|---|---|
 | `api/` | implemented | FastAPI HTTP layer (health, conversations, livekit token, tts) |
 | `livekit_agent/` | implemented | LiveKit agent worker — joins rooms, runs Silero VAD + Deepgram STT + orchestrator + ElevenLabs TTS |
-| `orchestration/` | stub (echo) | Routes the conversation, plans workflows, dispatches tools |
+| `orchestration/` | implemented | Routes the 
+
+conversation, plans workflows, dispatches tools, handles mid-call confirmations |
 | `agents/` | stub | Task-specific agents (technical, sales, …) |
 | `tools/` | stub | Tool implementations exposed to the LLM |
 | `integrations/` | stub | Adapters to Meisterwerk and other external APIs |

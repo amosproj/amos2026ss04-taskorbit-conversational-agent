@@ -101,17 +101,25 @@ class ConversationOrchestrator:
             message_snippet=last_user.content[:60],
         )
         if end_call_tool and self._user_requested_end_call(last_user.content):
-            farewell = await asyncio.wait_for(
-                self._call_llm(
-                    f"You are {request.agent_config.name}. "
-                    f"Persona: {request.agent_config.persona}\n"
-                    "The user wants to end the conversation. "
-                    "Say a brief, warm farewell in one sentence.",
-                    request.messages,
-                    request.agent_config.llm,
-                ),
-                timeout=self._settings.llm_timeout_seconds,
-            )
+            try:
+                farewell = await asyncio.wait_for(
+                    self._call_llm(
+                        f"You are {request.agent_config.name}. "
+                        f"Persona: {request.agent_config.persona}\n"
+                        "The user wants to end the conversation. "
+                        "Say a brief, warm farewell in one sentence.",
+                        request.messages,
+                        request.agent_config.llm,
+                    ),
+                    timeout=self._settings.llm_timeout_seconds,
+                )
+            except Exception:  # noqa: BLE001
+                farewell = "Goodbye! Take care."
+                logger.warning(
+                    "end_call_farewell_llm_failed",
+                    conversation_id=request.conversation_id,
+                    fallback=farewell,
+                )
             await self._dispatch_tool(end_call_tool, {})
             logger.info(
                 "end_call_user_initiated",
@@ -249,45 +257,106 @@ class ConversationOrchestrator:
             get_metrics().pipeline_latency_seconds.labels(stage="llm_call").observe(_llm_elapsed)
 
             # Step 5b: Dispatch active tool when slots are complete
-            from taskorbit.types import ConversationStatus, ToolType
+            from taskorbit.types import (
+                ConfirmationResponsePayload,
+                ConversationStatus,
+                ToolType,
+            )
 
             tool_data: dict[str, Any] = {}
             response_status = ConversationStatus.SUCCESS
 
-            end_call_ready = (
-                prep.active_tool is not None and prep.active_tool.type == ToolType.END_CALL
+            no_slots_tool_ready = prep.active_tool is not None and prep.active_tool.type in (
+                ToolType.END_CALL,
+                ToolType.AGENT_TRANSFER,
             )
             slots_ready = (
                 prep.active_tool is not None
                 and prep.slot_result.is_complete
                 and bool(prep.intent.required_inputs)
             )
-            if end_call_ready or slots_ready:
-                dispatch_context: dict[str, Any] = dict(prep.slot_result.to_dict())
-                if prep.active_tool.type == ToolType.AGENT_TRANSFER:
-                    targets = prep.active_tool.parameters.get("targets") or []
-                    if targets:
-                        raw = str(targets[0])
-                        normalized = raw.removesuffix("-agent").replace("-", "_")
-                        dispatch_context["target_agent_id"] = normalized
-                    dispatch_context["conversation_history"] = [
-                        {"role": m.role.value, "content": m.content} for m in request.messages
-                    ]
-                tool_data = await self._dispatch_tool(prep.active_tool, dispatch_context)
-                logger.info(
-                    "tool_dispatch_complete",
-                    tool_type=prep.active_tool.type,
-                    conversation_id=request.conversation_id,
-                )
-                if prep.active_tool.type == ToolType.END_CALL:
-                    response_status = ConversationStatus.ENDED
-                elif prep.active_tool.type == ToolType.AGENT_TRANSFER:
+            if no_slots_tool_ready or slots_ready:
+                is_decision_for_this_tool = request.confirmation_id == prep.active_tool.id
+                has_decision = is_decision_for_this_tool and request.decision is not None
+
+                if prep.active_tool.confirmation.required and not has_decision:
                     logger.info(
-                        "agent_handoff",
-                        from_agent=request.agent_config.name,
-                        to_agent=tool_data.get("transferred_to"),
+                        "confirmation_required",
+                        tool_id=prep.active_tool.id,
                         conversation_id=request.conversation_id,
                     )
+                    return ConversationResponse(
+                        conversation_id=request.conversation_id,
+                        reply=self._make_assistant_message(
+                            prep.active_tool.confirmation.prompt
+                            or f"I need your confirmation before I proceed with {prep.active_tool.name}. Should I go ahead?"
+                        ),
+                        status=ConversationStatus.CONFIRMATION_REQUIRED,
+                        tool_invoked=prep.active_tool,
+                        confirmation=ConfirmationResponsePayload(
+                            confirmation_id=prep.active_tool.id,
+                            action=prep.active_tool.name,
+                            description=prep.active_tool.confirmation.prompt
+                            or f"Execute {prep.active_tool.name}",
+                        ),
+                        selected_intent=prep.intent.name,
+                        selected_agent=prep.agent.agent_name,
+                        intent_confidence=prep.intent.confidence,
+                        extracted_slots=prep.slot_result.to_dict(),
+                        missing_slots=prep.slot_result.missing,
+                        locked_intent_name=prep.intent.name,
+                        next_active_tool_id=prep.active_tool.id,
+                    )
+
+                if has_decision and request.decision == "reject":
+                    logger.info(
+                        "tool_execution_rejected",
+                        tool_id=prep.active_tool.id,
+                        conversation_id=request.conversation_id,
+                    )
+                    response_status = ConversationStatus.REJECTED
+                    # Mark as "aborted" so we advance to the next tool/step
+                    tool_data = {"aborted": True}
+                    llm_text = "Understood. I've cancelled that action. How else can I help you?"
+                else:
+                    # Proceed either because it's confirmed or not required
+                    dispatch_context: dict[str, Any] = dict(prep.slot_result.to_dict())
+                    if prep.active_tool.type == ToolType.AGENT_TRANSFER:
+                        targets = prep.active_tool.parameters.get("targets") or []
+                        if targets:
+                            raw = str(targets[0])
+                            normalized = raw.removesuffix("-agent").replace("-", "_")
+                            dispatch_context["target_agent_id"] = normalized
+                        dispatch_context["conversation_history"] = [
+                            {"role": m.role.value, "content": m.content} for m in request.messages
+                        ]
+                    elif prep.active_tool.type == ToolType.EXTERNAL_API:
+                        # GenericApiTool (#66) reads its config from the same
+                        # parameters dict it expects on ToolDefinition.parameters,
+                        # plus runtime args under an `args` key. The slot dict
+                        # carries the LLM-extracted values; surface them as
+                        # `args` so they substitute into the template, and
+                        # overlay the tool's static config (request, response,
+                        # auth, error_mapping, args_schema).
+                        dispatch_context = {
+                            **prep.active_tool.parameters,
+                            "args": dict(prep.slot_result.to_dict()),
+                        }
+                    tool_data = await self._dispatch_tool(prep.active_tool, dispatch_context)
+                    logger.info(
+                        "tool_dispatch_complete",
+                        tool_type=prep.active_tool.type,
+                        conversation_id=request.conversation_id,
+                    )
+                    if prep.active_tool.type == ToolType.END_CALL:
+                        response_status = ConversationStatus.ENDED
+                    elif prep.active_tool.type == ToolType.AGENT_TRANSFER:
+                        logger.info(
+                            "agent_handoff",
+                            from_agent=request.agent_config.name,
+                            to_agent=tool_data.get("transferred_to"),
+                            conversation_id=request.conversation_id,
+                        )
 
             if tool_data and prep.active_tool:
                 all_tools = prep.agent.get_task_definitions()
@@ -737,12 +806,14 @@ class ConversationOrchestrator:
         from taskorbit.tools.agent_transfer import AgentTransferTool
         from taskorbit.tools.data_extraction import DataExtractionTool
         from taskorbit.tools.end_call import EndCallTool
+        from taskorbit.tools.generic_api import GenericApiTool
         from taskorbit.types import ToolType
 
         dispatch: dict[ToolType, type] = {
             ToolType.DATA_EXTRACTION: DataExtractionTool,
             ToolType.AGENT_TRANSFER: AgentTransferTool,
             ToolType.END_CALL: EndCallTool,
+            ToolType.EXTERNAL_API: GenericApiTool,
         }
 
         tool_cls = dispatch.get(tool.type)
@@ -831,10 +902,40 @@ class ConversationOrchestrator:
         }
     )
 
+    _NEGATION_PREFIXES: frozenset[str] = frozenset(
+        {
+            "don't",
+            "dont",
+            "do not",
+            "won't",
+            "wont",
+            "will not",
+            "can't",
+            "cant",
+            "cannot",
+            "not",
+            "never",
+            "please don't",
+            "please dont",
+        }
+    )
+
     def _user_requested_end_call(self, message: str) -> bool:
-        """Return True when the user's message contains an explicit end-call signal."""
-        lowered = message.lower()
-        return any(signal in lowered for signal in self._END_CALL_SIGNALS)
+        """Return True when the user's message contains an explicit end-call signal.
+
+        Negation guard: if a negation word immediately precedes the matched
+        signal (e.g. "please don't end the call"), the match is skipped.
+        """
+        lowered = message.lower().strip()
+        for signal in self._END_CALL_SIGNALS:
+            pos = lowered.find(signal)
+            if pos == -1:
+                continue
+            prefix = lowered[:pos].rstrip()
+            if any(prefix.endswith(neg) for neg in self._NEGATION_PREFIXES):
+                continue
+            return True
+        return False
 
     def _make_assistant_message(self, content: str) -> Message:
         return Message(role=MessageRole.ASSISTANT, content=content)

@@ -62,9 +62,16 @@ export function useAgentHandoff(onTransferred?: (agentName: string) => void): vo
 
       try {
         const entries = await fetchUserAgents();
-        const match = entries.find(
-          (e) => e.template_id === parsed.target || e.id === parsed.target,
-        );
+        // Fuzzy match: the backend normalizes "sales-agent" to "sales" (removes -agent, replaces - with _).
+        // We check for exact matches first, then normalized matches to bridge this gap.
+        const match = entries.find((e) => {
+          const uaId = e.template_id ?? e.id;
+          if (uaId === parsed.target) return true;
+
+          const normalizedUaId = uaId.replace(/-agent$/, "").replace(/-/g, "_");
+          return normalizedUaId === parsed.target;
+        });
+
         if (!match) {
           console.warn("[useAgentHandoff] no user-agent match for", parsed.target);
           return;
