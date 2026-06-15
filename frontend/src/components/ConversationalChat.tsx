@@ -258,7 +258,8 @@ export function ConversationalChat() {
             if (response.selected_agent !== agent.agent_id) {
               const entries = await fetchUserAgents(controller.signal);
               const match = entries.find(
-                (e) => e.template_id === response.selected_agent || e.id === response.selected_agent,
+                (e) =>
+                  e.template_id === response.selected_agent || e.id === response.selected_agent,
               );
               if (match) {
                 const next = backendToFrontendAgent(match);
@@ -398,7 +399,8 @@ export function ConversationalChat() {
             if (response.selected_agent !== agent.agent_id) {
               const entries = await fetchUserAgents(controller.signal);
               const match = entries.find(
-                (e) => e.template_id === response.selected_agent || e.id === response.selected_agent,
+                (e) =>
+                  e.template_id === response.selected_agent || e.id === response.selected_agent,
               );
               if (match) {
                 const next = backendToFrontendAgent(match);

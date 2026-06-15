@@ -157,9 +157,7 @@ function AgentListEditor({
               Add
             </Button>
           </div>
-          {displayError !== null && (
-            <p className="mt-1 text-sm text-destructive">{displayError}</p>
-          )}
+          {displayError !== null && <p className="mt-1 text-sm text-destructive">{displayError}</p>}
         </Field>
         {ids.length > 0 && (
           <Field>
@@ -222,9 +220,7 @@ export function WorkflowSection({
         // Load every agent's full config blob in parallel so we have both
         // their logical agent_id (the value the backend uses in dependencies)
         // and their own workflow_dependencies (needed to build the dep graph).
-        const fullConfigs = await Promise.all(
-          summaries.map((s) => loadAgentConfig(s.id, signal)),
-        );
+        const fullConfigs = await Promise.all(summaries.map((s) => loadAgentConfig(s.id, signal)));
 
         const optionsMap = new Map<string, string>();
         const graph = new Map<string, string[]>();

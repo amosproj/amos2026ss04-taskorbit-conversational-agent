@@ -10,7 +10,10 @@ import { InstructionsSection } from "@/components/agent-config/InstructionsSecti
 import { PipelineSection } from "@/components/agent-config/PipelineSection";
 import { ToolsSection } from "@/components/agent-config/ToolsSection";
 import { VariablesSection } from "@/components/agent-config/VariablesSection";
-import { WorkflowSection, type WorkflowValidationState } from "@/components/agent-config/WorkflowSection";
+import {
+  WorkflowSection,
+  type WorkflowValidationState,
+} from "@/components/agent-config/WorkflowSection";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -301,9 +304,7 @@ export function AgentConfigPage() {
           onWorkflowDependenciesChange={(workflow_dependencies) =>
             setAgent({ ...agent, workflow_dependencies })
           }
-          onAllowedHandoffsChange={(allowed_handoffs) =>
-            setAgent({ ...agent, allowed_handoffs })
-          }
+          onAllowedHandoffsChange={(allowed_handoffs) => setAgent({ ...agent, allowed_handoffs })}
           onValidationChange={setWorkflowValidation}
         />
 
