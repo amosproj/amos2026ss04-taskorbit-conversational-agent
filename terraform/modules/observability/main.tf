@@ -83,7 +83,7 @@ locals {
         gcplog:
           project_id: ${var.project_id}
           subscription_type: pull
-          subscription: projects/${var.project_id}/subscriptions/taskorbit-loki-logs-pull
+          subscription: taskorbit-loki-logs-pull
           use_incoming_timestamp: true
           labels:
             job: cloud-run-logs
@@ -91,14 +91,24 @@ locals {
           - source_labels: [__gcp_resource_labels_service_name]
             regex: "taskorbit-(.*)"
             target_label: service
-            replacement: "$$1"
+            replacement: "$1"
           - source_labels: [__gcp_resource_labels_revision_name]
             target_label: revision
         pipeline_stages:
+          # Cloud Logging wraps the original structlog JSON under jsonPayload.
+          # Extract labels from the nested path so they match what local
+          # Promtail (Docker socket) reads directly from container stdout.
           - json:
               expressions:
-                level: level
-                event: event
+                level: jsonPayload.level
+                event: jsonPayload.event
+                payload: jsonPayload
+          # Replace the stored log line with just the jsonPayload content so
+          # the line body in Loki is identical to local dev (raw structlog JSON).
+          # This lets all LogQL queries (| json | unwrap latency_ms, etc.) work
+          # the same in both local and production without dual query paths.
+          - output:
+              source: payload
           - labels:
               level:
   YAML
