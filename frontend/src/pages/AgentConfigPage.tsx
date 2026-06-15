@@ -41,9 +41,9 @@ import { serializeAgent, type AgentConfig } from "@/types/agentConfig";
 
 function isComplete(agent: AgentConfig) {
   return (
-    agent.agent_id.trim().length > 0 &&
-    agent.name.trim().length > 0 &&
-    agent.instructions.trim().length > 0
+    (agent.agent_id ?? "").trim().length > 0 &&
+    (agent.name ?? "").trim().length > 0 &&
+    (agent.instructions ?? "").trim().length > 0
   );
 }
 
