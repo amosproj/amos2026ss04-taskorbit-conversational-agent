@@ -178,6 +178,7 @@ class ConversationOrchestrator:
             from taskorbit.agents import AgentRegistry
 
             handoff_blocked = False
+            allowed_agent_names: list[str] = []
             if not request.selected_agent:
                 # AC #71: Turn 1 is ALWAYS locked to the configured entry agent.
                 # This ensures the greeting and initial persona match the config.
@@ -282,7 +283,8 @@ class ConversationOrchestrator:
 
             # Now enforce handoff rules (if any)
             if (
-                intent.agent_name != request.selected_agent
+                request.selected_agent
+                and intent.agent_name != request.selected_agent
                 and request.agent_config.allowed_handoffs
             ):
                 if intent.agent_name not in allowed_agent_names:
