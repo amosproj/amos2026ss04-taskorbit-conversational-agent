@@ -479,7 +479,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "sum by (level) (rate({service=~\"backend|worker\"} | json | level != \"\" [5m]))",
+          "expr": "sum by (level) (rate({job=\"cloud-run-logs\"} | json | level != \"\" [5m]))",
           "legendFormat": "{{level}}",
           "refId": "A"
         }
@@ -515,7 +515,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "{service=~\"backend|worker\"} | json ${log_query}",
+          "expr": "{job=\"cloud-run-logs\"} | json ${log_query}",
           "legendFormat": "",
           "refId": "A"
         }
@@ -1398,7 +1398,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "quantile_over_time(0.50, {service=\"worker\"} |= \"voice_turn_complete\" | json | unwrap latency_ms [5m])",
+          "expr": "quantile_over_time(0.50, {job=\"cloud-run-logs\"} |= \"voice_turn_complete\" | json | unwrap latency_ms [5m])",
           "legendFormat": "P50",
           "refId": "A"
         },
@@ -1407,7 +1407,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "quantile_over_time(0.95, {service=\"worker\"} |= \"voice_turn_complete\" | json | unwrap latency_ms [5m])",
+          "expr": "quantile_over_time(0.95, {job=\"cloud-run-logs\"} |= \"voice_turn_complete\" | json | unwrap latency_ms [5m])",
           "legendFormat": "P95",
           "refId": "B"
         },
@@ -1416,7 +1416,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "quantile_over_time(0.99, {service=\"worker\"} |= \"voice_turn_complete\" | json | unwrap latency_ms [5m])",
+          "expr": "quantile_over_time(0.99, {job=\"cloud-run-logs\"} |= \"voice_turn_complete\" | json | unwrap latency_ms [5m])",
           "legendFormat": "P99",
           "refId": "C"
         }
