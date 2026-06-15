@@ -10,7 +10,7 @@ import { InstructionsSection } from "@/components/agent-config/InstructionsSecti
 import { PipelineSection } from "@/components/agent-config/PipelineSection";
 import { ToolsSection } from "@/components/agent-config/ToolsSection";
 import { VariablesSection } from "@/components/agent-config/VariablesSection";
-import { WorkflowSection } from "@/components/agent-config/WorkflowSection";
+import { WorkflowSection, type WorkflowValidationState } from "@/components/agent-config/WorkflowSection";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -67,6 +67,12 @@ export function AgentConfigPage() {
   // true when the loaded agent is a built-in template (not a user copy).
   // Update button is hidden for built-in agents — use Save to create a copy.
   const [isLoadedBuiltIn, setIsLoadedBuiltIn] = useState(false);
+  const [workflowValidation, setWorkflowValidation] = useState<WorkflowValidationState>({
+    valid: true,
+    error: null,
+  });
+
+  const canPersist = isComplete(agent) && workflowValidation.valid;
 
   // Fetch the saved-config list once on mount + expose a refresh helper.
   // Used by the "Load preset" dropdown and re-called after a successful save
@@ -181,6 +187,12 @@ export function AgentConfigPage() {
       });
       return;
     }
+    if (!workflowValidation.valid) {
+      toast.error("Fix workflow errors before saving.", {
+        description: workflowValidation.error ?? "Invalid workflow configuration.",
+      });
+      return;
+    }
     // If a user agent is active, persist via copy-on-write to /v1/user-agents.
     if (activeUserAgentId) {
       try {
@@ -215,6 +227,12 @@ export function AgentConfigPage() {
     if (!isComplete(agent)) {
       setShowErrors(true);
       toast.error("Some required fields are empty.");
+      return;
+    }
+    if (!workflowValidation.valid) {
+      toast.error("Fix workflow errors before updating.", {
+        description: workflowValidation.error ?? "Invalid workflow configuration.",
+      });
       return;
     }
     // User agent update — copy-on-write via /v1/user-agents.
@@ -286,6 +304,7 @@ export function AgentConfigPage() {
           onAllowedHandoffsChange={(allowed_handoffs) =>
             setAgent({ ...agent, allowed_handoffs })
           }
+          onValidationChange={setWorkflowValidation}
         />
 
         <ConfirmationsSection
@@ -426,7 +445,7 @@ export function AgentConfigPage() {
               Copy JSON
             </Button>
             {loadedConfigId && !isLoadedBuiltIn ? (
-              <Button size="sm" onClick={update} type="button">
+              <Button size="sm" onClick={update} type="button" disabled={!canPersist}>
                 <Save data-icon="inline-start" />
                 Update
               </Button>
@@ -436,6 +455,7 @@ export function AgentConfigPage() {
               onClick={save}
               variant={loadedConfigId ? "outline" : "default"}
               type="button"
+              disabled={!canPersist}
             >
               <Save data-icon="inline-start" />
               {loadedConfigId ? "Save as new" : "Save"}

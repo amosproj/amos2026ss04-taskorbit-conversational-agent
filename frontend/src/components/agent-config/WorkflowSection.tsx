@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 
 import { listAgentConfigs, loadAgentConfig } from "@/lib/agentConfigApi";
+import { getWorkflowValidationError, wouldCreateCycle } from "@/lib/workflowValidation";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,31 +27,16 @@ type Props = {
   onAllowedHandoffsChange: (next: string[]) => void;
   /** Logical agent_id of the config currently being edited — used to detect cycles. */
   currentAgentId?: string;
+  onValidationChange?: (state: WorkflowValidationState) => void;
 };
 
 /** Resolved from each saved config's blob: logical id + display name. */
 type AgentOption = { agentId: string; name: string };
 
-// ── Cycle detection ──────────────────────────────────────────────────────────
-
-/**
- * DFS from `from` through `depGraph`.
- * Returns true when `target` is reachable, meaning adding `from` as a
- * prerequisite of `target` would close a cycle.
- */
-function wouldCreateCycle(
-  from: string,
-  depGraph: Map<string, string[]>,
-  target: string,
-  visited = new Set<string>(),
-): boolean {
-  if (from === target) return true;
-  if (visited.has(from)) return false;
-  visited.add(from);
-  return (depGraph.get(from) ?? []).some((n) =>
-    wouldCreateCycle(n, depGraph, target, visited),
-  );
-}
+export type WorkflowValidationState = {
+  valid: boolean;
+  error: string | null;
+};
 
 // ── Shared sub-components ────────────────────────────────────────────────────
 
@@ -73,6 +59,9 @@ type AgentListEditorProps = {
   /** When provided alongside depGraph, cycle detection is active. */
   currentAgentId?: string;
   depGraph?: Map<string, string[]>;
+  /** Inline error from a blocked Add attempt — also blocks save until cleared. */
+  externalError?: string | null;
+  onAddBlocked?: (message: string | null) => void;
 };
 
 function AgentListEditor({
@@ -84,40 +73,42 @@ function AgentListEditor({
   label,
   currentAgentId,
   depGraph,
+  externalError,
+  onAddBlocked,
 }: AgentListEditorProps) {
   const [pending, setPending] = useState("");
-  const [cycleError, setCycleError] = useState<string | null>(null);
+
+  const displayError = externalError;
 
   // Only agents not already in this list appear in the dropdown.
   const available = agents.filter((a) => !ids.includes(a.agentId));
 
   function handleValueChange(v: string) {
     setPending(v);
-    setCycleError(null);
+    onAddBlocked?.(null);
   }
 
   function add() {
     if (!pending || ids.includes(pending)) return;
 
-    // Cycle detection — runs only for the deps list (currentAgentId + depGraph present).
     if (currentAgentId && depGraph) {
       if (pending === currentAgentId) {
-        setCycleError("An agent cannot depend on itself.");
+        onAddBlocked?.("An agent cannot depend on itself.");
         return;
       }
       if (wouldCreateCycle(pending, depGraph, currentAgentId)) {
-        setCycleError("Adding this agent would create a circular dependency.");
+        onAddBlocked?.("Adding this agent would create a circular dependency.");
         return;
       }
     }
 
-    setCycleError(null);
+    onAddBlocked?.(null);
     onChange([...ids, pending]);
     setPending("");
   }
 
   function remove(id: string) {
-    setCycleError(null);
+    onAddBlocked?.(null);
     onChange(ids.filter((x) => x !== id));
   }
 
@@ -166,8 +157,8 @@ function AgentListEditor({
               Add
             </Button>
           </div>
-          {cycleError !== null && (
-            <p className="mt-1 text-sm text-destructive">{cycleError}</p>
+          {displayError !== null && (
+            <p className="mt-1 text-sm text-destructive">{displayError}</p>
           )}
         </Field>
         {ids.length > 0 && (
@@ -203,6 +194,7 @@ export function WorkflowSection({
   onWorkflowDependenciesChange,
   onAllowedHandoffsChange,
   currentAgentId,
+  onValidationChange,
 }: Props) {
   const deps = workflowDependencies ?? [];
   const handoffs = allowedHandoffs ?? [];
@@ -210,6 +202,14 @@ export function WorkflowSection({
   const [agents, setAgents] = useState<AgentOption[]>([]);
   const [depGraph, setDepGraph] = useState<Map<string, string[]>>(new Map());
   const [loading, setLoading] = useState(true);
+  const [pendingAddError, setPendingAddError] = useState<string | null>(null);
+
+  const savedDepsError = getWorkflowValidationError(currentAgentId, deps, depGraph);
+  const workflowError = pendingAddError ?? savedDepsError;
+
+  useEffect(() => {
+    onValidationChange?.({ valid: workflowError === null, error: workflowError });
+  }, [workflowError, onValidationChange]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -285,11 +285,16 @@ export function WorkflowSection({
           ids={deps}
           agents={agents}
           loading={loading}
-          onChange={onWorkflowDependenciesChange}
+          onChange={(next) => {
+            setPendingAddError(null);
+            onWorkflowDependenciesChange(next);
+          }}
           icon={GitFork}
           label="Prerequisite Steps"
           currentAgentId={currentAgentId}
           depGraph={depGraph}
+          externalError={workflowError}
+          onAddBlocked={setPendingAddError}
         />
         <AgentListEditor
           ids={handoffs}
