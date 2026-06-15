@@ -168,6 +168,15 @@ class AgentRegistry:
     _DEFAULT: type[BaseAgent] = SalesAgent
 
     @classmethod
+    def get_agent_name_for_id(cls, config_id: str) -> str:
+        """Map a logical config.id (e.g. from allowed_handoffs) to a registry agent_name."""
+        agent_id = config_id.lower()
+        for keywords, agent_cls in cls._REGISTRY:
+            if any(kw in agent_id for kw in keywords):
+                return agent_cls.agent_name
+        return cls._DEFAULT.agent_name
+
+    @classmethod
     def create(
         cls,
         config: AgentConfig,

@@ -36,6 +36,7 @@ class ConversationStatus(str, Enum):
     CLARIFICATION = "clarification"
     CONFIRMATION_REQUIRED = "confirmation_required"
     WORKFLOW_CONFIRMATION_REQUIRED = "workflow_confirmation_required"
+    HANDOFF_BLOCKED = "handoff_blocked"
     REJECTED = "rejected"
     ENDED = "ended"
     ERROR = "error"

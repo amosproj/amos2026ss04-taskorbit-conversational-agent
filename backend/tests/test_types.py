@@ -231,4 +231,6 @@ def test_conversation_status_workflow() -> None:
     """ConversationStatus includes WORKFLOW_CONFIRMATION_REQUIRED."""
     from taskorbit.types import ConversationStatus
 
-    assert ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED.value == "workflow_confirmation_required"
+    assert (
+        ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED.value == "workflow_confirmation_required"
+    )
