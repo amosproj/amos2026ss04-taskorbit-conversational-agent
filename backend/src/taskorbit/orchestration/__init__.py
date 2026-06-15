@@ -46,6 +46,16 @@ from taskorbit.types import (
 logger = get_logger(__name__)
 
 
+def _selected_agent_matches_dep(selected_agent: str | None, dep_id: str) -> bool:
+    """True when the session is already executing a prerequisite agent step."""
+    if not selected_agent:
+        return False
+    from taskorbit.agents import AgentRegistry
+
+    dep_registry = AgentRegistry.get_agent_name_for_id(dep_id)
+    return selected_agent == dep_id or selected_agent == dep_registry
+
+
 class ConversationOrchestrator:
     """Routes messages through intent detection → agent → LLM → response."""
 
@@ -215,55 +225,71 @@ class ConversationOrchestrator:
                 if dep not in request.completed_workflow_steps
             ]
 
+            executing_prereq_id: str | None = None
             if missing_dependencies:
-                # AC #71: Request confirmation for the first missing dependency
                 next_dep = missing_dependencies[0]
-                logger.info(
-                    "workflow_dependency_missing",
-                    dependency=next_dep,
-                    conversation_id=request.conversation_id,
-                )
+                executing_prereq = _selected_agent_matches_dep(request.selected_agent, next_dep)
 
-                # Check if the user already confirmed this dependency
-                is_decision_for_this_workflow = request.confirmation_id == f"workflow_{next_dep}"
-                has_decision = is_decision_for_this_workflow and request.decision is not None
-
-                if not has_decision:
-                    return ConversationResponse(
-                        conversation_id=request.conversation_id,
-                        reply=self._make_assistant_message(
-                            f"Before we proceed with {request.agent_config.name}, I'll need to complete some prerequisite steps regarding {next_dep.replace('-', ' ')}. Shall I start with that?"
-                        ),
-                        status=ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED,
-                        confirmation=ConfirmationResponsePayload(
-                            confirmation_id=f"workflow_{next_dep}",
-                            action=f"Start {next_dep} workflow",
-                            description=f"Prerequisite: {next_dep}",
-                        ),
-                        selected_intent=intent.name,
-                        selected_agent=agent.agent_name,
-                        intent_confidence=intent.confidence,
-                        completed_workflow_steps=request.completed_workflow_steps,
+                if executing_prereq:
+                    # User already confirmed — run the prerequisite agent, do not re-prompt.
+                    executing_prereq_id = next_dep
+                    agent = AgentRegistry.create_by_name(
+                        AgentRegistry.get_agent_name_for_id(next_dep),
+                        request.agent_config,
+                        self,
                     )
-
-                if request.decision == "reject":
                     logger.info(
-                        "workflow_dependency_rejected",
+                        "workflow_dependency_executing",
                         dependency=next_dep,
                         conversation_id=request.conversation_id,
                     )
-                    return ConversationResponse(
-                        conversation_id=request.conversation_id,
-                        reply=self._make_assistant_message(
-                            "Understood. I can't proceed without those prerequisite steps. Is there anything else I can help you with?"
-                        ),
-                        status=ConversationStatus.REJECTED,
-                        selected_intent=intent.name,
-                        selected_agent=agent.agent_name,
-                        completed_workflow_steps=request.completed_workflow_steps,
-                    )
                 else:
-                    # User confirmed. We want to "switch" to the dependency agent.
+                    logger.info(
+                        "workflow_dependency_missing",
+                        dependency=next_dep,
+                        conversation_id=request.conversation_id,
+                    )
+
+                    is_decision_for_this_workflow = (
+                        request.confirmation_id == f"workflow_{next_dep}"
+                    )
+                    has_decision = is_decision_for_this_workflow and request.decision is not None
+
+                    if not has_decision:
+                        return ConversationResponse(
+                            conversation_id=request.conversation_id,
+                            reply=self._make_assistant_message(
+                                f"Before we proceed with {request.agent_config.name}, I'll need to complete some prerequisite steps regarding {next_dep.replace('-', ' ')}. Shall I start with that?"
+                            ),
+                            status=ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED,
+                            confirmation=ConfirmationResponsePayload(
+                                confirmation_id=f"workflow_{next_dep}",
+                                action=f"Start {next_dep} workflow",
+                                description=f"Prerequisite: {next_dep}",
+                            ),
+                            selected_intent=intent.name,
+                            selected_agent=agent.agent_name,
+                            intent_confidence=intent.confidence,
+                            completed_workflow_steps=request.completed_workflow_steps,
+                        )
+
+                    if request.decision == "reject":
+                        logger.info(
+                            "workflow_dependency_rejected",
+                            dependency=next_dep,
+                            conversation_id=request.conversation_id,
+                        )
+                        return ConversationResponse(
+                            conversation_id=request.conversation_id,
+                            reply=self._make_assistant_message(
+                                "Understood. I can't proceed without those prerequisite steps. Is there anything else I can help you with?"
+                            ),
+                            status=ConversationStatus.REJECTED,
+                            selected_intent=intent.name,
+                            selected_agent=agent.agent_name,
+                            completed_workflow_steps=request.completed_workflow_steps,
+                        )
+
                     logger.info(
                         "workflow_dependency_confirmed",
                         dependency=next_dep,
@@ -275,7 +301,7 @@ class ConversationOrchestrator:
                             f"Understood. Let's start with the {next_dep.replace('-', ' ')} steps."
                         ),
                         status=ConversationStatus.SUCCESS,
-                        selected_agent=next_dep,  # Tell frontend to switch to the dependency
+                        selected_agent=next_dep,
                         selected_intent=intent.name,
                         intent_confidence=1.0,
                         completed_workflow_steps=request.completed_workflow_steps,
@@ -324,81 +350,6 @@ class ConversationOrchestrator:
                 agent=agent.agent_name,
                 conversation_id=request.conversation_id,
             )
-
-            # 2b. #71: Resolve workflow dependencies
-            from taskorbit.types import ConversationStatus
-
-            missing_dependencies = [
-                dep
-                for dep in request.agent_config.workflow_dependencies
-                if dep not in request.completed_workflow_steps
-            ]
-
-            if missing_dependencies:
-                # AC #71: Request confirmation for the first missing dependency
-                next_dep = missing_dependencies[0]
-                logger.info(
-                    "workflow_dependency_missing",
-                    dependency=next_dep,
-                    conversation_id=request.conversation_id,
-                )
-
-                # Check if the user already confirmed this dependency
-                is_decision_for_this_workflow = request.confirmation_id == f"workflow_{next_dep}"
-                has_decision = is_decision_for_this_workflow and request.decision is not None
-
-                if not has_decision:
-                    return ConversationResponse(
-                        conversation_id=request.conversation_id,
-                        reply=self._make_assistant_message(
-                            f"Before we proceed with {request.agent_config.name}, I'll need to complete some prerequisite steps regarding {next_dep.replace('-', ' ')}. Shall I start with that?"
-                        ),
-                        status=ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED,
-                        confirmation=ConfirmationResponsePayload(
-                            confirmation_id=f"workflow_{next_dep}",
-                            action=f"Start {next_dep} workflow",
-                            description=f"Prerequisite: {next_dep}",
-                        ),
-                        selected_intent=intent.name,
-                        selected_agent=agent.agent_name,
-                        intent_confidence=intent.confidence,
-                        completed_workflow_steps=request.completed_workflow_steps,
-                    )
-
-                if request.decision == "reject":
-                    logger.info(
-                        "workflow_dependency_rejected",
-                        dependency=next_dep,
-                        conversation_id=request.conversation_id,
-                    )
-                    return ConversationResponse(
-                        conversation_id=request.conversation_id,
-                        reply=self._make_assistant_message(
-                            "Understood. I can't proceed without those prerequisite steps. Is there anything else I can help you with?"
-                        ),
-                        status=ConversationStatus.REJECTED,
-                        selected_intent=intent.name,
-                        selected_agent=agent.agent_name,
-                        completed_workflow_steps=request.completed_workflow_steps,
-                    )
-                else:
-                    # User confirmed. We want to "switch" to the dependency agent.
-                    logger.info(
-                        "workflow_dependency_confirmed",
-                        dependency=next_dep,
-                        conversation_id=request.conversation_id,
-                    )
-                    return ConversationResponse(
-                        conversation_id=request.conversation_id,
-                        reply=self._make_assistant_message(
-                            f"Understood. Let's start with the {next_dep.replace('-', ' ')} steps."
-                        ),
-                        status=ConversationStatus.SUCCESS,
-                        selected_agent=next_dep,  # Tell frontend to switch to the dependency
-                        selected_intent=intent.name,
-                        intent_confidence=1.0,
-                        completed_workflow_steps=request.completed_workflow_steps,
-                    )
 
             # 3. Select active tool
             active_tool = self._select_active_tool(
@@ -527,6 +478,13 @@ class ConversationOrchestrator:
 
             # Advance to the next tool when the current one was dispatched
             updated_completed_steps = list(request.completed_workflow_steps)
+            if executing_prereq_id and executing_prereq_id not in updated_completed_steps:
+                updated_completed_steps.append(executing_prereq_id)
+                logger.info(
+                    "workflow_prerequisite_completed",
+                    step=executing_prereq_id,
+                    conversation_id=request.conversation_id,
+                )
             if tool_data and active_tool and not tool_data.get("aborted"):
                 if request.agent_config.id not in updated_completed_steps:
                     updated_completed_steps.append(request.agent_config.id)

@@ -56,6 +56,28 @@ async def test_workflow_dependency_triggers_confirmation(orchestrator, base_conf
 
 
 @pytest.mark.asyncio
+async def test_workflow_dependency_executes_after_proceed(orchestrator, base_config, mock_intent):
+    """After Proceed, messages on the prereq agent must not re-show the prerequisite card."""
+    request = ConversationRequest(
+        conversation_id="conv-1",
+        agent_config=base_config,
+        messages=[Message(role=MessageRole.USER, content="My router isn't working")],
+        completed_workflow_steps=[],
+        selected_agent="prereq-agent",
+    )
+
+    with mock.patch.object(orchestrator._intent_router, "detect", return_value=mock_intent):
+        with mock.patch.object(
+            orchestrator, "_call_llm", return_value="Try rebooting your router."
+        ):
+            response = await orchestrator.process_message(request)
+
+        assert response.status == ConversationStatus.SUCCESS
+        assert "rebooting" in response.reply.content.lower()
+        assert "prereq-agent" in response.completed_workflow_steps
+
+
+@pytest.mark.asyncio
 async def test_workflow_dependency_confirmed_switches_agent(orchestrator, base_config, mock_intent):
     request = ConversationRequest(
         conversation_id="conv-1",
