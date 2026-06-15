@@ -261,7 +261,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(increase(http_requests_total{job=~\"$application\", status_code=~\"5..\"}[24h])) or vector(0)",
+          "expr": "sum(increase(http_requests_total{job=~\"$application\", status=~\"5..\"}[24h])) or vector(0)",
           "legendFormat": "Errors",
           "refId": "A",
           "instant": true
@@ -572,8 +572,8 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (handler, status_code) (rate(http_requests_total{job=~\"$application\"}[5m]))",
-          "legendFormat": "{{handler}} {{status_code}}",
+          "expr": "sum by (handler, status) (rate(http_requests_total{job=~\"$application\"}[5m]))",
+          "legendFormat": "{{handler}} {{status}}",
           "refId": "A"
         }
       ]
