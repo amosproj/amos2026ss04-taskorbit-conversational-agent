@@ -81,7 +81,8 @@ export type ConversationResponse = {
     | "error"
     | "confirmation_required"
     | "rejected"
-    | "workflow_confirmation_required";
+    | "workflow_confirmation_required"
+    | "handoff_blocked";
   selected_intent: string;
   selected_agent: string;
   locked_intent_name: string | null;

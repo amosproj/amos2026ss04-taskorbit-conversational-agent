@@ -281,6 +281,8 @@ export function ConversationalChat() {
             return;
           }
 
+          // "handoff_blocked": backend sends the refusal text in reply.content;
+          // appending it below is the correct and sufficient UI treatment.
           const replyText = response.reply.content;
           call.appendAssistantTurn(replyText);
 
