@@ -235,32 +235,35 @@ export function PipelineSection({ value, onChange }: Props) {
                 </SelectContent>
               </Select>
             </Field>
-            <Field>
-              <FieldLabel htmlFor={idTtsVoice}>Voice</FieldLabel>
-              <Select
-                value={value.tts.voice_id}
-                onValueChange={(v) => onChange({ ...value, tts: { ...value.tts, voice_id: v } })}
-              >
-                <SelectTrigger id={idTtsVoice}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {TTS_VOICES.map((voice) => (
-                      <SelectItem key={voice.id} value={voice.id}>
-                        {voice.name}
-                      </SelectItem>
-                    ))}
-                    {/* Legacy / unlisted voice id — show the raw id so it round-trips (AC5). */}
-                    {!voiceIsKnown && value.tts.voice_id ? (
-                      <SelectItem value={value.tts.voice_id} className="font-mono text-sm">
-                        {value.tts.voice_id}
-                      </SelectItem>
-                    ) : null}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
+            {/* TTS_VOICES are ElevenLabs-only; Deepgram encodes voice in the model name. */}
+            {value.tts.provider === "elevenlabs" && (
+              <Field>
+                <FieldLabel htmlFor={idTtsVoice}>Voice</FieldLabel>
+                <Select
+                  value={value.tts.voice_id}
+                  onValueChange={(v) => onChange({ ...value, tts: { ...value.tts, voice_id: v } })}
+                >
+                  <SelectTrigger id={idTtsVoice}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {TTS_VOICES.map((voice) => (
+                        <SelectItem key={voice.id} value={voice.id}>
+                          {voice.name}
+                        </SelectItem>
+                      ))}
+                      {/* Legacy / unlisted voice id — show the raw id so it round-trips (AC5). */}
+                      {!voiceIsKnown && value.tts.voice_id ? (
+                        <SelectItem value={value.tts.voice_id} className="font-mono text-sm">
+                          {value.tts.voice_id}
+                        </SelectItem>
+                      ) : null}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </Field>
+            )}
           </FieldGroup>
         </FieldSet>
       </CardContent>

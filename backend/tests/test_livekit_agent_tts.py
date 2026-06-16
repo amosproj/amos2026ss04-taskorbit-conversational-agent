@@ -135,3 +135,28 @@ def test_build_agent_session_falls_back_to_env_when_no_agent_config(
     assert mock_tts.call_args.kwargs["voice_id"] == _FAKE_VOICE_ID
     assert mock_tts.call_args.kwargs["model"] == _FAKE_MODEL
     assert mock_stt.call_args.kwargs["model"] == "nova-3"
+
+
+def test_build_agent_session_partial_config_falls_back_per_field(
+    tts_settings: None,
+) -> None:
+    """STT model set but TTS voice_id/model empty → only STT overrides, TTS uses env."""
+    agent_config = AgentConfig(
+        id="x",
+        name="X",
+        persona=".",
+        greeting=".",
+        stt=STTConfig(model="nova-2"),
+        tts=TTSConfig(voice_id="", model=""),
+    )
+    with (
+        patch("taskorbit.livekit_agent.session.silero.VAD"),
+        patch("taskorbit.livekit_agent.session.deepgram.STT") as mock_stt,
+        patch("taskorbit.livekit_agent.session.elevenlabs.TTS") as mock_tts,
+        patch("taskorbit.livekit_agent.session.AgentSession"),
+    ):
+        build_agent_session(agent_config=agent_config)
+
+    assert mock_stt.call_args.kwargs["model"] == "nova-2"
+    assert mock_tts.call_args.kwargs["voice_id"] == _FAKE_VOICE_ID
+    assert mock_tts.call_args.kwargs["model"] == _FAKE_MODEL
