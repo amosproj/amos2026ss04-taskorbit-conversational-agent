@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from taskorbit.config import get_settings
-from taskorbit.livekit_agent.llm import OrchestratorAgent
+from taskorbit.livekit_agent.llm import OrchestratorAgent, _voice_confirmation_decision
 from taskorbit.livekit_agent.session import build_agent_session
 from taskorbit.types import (
     AgentConfig,
@@ -339,6 +339,17 @@ async def test_llm_node_normalizes_unicode_em_dash_from_stt() -> None:
     request = orchestrator.process_message.await_args.args[0]
     assert "—" not in request.messages[0].content
     assert "-" in request.messages[0].content
+
+
+def test_voice_confirmation_does_not_match_ok_substring_in_hello() -> None:
+    assert _voice_confirmation_decision("hello") is None
+
+
+def test_voice_confirmation_matches_explicit_confirm_and_reject() -> None:
+    assert _voice_confirmation_decision("ok") == "confirm"
+    assert _voice_confirmation_decision("Yes, proceed") == "confirm"
+    assert _voice_confirmation_decision("go ahead please") == "confirm"
+    assert _voice_confirmation_decision("cancel") == "reject"
 
 
 # ---------------------------------------------------------------------------

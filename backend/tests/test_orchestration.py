@@ -370,12 +370,19 @@ async def test_routed_agent_matches_intent_agent_name() -> None:
         name="customer_dissatisfaction_inquiry", agent_name="customer_dissatisfaction"
     )
 
+    req = ConversationRequest(
+        conversation_id="conv-test",
+        agent_config=AgentConfig(id="agent-1", name="Bot", persona="Helpful bot", greeting="Hi!"),
+        messages=[Message(role=MessageRole.USER, content="I'm unhappy")],
+        selected_agent="sales",  # turn 2+: entry agent was returned on turn 1
+    )
+
     with patch.object(orch._intent_router, "detect", new_callable=AsyncMock) as mock_detect:
         mock_detect.return_value = intent
         with patch.object(
             ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
         ):
-            response = await orch.process_message(_make_request("I'm unhappy"))
+            response = await orch.process_message(req)
 
     assert response.selected_intent == "customer_dissatisfaction_inquiry"
     assert response.selected_agent == "customer_dissatisfaction"
@@ -874,6 +881,7 @@ async def test_intent_locked_when_current_intent_name_set(mock_good_intent: Any)
         agent_config=AgentConfig(id="a", name="Bot", persona="p", greeting="hi"),
         messages=[Message(role=MessageRole.USER, content="still having that error")],
         current_intent_name=locked_name,
+        selected_agent="technical_support",  # turn 2+: agent active when lock was established
     )
 
     with patch.object(
@@ -905,6 +913,7 @@ async def test_intent_lock_broken_on_high_confidence_new_intent() -> None:
         agent_config=AgentConfig(id="a", name="Bot", persona="p", greeting="hi"),
         messages=[Message(role=MessageRole.USER, content="I'm really unhappy with this service")],
         current_intent_name="technical_support_request",
+        selected_agent="technical_support",  # turn 2+: agent active when lock was established
     )
 
     with patch.object(
@@ -938,6 +947,7 @@ async def test_intent_lock_held_on_low_confidence_new_intent() -> None:
         agent_config=AgentConfig(id="a", name="Bot", persona="p", greeting="hi"),
         messages=[Message(role=MessageRole.USER, content="one more thing about the error")],
         current_intent_name=locked_name,
+        selected_agent="technical_support",  # turn 2+: agent active when lock was established
     )
 
     with patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=low_conf):

@@ -17,6 +17,7 @@ from taskorbit.database.crud import (
     create_conversation_message,
     create_slot_extractions,
     create_tool_execution,
+    enrich_request_dependency_configs,
     get_conversation,
     get_conversation_history,
     get_messages_by_conversation,
@@ -66,6 +67,8 @@ async def process_conversation(
         message_count=len(request.messages),
     )
     try:
+        request = await enrich_request_dependency_configs(request, db, user_id)
+
         response = await orchestrator.process_message(request, db=db, user_id=user_id)
 
         # Save user message (last message in the list if sent by user)

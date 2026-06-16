@@ -207,6 +207,35 @@ def test_end_call_tool_found_after_validate_without_description() -> None:
     assert end_call is not None
 
 
+def test_agent_config_workflow_fields() -> None:
+    """AgentConfig supports workflow_dependencies and allowed_handoffs."""
+    config = AgentConfig(
+        id="agent-1",
+        name="Sales Bot",
+        persona="Sales agent",
+        greeting="Hello!",
+        workflow_dependencies=["lead-gen-agent"],
+        allowed_handoffs=["appointment-agent"],
+    )
+    assert config.workflow_dependencies == ["lead-gen-agent"]
+    assert config.allowed_handoffs == ["appointment-agent"]
+
+    # Test round-trip
+    dumped = config.model_dump()
+    restored = AgentConfig.model_validate(dumped)
+    assert restored.workflow_dependencies == ["lead-gen-agent"]
+    assert restored.allowed_handoffs == ["appointment-agent"]
+
+
+def test_conversation_status_workflow() -> None:
+    """ConversationStatus includes WORKFLOW_CONFIRMATION_REQUIRED."""
+    from taskorbit.types import ConversationStatus
+
+    assert (
+        ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED.value == "workflow_confirmation_required"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Interchangeable STT/TTS providers (#135)
 # ---------------------------------------------------------------------------

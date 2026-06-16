@@ -15,6 +15,7 @@ later only requires changing ``ConversationOrchestrator.process_message``
 
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import AsyncIterable
 from typing import Any
@@ -44,6 +45,30 @@ from taskorbit.types import (
 )
 
 log = get_logger(__name__)
+
+_CONFIRM_PATTERNS = (
+    r"\byes\b",
+    r"\bproceed\b",
+    r"\bsure\b",
+    r"\bok\b",
+    r"\bgo ahead\b",
+)
+_REJECT_PATTERNS = (
+    r"\bno\b",
+    r"\bstop\b",
+    r"\bcancel\b",
+    r"\bwait\b",
+)
+
+
+def _voice_confirmation_decision(content: str) -> str | None:
+    """Map spoken text to a workflow/tool confirmation when one is pending."""
+    lowered = content.lower()
+    if any(re.search(pat, lowered) for pat in _CONFIRM_PATTERNS):
+        return "confirm"
+    if any(re.search(pat, lowered) for pat in _REJECT_PATTERNS):
+        return "reject"
+    return None
 
 
 def _default_agent_config() -> AgentConfig:
@@ -188,6 +213,9 @@ class OrchestratorAgent(Agent):
         # handler can read this to notify the client that the active agent
         # changed mid-call without dropping the room.
         self._pending_handoff_target: str | None = None
+        # #71: Workflow state for voice path
+        self._completed_workflow_steps: list[str] = []
+        self._pending_confirmation_id: str | None = None
 
     def request_reply(self, t_commit: float | None = None) -> None:
         """Signal that the next ``llm_node`` call should actually produce a reply.
@@ -235,11 +263,22 @@ class OrchestratorAgent(Agent):
         last_user = next((m for m in reversed(messages) if m.role == MessageRole.USER), None)
         if last_user:
             log.debug("stt_transcript_received", length=len(last_user.content))
+
+        # #71: Simple voice-path confirmation detection. If we have a pending
+        # confirmation, we check if the user said something affirmative.
+        decision = None
+        if self._pending_confirmation_id and last_user:
+            decision = _voice_confirmation_decision(last_user.content)
+
         request = ConversationRequest(
             conversation_id=self._conversation_id,
             agent_config=self._agent_config,
             messages=messages,
             current_intent_name=self._locked_intent_name,
+            selected_agent=self._current_routed_agent,
+            completed_workflow_steps=self._completed_workflow_steps,
+            confirmation_id=self._pending_confirmation_id if decision else None,
+            decision=decision,
         )
 
         # Open the DB session before process_message so that manual transfers
@@ -258,6 +297,12 @@ class OrchestratorAgent(Agent):
             raise
 
         self._locked_intent_name = response.locked_intent_name
+        self._completed_workflow_steps = response.completed_workflow_steps
+        if response.status == "workflow_confirmation_required" and response.confirmation:
+            self._pending_confirmation_id = response.confirmation.confirmation_id
+        else:
+            self._pending_confirmation_id = None
+
         if response.selected_agent:
             self._current_routed_agent = response.selected_agent
 

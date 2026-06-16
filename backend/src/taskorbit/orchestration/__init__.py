@@ -37,6 +37,7 @@ from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import get_metrics
 from taskorbit.types import (
     AgentConfig,
+    ConfirmationResponsePayload,
     ContextLimitConfig,
     ConversationRequest,
     ConversationResponse,
@@ -44,9 +45,20 @@ from taskorbit.types import (
     Message,
     MessageRole,
     ToolDefinition,
+    ToolType,
 )
 
 logger = get_logger(__name__)
+
+
+def _selected_agent_matches_dep(selected_agent: str | None, dep_id: str) -> bool:
+    """True when the session is already executing a prerequisite agent step."""
+    if not selected_agent:
+        return False
+    from taskorbit.agents import AgentRegistry
+
+    dep_registry = AgentRegistry.get_agent_name_for_id(dep_id)
+    return selected_agent == dep_id or selected_agent == dep_registry
 
 
 class ConversationOrchestrator:
@@ -70,6 +82,11 @@ class ConversationOrchestrator:
                 request.manual_transfer.target_agent_id or request.manual_transfer.target_agent_name
             ):
                 return await self._handle_manual_transfer(request, db, user_id=user_id)
+
+            if db is not None and user_id is not None:
+                from taskorbit.database.crud import enrich_request_dependency_configs
+
+                request = await enrich_request_dependency_configs(request, db, user_id)
 
             last_user = next(
                 (m for m in reversed(request.messages) if m.role == MessageRole.USER),
@@ -178,7 +195,6 @@ class ConversationOrchestrator:
             # Short-circuit: ask for clarification instead of guessing
             if intent.requires_clarification:
                 from taskorbit.intent import _CLARIFICATION_REPLY
-                from taskorbit.types import ConversationStatus
 
                 return ConversationResponse(
                     conversation_id=request.conversation_id,
@@ -189,12 +205,191 @@ class ConversationOrchestrator:
                     intent_confidence=intent.confidence,
                 )
 
-            # 2. Select agent based on detected intent, not config.id
+            # 2. Select agent based on detected intent or turn-1 locking
             from taskorbit.agents import AgentRegistry
 
-            agent = await AgentRegistry.create_by_name(
-                intent.agent_name, request.agent_config, self, db=db, user_id=user_id
-            )
+            handoff_blocked = False
+            allowed_agent_names: list[str] = []
+            if not request.selected_agent:
+                # AC #71: Turn 1 is ALWAYS locked to the configured entry agent.
+                # This ensures the greeting and initial persona match the config.
+                agent = AgentRegistry.create(request.agent_config, self)
+                logger.info(
+                    "entry_agent_locked",
+                    agent=agent.agent_name,
+                    conversation_id=request.conversation_id,
+                )
+            else:
+                # Normal routing for subsequent turns
+                agent = await AgentRegistry.create_by_name(
+                    intent.agent_name, request.agent_config, self, db=db, user_id=user_id
+                )
+
+                # #71: Handoff check will be enforced after workflow dependency checks.
+                # We still compute the allowed list now for later use.
+                allowed_agent_names = []
+                if (
+                    intent.agent_name != request.selected_agent
+                    and request.agent_config.allowed_handoffs
+                ):
+                    allowed_agent_names = [
+                        AgentRegistry.get_agent_name_for_id(cfg_id)
+                        for cfg_id in request.agent_config.allowed_handoffs
+                    ]
+
+            # Resolve workflow dependencies BEFORE enforcing handoff rules.
+            # This ensures DEMO-1 (prerequisite flow) is offered even when a
+            # requested handoff would otherwise be blocked.
+            from taskorbit.types import ConversationStatus
+
+            missing_dependencies = [
+                dep
+                for dep in request.agent_config.workflow_dependencies
+                if dep not in request.completed_workflow_steps
+            ]
+
+            executing_prereq_id: str | None = None
+            if missing_dependencies:
+                next_dep = missing_dependencies[0]
+                executing_prereq = _selected_agent_matches_dep(request.selected_agent, next_dep)
+
+                if executing_prereq:
+                    # User already confirmed — run the prerequisite agent, do not re-prompt.
+                    executing_prereq_id = next_dep
+
+                    # AC #71: Resolve the prerequisite agent's config from dependency_configs.
+                    # This ensures the LLM sees the CORRECT persona and tools for the prerequisite.
+                    dep_config = request.dependency_configs.get(next_dep)
+                    if not dep_config:
+                        # Deadlock guard (AC #9): If we can't resolve the config for a required
+                        # dependency, we cannot proceed. Block the handoff and stay on current agent.
+                        logger.error(
+                            "workflow_dependency_config_missing",
+                            dependency=next_dep,
+                            conversation_id=request.conversation_id,
+                        )
+                        handoff_blocked = True
+                        # AC #9: Reset agent to the entry agent so we don't accidentally act as
+                        # an unconfigured prerequisite or the requested (blocked) handoff target.
+                        agent = AgentRegistry.create(request.agent_config, self)
+                    else:
+                        agent = AgentRegistry.create(dep_config, self)
+                        logger.info(
+                            "workflow_dependency_executing",
+                            dependency=next_dep,
+                            agent=agent.agent_name,
+                            conversation_id=request.conversation_id,
+                        )
+                else:
+                    logger.info(
+                        "workflow_dependency_missing",
+                        dependency=next_dep,
+                        conversation_id=request.conversation_id,
+                    )
+
+                    is_decision_for_this_workflow = (
+                        request.confirmation_id == f"workflow_{next_dep}"
+                    )
+                    has_decision = is_decision_for_this_workflow and request.decision is not None
+
+                    if not has_decision:
+                        # Deadlock guard (AC #9): If we can't resolve the metadata for the prompt,
+                        # we still offer the handoff but falling back to the ID name.
+                        dep_name = next_dep.replace("-", " ")
+                        dep_config = request.dependency_configs.get(next_dep)
+                        if dep_config:
+                            dep_name = dep_config.name
+
+                        return ConversationResponse(
+                            conversation_id=request.conversation_id,
+                            reply=self._make_assistant_message(
+                                f"Before we proceed with {request.agent_config.name}, I'll need to complete some prerequisite steps regarding {dep_name}. Shall I start with that?"
+                            ),
+                            status=ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED,
+                            confirmation=ConfirmationResponsePayload(
+                                confirmation_id=f"workflow_{next_dep}",
+                                action=f"Start {next_dep} workflow",
+                                description=f"Prerequisite: {dep_name}",
+                            ),
+                            selected_intent=intent.name,
+                            selected_agent=agent.agent_name,
+                            intent_confidence=intent.confidence,
+                            completed_workflow_steps=request.completed_workflow_steps,
+                        )
+
+                    if request.decision == "reject":
+                        logger.info(
+                            "workflow_dependency_rejected",
+                            dependency=next_dep,
+                            conversation_id=request.conversation_id,
+                        )
+                        return ConversationResponse(
+                            conversation_id=request.conversation_id,
+                            reply=self._make_assistant_message(
+                                "Understood. I can't proceed without those prerequisite steps. Is there anything else I can help you with?"
+                            ),
+                            status=ConversationStatus.REJECTED,
+                            selected_intent=intent.name,
+                            selected_agent=agent.agent_name,
+                            completed_workflow_steps=request.completed_workflow_steps,
+                        )
+
+                    logger.info(
+                        "workflow_dependency_confirmed",
+                        dependency=next_dep,
+                        conversation_id=request.conversation_id,
+                    )
+                    return ConversationResponse(
+                        conversation_id=request.conversation_id,
+                        reply=self._make_assistant_message(
+                            f"Understood. Let's start with the {next_dep.replace('-', ' ')} steps."
+                        ),
+                        status=ConversationStatus.SUCCESS,
+                        selected_agent=next_dep,
+                        selected_intent=intent.name,
+                        intent_confidence=1.0,
+                        completed_workflow_steps=request.completed_workflow_steps,
+                    )
+
+            # Now enforce handoff rules (if any)
+            if (
+                not executing_prereq_id  # AC #71: Prerequisite execution bypasses handoff blocks
+                and request.selected_agent
+                and intent.agent_name != request.selected_agent
+                and request.agent_config.allowed_handoffs
+            ):
+                if intent.agent_name not in allowed_agent_names:
+                    logger.warning(
+                        "handoff_blocked",
+                        current=request.selected_agent,
+                        target=intent.agent_name,
+                        conversation_id=request.conversation_id,
+                    )
+                    handoff_blocked = True
+                    # Stick with the current agent
+                    agent = await AgentRegistry.create_by_name(
+                        request.selected_agent, request.agent_config, self, db=db, user_id=user_id
+                    )
+                    # Revert the intent name to match the selected agent's intent
+                    if request.current_intent_name:
+                        intent = _replace(
+                            _KNOWN_INTENTS[request.current_intent_name], confidence=1.0
+                        )
+
+            if handoff_blocked:
+                # AC #71: Explicit status and clear refusal when handoff is restricted.
+                return ConversationResponse(
+                    conversation_id=request.conversation_id,
+                    reply=self._make_assistant_message(
+                        "I'm sorry, I'm only able to help you with the current topic right now. Is there anything else about that I can assist with?"
+                    ),
+                    status=ConversationStatus.HANDOFF_BLOCKED,
+                    selected_intent=intent.name,
+                    selected_agent=agent.agent_name,
+                    intent_confidence=intent.confidence,
+                    completed_workflow_steps=request.completed_workflow_steps,
+                )
+
             logger.info(
                 "agent_selected",
                 agent=agent.agent_name,
@@ -237,12 +432,6 @@ class ConversationOrchestrator:
             get_metrics().pipeline_latency_seconds.labels(stage="llm_call").observe(_llm_elapsed)
 
             # 5b. Dispatch active tool when slots are complete
-            from taskorbit.types import (
-                ConfirmationResponsePayload,
-                ConversationStatus,
-                ToolType,
-            )
-
             tool_data: dict[str, Any] = {}
             response_status = ConversationStatus.SUCCESS
 
@@ -286,6 +475,7 @@ class ConversationOrchestrator:
                         missing_slots=slot_result.missing,
                         locked_intent_name=intent.name,
                         next_active_tool_id=active_tool.id,
+                        completed_workflow_steps=request.completed_workflow_steps,
                     )
 
                 if has_decision and request.decision == "reject":
@@ -321,13 +511,6 @@ class ConversationOrchestrator:
                             {"role": m.role.value, "content": m.content} for m in request.messages
                         ]
                     elif active_tool.type == ToolType.EXTERNAL_API:
-                        # GenericApiTool (#66) reads its config from the same
-                        # parameters dict it expects on ToolDefinition.parameters,
-                        # plus runtime args under an `args` key. The slot dict
-                        # carries the LLM-extracted values; surface them as
-                        # `args` so they substitute into the template, and
-                        # overlay the tool's static config (request, response,
-                        # auth, error_mapping, args_schema).
                         dispatch_context = {
                             **active_tool.parameters,
                             "args": dict(slot_result.to_dict()),
@@ -350,9 +533,24 @@ class ConversationOrchestrator:
                             conversation_id=request.conversation_id,
                         )
 
-            # Advance to the next tool when the current one was dispatched,
-            # so sequential workflows (e.g. data_extraction → end_call) complete.
-            if tool_data and active_tool:
+            # Advance to the next tool when the current one was dispatched
+            updated_completed_steps = list(request.completed_workflow_steps)
+            if executing_prereq_id and executing_prereq_id not in updated_completed_steps:
+                updated_completed_steps.append(executing_prereq_id)
+                logger.info(
+                    "workflow_prerequisite_completed",
+                    step=executing_prereq_id,
+                    conversation_id=request.conversation_id,
+                )
+            if tool_data and active_tool and not tool_data.get("aborted"):
+                if request.agent_config.id not in updated_completed_steps:
+                    updated_completed_steps.append(request.agent_config.id)
+                    logger.info(
+                        "workflow_step_completed",
+                        step=request.agent_config.id,
+                        conversation_id=request.conversation_id,
+                    )
+
                 all_tools = agent.get_task_definitions()
                 current_idx = next(
                     (i for i, t in enumerate(all_tools) if t.id == active_tool.id), -1
@@ -385,6 +583,7 @@ class ConversationOrchestrator:
                 tool_invoked=active_tool if tool_data else None,
                 locked_intent_name=intent.name,
                 next_active_tool_id=next_active_tool_id,
+                completed_workflow_steps=updated_completed_steps,
             )
 
         except LLMConfigError as exc:
@@ -614,15 +813,7 @@ class ConversationOrchestrator:
         messages: list[Message],
         context_limit: ContextLimitConfig | None,
     ) -> list[Message]:
-        """Cap conversation history at ``context_limit.value`` non-system messages.
-
-        FIFO: when the cap is exceeded, the oldest non-system messages are
-        dropped first. System messages are always preserved regardless of
-        the cap (the foundational system prompt must never be truncated).
-
-        Returns the full history unchanged when no ``context_limit`` is
-        configured or when the history is already within the cap.
-        """
+        """Cap conversation history at ``context_limit.value`` non-system messages."""
         if context_limit is None:
             return messages
 
@@ -649,11 +840,7 @@ class ConversationOrchestrator:
         required_inputs: list[dict[str, Any]],
         llm_config: LLMConfig,
     ) -> Any:
-        """Run slot extraction over the conversation history.
-
-        Returns SlotExtractionResult. Falls back to all-missing on any error
-        so the main conversation turn is never blocked by extraction failures.
-        """
+        """Run slot extraction over the conversation history."""
         from taskorbit.slots import SlotExtractionResult, SlotExtractor
 
         if not required_inputs:
@@ -675,11 +862,7 @@ class ConversationOrchestrator:
         agent: BaseAgent,
         active_tool_id: str | None = None,
     ) -> ToolDefinition | None:
-        """Decide which tool should be in scope for this turn, if any.
-
-        Uses active_tool_id to resume a previously selected tool across turns.
-        Falls back to the first tool in the agent's list when no id is provided.
-        """
+        """Decide which tool should be in scope for this turn, if any."""
         tools = agent.get_task_definitions()
         if not tools:
             return None
@@ -695,14 +878,7 @@ class ConversationOrchestrator:
         messages: list[Message],
         llm_config: LLMConfig,
     ) -> str:
-        """Call the LLM provider specified by ``llm_config`` and return its text.
-
-        Routes to the right concrete client via the factory in
-        ``integrations/llm/factory.py``. The same-language instruction is
-        appended to the system prompt before delegation so every provider
-        receives the multilingual directive consistently. Tool-call parsing
-        happens in the caller so this method stays provider-agnostic.
-        """
+        """Call the LLM provider specified by ``llm_config`` and return its text."""
         from taskorbit.integrations.llm.factory import get_llm_client
         from taskorbit.integrations.llm.prompts import with_same_language_instruction
 
@@ -717,11 +893,7 @@ class ConversationOrchestrator:
         db: AsyncSession | None = None,
         user_id: int | None = None,
     ) -> dict[str, Any]:
-        """Execute a tool after the user has confirmed (if required).
-
-        Delegates to the concrete BaseTool implementation in taskorbit.tools.
-        Returns the tool's result payload, or empty dict on failure.
-        """
+        """Execute a tool after the user has confirmed (if required)."""
         from taskorbit.tools import ToolResult
         from taskorbit.tools.agent_transfer import AgentTransferTool
         from taskorbit.tools.data_extraction import DataExtractionTool
@@ -844,11 +1016,7 @@ class ConversationOrchestrator:
     )
 
     def _user_requested_end_call(self, message: str) -> bool:
-        """Return True when the user's message contains an explicit end-call signal.
-
-        Negation guard: if a negation word immediately precedes the matched
-        signal (e.g. "please don't end the call"), the match is skipped.
-        """
+        """Return True when the user's message contains an explicit end-call signal."""
         lowered = message.lower().strip()
         for signal in self._END_CALL_SIGNALS:
             pos = lowered.find(signal)

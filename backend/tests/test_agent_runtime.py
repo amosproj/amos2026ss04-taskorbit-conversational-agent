@@ -90,15 +90,19 @@ def test_mock_intent_result_has_workflow_steps() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_registry_returns_sales_agent_by_default() -> None:
+def test_registry_returns_generic_agent_by_default() -> None:
     config = _make_config("generic-agent")
     agent = AgentRegistry.get_agent(config, ConversationOrchestrator())
-    assert isinstance(agent, SalesAgent)
+    # AC #71: Now returns GenericAgent instead of SalesAgent for unknown IDs
+    from taskorbit.agents import GenericAgent
+
+    assert isinstance(agent, GenericAgent)
+    assert agent.agent_name == "generic-agent"
 
 
 def test_registry_returns_sales_agent_for_sales_id() -> None:
-    config = _make_config("sales-lead-agent")
-    agent = AgentRegistry.get_agent(config, ConversationOrchestrator())
+    config = _make_config("sales-id")
+    agent = AgentRegistry.create(config, ConversationOrchestrator())
     assert isinstance(agent, SalesAgent)
 
 
@@ -324,14 +328,17 @@ def test_create_and_get_agent_return_same_type() -> None:
     )
 
 
-def test_registry_default_falls_back_to_sales_agent() -> None:
+def test_registry_default_falls_back_to_generic_agent() -> None:
     config = _make_config("unknown-xyz-agent")
     agent = AgentRegistry.create(config, ConversationOrchestrator())
-    assert isinstance(agent, SalesAgent)
+    from taskorbit.agents import GenericAgent
+
+    assert isinstance(agent, GenericAgent)
+    assert agent.agent_name == "unknown-xyz-agent"
 
 
 # ---------------------------------------------------------------------------
-# CustomAgent
+# CustomAgent / Registry lookup tests
 # ---------------------------------------------------------------------------
 
 
@@ -348,12 +355,12 @@ def test_registry_known_agent_names_excludes_custom() -> None:
     assert "custom" not in AgentRegistry.known_agent_names()
 
 
-def test_create_custom_returns_custom_agent() -> None:
-    from taskorbit.agents import CustomAgent
+def test_create_custom_returns_generic_agent() -> None:
+    from taskorbit.agents import GenericAgent
 
     config = _make_config("my-custom-bot", name="My Custom Bot")
     agent = AgentRegistry.create_custom(config, ConversationOrchestrator())
-    assert isinstance(agent, CustomAgent)
+    assert isinstance(agent, GenericAgent)
 
 
 def test_create_custom_agent_carries_config() -> None:
@@ -383,9 +390,9 @@ def test_create_custom_agent_returns_config_tools() -> None:
     assert agent.get_task_definitions() == [tool]
 
 
-def test_custom_agent_name_is_custom() -> None:
-    from taskorbit.agents import CustomAgent
+def test_custom_agent_name_is_config_id() -> None:
+    from taskorbit.agents import GenericAgent
 
     config = _make_config("custom-id")
-    agent = CustomAgent(config, ConversationOrchestrator())
-    assert agent.agent_name == "custom"
+    agent = GenericAgent(config, ConversationOrchestrator())
+    assert agent.agent_name == "custom-id"

@@ -141,15 +141,18 @@ class CustomerDissatisfactionAgent(BaseAgent):
         return self.config.tools
 
 
-class CustomAgent(BaseAgent):
-    """Thin wrapper for user-defined agents loaded from the database.
+class GenericAgent(BaseAgent):
+    """Fallback agent for custom IDs that don't match any specialized class.
 
-    Carries a user-supplied AgentConfig without any specialised class logic.
-    All behaviour is driven by the config (persona, tools, etc.) through the
-    shared orchestrator pipeline, exactly like the built-in agents.
+    Preserves the original config.id as its agent_name to ensure metrics
+    and handoff logic correctly identify the specific custom agent.
     """
 
-    agent_name = "custom"
+    def __init__(self, config: AgentConfig, orchestrator: ConversationOrchestrator) -> None:
+        super().__init__(config, orchestrator)
+        # AC #71: Use the actual config.id as the agent name instead of a hardcoded string.
+        # This prevents silent fallbacks to 'sales' in logs and response status.
+        self.agent_name = config.id
 
     async def handle_message(self, request: ConversationRequest) -> ConversationResponse:
         return await self.orchestrator.process_message(request)
@@ -188,6 +191,16 @@ class AgentRegistry:
     _DEFAULT: type[BaseAgent] = SalesAgent
 
     @classmethod
+    def get_agent_name_for_id(cls, config_id: str) -> str:
+        """Map a logical config.id (e.g. from allowed_handoffs) to a registry agent_name."""
+        agent_id = config_id.lower()
+        for keywords, agent_cls in cls._REGISTRY:
+            if any(kw in agent_id for kw in keywords):
+                return agent_cls.agent_name.lower()
+        # AC #71: Return the ID itself if no keyword matches, instead of falling back to 'sales'.
+        return agent_id
+
+    @classmethod
     def create(
         cls,
         config: AgentConfig,
@@ -195,27 +208,23 @@ class AgentRegistry:
     ) -> BaseAgent:
         """Construct and return the agent that matches *config.id*.
 
-        Falls back to SalesAgent when no keyword matches.
+        Falls back to GenericAgent (preserving the ID) when no keyword matches.
         """
         agent_id = config.id.lower()
         for keywords, agent_cls in cls._REGISTRY:
             if any(kw in agent_id for kw in keywords):
-                _agent_call_counts[agent_cls.agent_name] += 1
-                count = _agent_call_counts[agent_cls.agent_name]
-                print(f"[AgentRegistry] {agent_cls.agent_name} called (total: {count})", flush=True)
-                logger.info("agent_selected", agent=agent_cls.agent_name, total_calls=count)
+                normalized_name = agent_cls.agent_name.lower()
+                _agent_call_counts[normalized_name] += 1
+                count = _agent_call_counts[normalized_name]
+                logger.info("agent_selected", agent=normalized_name, total_calls=count)
                 return agent_cls(config, orchestrator)
 
-        _agent_call_counts[cls._DEFAULT.agent_name] += 1
-        count = _agent_call_counts[cls._DEFAULT.agent_name]
-        print(
-            f"[AgentRegistry] {cls._DEFAULT.agent_name} called (default) (total: {count})",
-            flush=True,
-        )
-        logger.info(
-            "agent_selected", agent=cls._DEFAULT.agent_name, total_calls=count, via="default"
-        )
-        return cls._DEFAULT(config, orchestrator)
+        # AC #71: Explicitly use GenericAgent for custom IDs to avoid silent 'sales' fallback.
+        normalized_id = config.id.lower()
+        _agent_call_counts[normalized_id] += 1
+        count = _agent_call_counts[normalized_id]
+        logger.info("agent_selected", agent=normalized_id, total_calls=count, via="generic")
+        return GenericAgent(config, orchestrator)
 
     @classmethod
     def known_agent_names(cls) -> frozenset[str]:
@@ -236,18 +245,16 @@ class AgentRegistry:
         Resolution order:
           1. Built-in agents matched by agent_name.
           2. Custom agents looked up by name in agent_configurations (when db given).
-          3. Default agent fallback.
+          3. Default agent fallback (via config.id).
         """
+        target_name = agent_name.lower()
         for _, agent_cls in cls._REGISTRY:
-            if agent_cls.agent_name == agent_name:
-                _agent_call_counts[agent_cls.agent_name] += 1
-                count = _agent_call_counts[agent_cls.agent_name]
-                print(
-                    f"[AgentRegistry] {agent_cls.agent_name} called via intent (total: {count})",
-                    flush=True,
-                )
+            if agent_cls.agent_name.lower() == target_name:
+                normalized_name = agent_cls.agent_name.lower()
+                _agent_call_counts[normalized_name] += 1
+                count = _agent_call_counts[normalized_name]
                 logger.info(
-                    "agent_selected", agent=agent_cls.agent_name, total_calls=count, via="intent"
+                    "agent_selected", agent=normalized_name, total_calls=count, via="intent"
                 )
                 return agent_cls(config, orchestrator)
 
@@ -271,7 +278,10 @@ class AgentRegistry:
                     logger.warning("agent_not_found", agent_name=agent_name, fallback="default")
                     return cls.create(config, orchestrator)
                 logger.info(
-                    "agent_selected", agent="custom", config_name=agent_name, via="db_fallback"
+                    "agent_selected",
+                    agent=custom_config.id,
+                    config_name=agent_name,
+                    via="db_fallback",
                 )
                 return cls.create_custom(custom_config, orchestrator)
 
@@ -282,15 +292,16 @@ class AgentRegistry:
     def create_custom(
         cls, config: AgentConfig, orchestrator: ConversationOrchestrator
     ) -> BaseAgent:
-        """Construct a CustomAgent from a DB-resolved AgentConfig.
+        """Construct a GenericAgent from a DB-resolved AgentConfig.
 
         Called by the orchestrator after it has loaded the config from the
         agent_configurations table. Built-in routing is not consulted.
         """
-        _agent_call_counts["custom"] += 1
-        count = _agent_call_counts["custom"]
-        logger.info("agent_selected", agent="custom", config_id=config.id, total_calls=count)
-        return CustomAgent(config, orchestrator)
+        normalized_id = config.id.lower()
+        _agent_call_counts[normalized_id] += 1
+        count = _agent_call_counts[normalized_id]
+        logger.info("agent_selected", agent=normalized_id, config_id=config.id, total_calls=count)
+        return GenericAgent(config, orchestrator)
 
     # Keep the old name available so existing call sites don't break.
     @classmethod

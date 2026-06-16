@@ -44,6 +44,8 @@ type BackendAgentConfig = {
   confirmations?: AgentConfig["confirmations"];
   language?: AgentConfig["language"];
   vad?: AgentConfig["vad"];
+  workflow_dependencies?: string[];
+  allowed_handoffs?: string[];
 };
 
 // ---------------------------------------------------------------------------
@@ -82,6 +84,8 @@ export function backendToFrontendAgent(entry: UserAgentEntry): AgentConfig {
     variables: c.variables ?? {},
     engine: c.engine ?? {},
     persona_constraints: c.persona_constraints ?? undefined,
+    workflow_dependencies: c.workflow_dependencies ?? [],
+    allowed_handoffs: c.allowed_handoffs ?? [],
   };
   if (c.confirmations) agent.confirmations = c.confirmations;
   if (c.language) agent.language = c.language;
@@ -114,6 +118,8 @@ function frontendToBackendConfig(agent: AgentConfig): BackendAgentConfig {
     variables: agent.variables,
     engine: agent.engine,
     persona_constraints: agent.persona_constraints ?? null,
+    workflow_dependencies: agent.workflow_dependencies ?? [],
+    allowed_handoffs: agent.allowed_handoffs ?? [],
   };
   if (agent.confirmations) config.confirmations = agent.confirmations;
   if (agent.language) config.language = agent.language;

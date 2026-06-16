@@ -112,7 +112,7 @@ class TestAgentRegistryCreateByName:
             )
 
         mock_lookup.assert_called_once_with(db, "unknown-intent", user_id=42)
-        assert agent.agent_name == "custom"
+        assert agent.agent_name == "custom-1"
 
     @pytest.mark.asyncio
     async def test_db_fallback_uses_none_user_id_when_omitted(self) -> None:
@@ -146,8 +146,8 @@ class TestAgentRegistryCreateByName:
                 "completely-unknown", _make_agent_config(), orch, db=db, user_id=1
             )
 
-        # default is SalesAgent
-        assert agent.agent_name in {"sales", "default"}
+        # Falls back to GenericAgent using config.id (which is "agent-1" from _make_agent_config)
+        assert agent.agent_name == "agent-1"
 
     @pytest.mark.asyncio
     async def test_invalid_config_in_db_falls_back_to_default(self) -> None:

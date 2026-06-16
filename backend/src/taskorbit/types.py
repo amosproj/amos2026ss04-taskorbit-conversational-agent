@@ -35,6 +35,8 @@ class ConversationStatus(str, Enum):
     SUCCESS = "success"
     CLARIFICATION = "clarification"
     CONFIRMATION_REQUIRED = "confirmation_required"
+    WORKFLOW_CONFIRMATION_REQUIRED = "workflow_confirmation_required"
+    HANDOFF_BLOCKED = "handoff_blocked"
     REJECTED = "rejected"
     ENDED = "ended"
     ERROR = "error"
@@ -160,6 +162,8 @@ class AgentConfig(BaseModel):
     tools: list[ToolDefinition] = Field(default_factory=list)
     persona_constraints: PersonaConstraints | None = None
     context_limit: ContextLimitConfig | None = None
+    workflow_dependencies: list[str] = Field(default_factory=list)
+    allowed_handoffs: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -198,10 +202,15 @@ class ConversationRequest(BaseModel):
     agent_config: AgentConfig
     messages: list[Message]
     current_intent_name: str | None = None
+    selected_agent: str | None = None
     active_tool_id: str | None = None
     # AC #49: Decision fields
     confirmation_id: str | None = None
     decision: Literal["confirm", "reject"] | None = None
+    # #71: Workflow state
+    completed_workflow_steps: list[str] = Field(default_factory=list)
+    # AC #71: Map of agent IDs to their full configurations for resolving dependencies.
+    dependency_configs: dict[str, AgentConfig] = Field(default_factory=dict)
     # Manual transfer: UI-initiated handoff to a specific agent (bypasses intent detection)
     manual_transfer: ManualTransferRequest | None = None
 
@@ -221,6 +230,8 @@ class ConversationResponse(BaseModel):
     missing_slots: list[str] = Field(default_factory=list)
     locked_intent_name: str | None = None
     next_active_tool_id: str | None = None
+    # #71: Workflow state
+    completed_workflow_steps: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
