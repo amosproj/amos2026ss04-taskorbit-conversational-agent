@@ -95,7 +95,7 @@ async def process_conversation(
                     update={"dependency_configs": {**request.dependency_configs, **dep_configs}}
                 )
 
-        response = await orchestrator.process_message(request)
+        response = await orchestrator.process_message(request, db=db, user_id=user_id)
 
         # Save user message (last message in the list if sent by user)
         last_msg = request.messages[-1] if request.messages else None

@@ -15,6 +15,8 @@ export type SynthesizeOptions = {
   signal?: AbortSignal;
   voiceId?: string;
   modelId?: string;
+  /** When provided, the Audio element's volume is synced to this ref every 50 ms. */
+  volumeRef?: { current: number };
 };
 
 export async function synthesizeSpeech(text: string, options?: SynthesizeOptions): Promise<string> {
@@ -52,7 +54,7 @@ export async function playSynthesizedSpeech(
 
   const url = await synthesizeSpeech(trimmed, options);
   try {
-    await playAudioUrl(url, options?.signal);
+    await playAudioUrl(url, options?.signal, options?.volumeRef);
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -132,17 +134,32 @@ export async function playWithWordSync(
   signal?.addEventListener("abort", onAbort, { once: true });
 
   try {
-    await playAudioUrl(url, signal);
+    await playAudioUrl(url, signal, options?.volumeRef);
   } finally {
     signal?.removeEventListener("abort", onAbort);
     URL.revokeObjectURL(url);
   }
 }
 
-function playAudioUrl(url: string, signal?: AbortSignal): Promise<void> {
+function playAudioUrl(
+  url: string,
+  signal?: AbortSignal,
+  volumeRef?: { current: number },
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const audio = new Audio(url);
+    if (volumeRef !== undefined) {
+      audio.volume = Math.max(0, Math.min(1, volumeRef.current));
+    }
+    // Poll the ref so mute changes take effect within 50 ms while already playing.
+    const pollId =
+      volumeRef !== undefined
+        ? setInterval(() => {
+            audio.volume = Math.max(0, Math.min(1, volumeRef.current));
+          }, 50)
+        : undefined;
     const cleanup = () => {
+      if (pollId !== undefined) clearInterval(pollId);
       signal?.removeEventListener("abort", onAbort);
     };
     const onAbort = () => {

@@ -6,6 +6,8 @@ sees the context for the *currently active* task, never the full agent
 config. This prevents prompt drift and keeps the agent grounded.
 
 Flow per message:
+  0a. Manual transfer short-circuit: if request.manual_transfer is set, bypass
+      steps 1–6 entirely and route directly via _handle_manual_transfer.
   1. Detect intent via keyword routing.
   2. Select the agent via AgentRegistry.
   3. Determine which tool (if any) should be in scope right now.
@@ -19,10 +21,13 @@ Flow per message:
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from taskorbit.agents import BaseAgent
 
 from taskorbit.config import Settings, get_settings
@@ -63,10 +68,21 @@ class ConversationOrchestrator:
         self._settings = settings or get_settings()
         self._intent_router = IntentRouter()
 
-    async def process_message(self, request: ConversationRequest) -> ConversationResponse:
+    async def process_message(
+        self,
+        request: ConversationRequest,
+        db: AsyncSession | None = None,
+        user_id: int | None = None,
+    ) -> ConversationResponse:
         """Main entry point called by the API layer and agent workers."""
         _pipeline_start = time.perf_counter()
         try:
+            # 0a. Manual transfer: UI-initiated handoff bypasses intent detection entirely.
+            if request.manual_transfer and (
+                request.manual_transfer.target_agent_id or request.manual_transfer.target_agent_name
+            ):
+                return await self._handle_manual_transfer(request, db, user_id=user_id)
+
             last_user = next(
                 (m for m in reversed(request.messages) if m.role == MessageRole.USER),
                 None,
@@ -200,7 +216,9 @@ class ConversationOrchestrator:
                 )
             else:
                 # Normal routing for subsequent turns
-                agent = AgentRegistry.create_by_name(intent.agent_name, request.agent_config, self)
+                agent = await AgentRegistry.create_by_name(
+                    intent.agent_name, request.agent_config, self, db=db, user_id=user_id
+                )
 
                 # #71: Handoff check will be enforced after workflow dependency checks.
                 # We still compute the allowed list now for later use.
@@ -344,8 +362,8 @@ class ConversationOrchestrator:
                     )
                     handoff_blocked = True
                     # Stick with the current agent
-                    agent = AgentRegistry.create_by_name(
-                        request.selected_agent, request.agent_config, self
+                    agent = await AgentRegistry.create_by_name(
+                        request.selected_agent, request.agent_config, self, db=db, user_id=user_id
                     )
                     # Revert the intent name to match the selected agent's intent
                     if request.current_intent_name:
@@ -472,7 +490,17 @@ class ConversationOrchestrator:
                         targets = active_tool.parameters.get("targets") or []
                         if targets:
                             raw = str(targets[0])
-                            normalized = raw.removesuffix("-agent").replace("-", "_")
+                            # Custom agent IDs are UUIDs (hex + hyphens). Pass
+                            # them through untouched; only slug-normalize built-in
+                            # kebab-case names (e.g. "technical-support-agent").
+                            if re.match(
+                                r"^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$",
+                                raw,
+                                re.IGNORECASE,
+                            ):
+                                normalized = raw
+                            else:
+                                normalized = raw.removesuffix("-agent").replace("-", "_")
                             dispatch_context["target_agent_id"] = normalized
                         dispatch_context["conversation_history"] = [
                             {"role": m.role.value, "content": m.content} for m in request.messages
@@ -482,7 +510,9 @@ class ConversationOrchestrator:
                             **active_tool.parameters,
                             "args": dict(slot_result.to_dict()),
                         }
-                    tool_data = await self._dispatch_tool(active_tool, dispatch_context)
+                    tool_data = await self._dispatch_tool(
+                        active_tool, dispatch_context, db=db, user_id=user_id
+                    )
                     logger.info(
                         "tool_dispatch_complete",
                         tool_type=active_tool.type,
@@ -618,6 +648,113 @@ class ConversationOrchestrator:
                 error=str(exc),
             )
 
+    async def _handle_manual_transfer(
+        self,
+        request: ConversationRequest,
+        db: AsyncSession | None,
+        user_id: int | None = None,
+    ) -> ConversationResponse:
+        """Handle a UI-initiated transfer to a specific agent by ID or name.
+
+        Resolves the target AgentConfiguration from the DB, swaps the config on
+        the request, clears the manual_transfer field to avoid recursion, then
+        re-enters the normal pipeline so intent detection, slot extraction, and
+        the LLM call all run under the new agent's persona and tools.
+        """
+        from taskorbit.database.crud import (
+            get_agent_configuration_by_id,
+            get_agent_configuration_by_name,
+            get_default_agent_template,
+        )
+        from taskorbit.types import ConversationStatus
+
+        mt = request.manual_transfer
+        target_id = mt.target_agent_id if mt else None
+
+        # Resolve by name when only a name was given — scope to caller's user_id
+        # so one user can never be routed to another user's agent config.
+        if not target_id and mt and mt.target_agent_name and db is not None:
+            record = await get_agent_configuration_by_name(
+                db, mt.target_agent_name, user_id=user_id
+            )
+            if record:
+                target_id = record.id
+
+        if not target_id:
+            logger.warning(
+                "manual_transfer_agent_not_found",
+                target_id=mt.target_agent_id if mt else None,
+                target_name=mt.target_agent_name if mt else None,
+                conversation_id=request.conversation_id,
+            )
+            return ConversationResponse(
+                conversation_id=request.conversation_id or "",
+                reply=self._make_assistant_message(
+                    "I couldn't find the requested agent. Please try again."
+                ),
+                status=ConversationStatus.ERROR,
+                error="manual_transfer_agent_not_found",
+            )
+
+        # Load target config — try user's copy first, then built-in template.
+        # Built-in (un-customized) agents live in default_agent_templates, not
+        # agent_configurations, so we need both lookups to cover all dropdown entries.
+        config_dict: dict | None = None
+        if db is not None:
+            record = await get_agent_configuration_by_id(db, target_id)
+            if record is not None:
+                config_dict = record.config
+            else:
+                template = await get_default_agent_template(db, target_id)
+                if template is not None:
+                    config_dict = template.config
+
+        if config_dict is None:
+            logger.warning(
+                "manual_transfer_agent_config_missing",
+                target_id=target_id,
+                conversation_id=request.conversation_id,
+            )
+            return ConversationResponse(
+                conversation_id=request.conversation_id or "",
+                reply=self._make_assistant_message(
+                    "I couldn't load the requested agent's configuration."
+                ),
+                status=ConversationStatus.ERROR,
+                error="manual_transfer_agent_config_missing",
+            )
+
+        try:
+            target_config = AgentConfig(**config_dict)
+        except Exception as exc:
+            logger.error(
+                "manual_transfer_invalid_config",
+                target_id=target_id,
+                error=str(exc),
+                conversation_id=request.conversation_id,
+            )
+            return ConversationResponse(
+                conversation_id=request.conversation_id or "",
+                reply=self._make_assistant_message(
+                    "The requested agent has an invalid configuration."
+                ),
+                status=ConversationStatus.ERROR,
+                error=str(exc),
+            )
+
+        logger.info(
+            "manual_transfer_executing",
+            from_agent=request.agent_config.id,
+            to_agent=target_id,
+            conversation_id=request.conversation_id,
+        )
+
+        # Re-enter the pipeline with the new agent config; full history is preserved.
+        updated_request = request.model_copy(
+            update={"agent_config": target_config, "manual_transfer": None}
+        )
+        return await self.process_message(updated_request, db, user_id=user_id)
+
     def _build_system_prompt(
         self,
         agent_config: AgentConfig,
@@ -748,6 +885,8 @@ class ConversationOrchestrator:
         self,
         tool: ToolDefinition,
         context: dict[str, Any],
+        db: AsyncSession | None = None,
+        user_id: int | None = None,
     ) -> dict[str, Any]:
         """Execute a tool after the user has confirmed (if required)."""
         from taskorbit.tools import ToolResult
@@ -769,7 +908,10 @@ class ConversationOrchestrator:
             logger.warning("unknown_tool_type", tool_type=tool.type, tool_id=tool.id)
             return {}
 
-        result: ToolResult = await tool_cls().execute(context)
+        if tool.type == ToolType.AGENT_TRANSFER:
+            result: ToolResult = await AgentTransferTool(db=db, user_id=user_id).execute(context)
+        else:
+            result = await tool_cls().execute(context)
 
         if not result.success:
             logger.warning(

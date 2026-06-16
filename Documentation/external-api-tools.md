@@ -261,7 +261,7 @@ config. The config only references their names.
 | --------------------------------------------- | -------------------------------------------------------------------------- |
 | Tool implementation                           | `backend/src/taskorbit/tools/generic_api.py`                               |
 | Tool type registration                        | `backend/src/taskorbit/types.py` (`ToolType.EXTERNAL_API`)                 |
-| Dispatch wiring                               | `backend/src/taskorbit/orchestration/__init__.py` (`_dispatch_tool`)       |
+| Dispatch wiring                               | `backend/src/taskorbit/orchestration/__init__.py` (`_dispatch_tool(tool, context, db, user_id)`) — `db` and `user_id` are threaded through so `AgentTransferTool` can reach custom agents; other tool types receive `tool_cls().execute(context)` as before |
 | JSON schema (validates saved agent configs)   | `schemas/agent-task.schema.json` (`externalApiTool` + sub-schemas)         |
 | Canonical example                             | `schemas/examples/agent-task.example.json` (`lookup_service_area` tool)    |
 | Unit tests                                    | `backend/tests/test_generic_api_tool.py`                                   |

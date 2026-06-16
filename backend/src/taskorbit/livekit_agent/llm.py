@@ -169,6 +169,7 @@ class OrchestratorAgent(Agent):
         instructions: str | None = None,
         agent_config: AgentConfig | None = None,
         conversation_id: str = "livekit-session",
+        user_id: int | None = None,
     ) -> None:
         super().__init__(
             instructions=instructions or "You are TaskOrbit, a helpful voice assistant.",
@@ -176,6 +177,7 @@ class OrchestratorAgent(Agent):
         self._orchestrator = orchestrator
         self._agent_config = agent_config or _default_agent_config()
         self._conversation_id = conversation_id
+        self._user_id = user_id
         self._reply_requested: bool = False
         self._t_commit: float | None = None
         self._locked_intent_name: str | None = None
@@ -257,7 +259,22 @@ class OrchestratorAgent(Agent):
             confirmation_id=self._pending_confirmation_id if decision else None,
             decision=decision,
         )
-        response = await self._orchestrator.process_message(request)
+
+        # Open the DB session before process_message so that manual transfers
+        # and custom-agent DB lookups work in the voice path too.
+        try:
+            async with AsyncSessionLocal() as db:
+                response = await self._orchestrator.process_message(
+                    request, db=db, user_id=self._user_id
+                )
+        except Exception as exc:
+            log.error(
+                "voice_turn_orchestrator_failed",
+                error=str(exc),
+                conversation_id=self._conversation_id,
+            )
+            raise
+
         self._locked_intent_name = response.locked_intent_name
         self._completed_workflow_steps = response.completed_workflow_steps
         if response.status == "workflow_confirmation_required" and response.confirmation:
