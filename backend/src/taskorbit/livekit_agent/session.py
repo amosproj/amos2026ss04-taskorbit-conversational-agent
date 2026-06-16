@@ -21,6 +21,7 @@ is present the historical defaults apply (Deepgram STT, ElevenLabs TTS).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from livekit.agents import AgentSession
@@ -49,6 +50,62 @@ _ELEVENLABS_STT_DEFAULT_MODEL = "scribe_v2_realtime"
 _DEEPGRAM_TTS_DEFAULT_MODEL = "aura-2-andromeda-en"
 
 
+# Per-provider "does this model belong to me?" predicates. Keeping all four in
+# one place (rather than a different ad-hoc check inside each build branch) is
+# what makes cross-provider detection symmetric: every branch routes its model
+# choice through ``_resolve_model`` with one of these.
+def _is_deepgram_stt_model(model: str) -> bool:
+    # Deepgram STT models are the Nova family (nova-3 is the FE default).
+    # The trailing hyphen also rejects typos like "nova3" that the API
+    # would reject mid-call.
+    return model.startswith("nova-")
+
+
+def _is_elevenlabs_stt_model(model: str) -> bool:
+    # Only the realtime Scribe model streams; the batch models (scribe_v1,
+    # scribe_v2) arrive too late for the worker's manual endpointing.
+    return model == _ELEVENLABS_STT_DEFAULT_MODEL
+
+
+def _is_deepgram_tts_model(model: str) -> bool:
+    # Aura voices encode the voice in the model name (aura-2-<voice>-en).
+    return model.startswith("aura")
+
+
+def _is_elevenlabs_tts_model(model: str) -> bool:
+    return model.startswith("eleven_")
+
+
+def _resolve_model(
+    *,
+    stage: str,
+    provider: str,
+    configured: str | None,
+    is_valid: Callable[[str], bool],
+    fallback: str,
+) -> str:
+    """Return ``configured`` if it is valid for ``provider``, else ``fallback``.
+
+    Single source of truth for cross-provider model detection so all four
+    STT/TTS branches behave identically: a model string that does not belong
+    to the selected provider is replaced with that provider's safe default and
+    a single ``model_not_valid_for_provider`` warning is logged. That warning
+    is the only production signal that an agent was misconfigured, so it must
+    fire on every mismatch (covered by tests).
+    """
+    if configured and is_valid(configured):
+        return configured
+    if configured:
+        logger.warning(
+            "model_not_valid_for_provider",
+            stage=stage,
+            provider=provider,
+            configured_model=configured,
+            fallback_model=fallback,
+        )
+    return fallback
+
+
 def _build_stt(cfg: Settings, agent_config: AgentConfig | None) -> deepgram.STT | elevenlabs.STT:
     """Construct the STT plugin selected by ``agent_config.stt.provider`` (#135).
 
@@ -56,36 +113,27 @@ def _build_stt(cfg: Settings, agent_config: AgentConfig | None) -> deepgram.STT 
     """
     stt_cfg = agent_config.stt if agent_config is not None else None
 
-    if stt_cfg is not None and stt_cfg.provider is STTProvider.ELEVENLABS:
-        model_id = stt_cfg.model
-        # Strict equality, not a scribe_ prefix check: scribe_v1/scribe_v2 are
-        # BATCH models (streaming=False) and would break the worker's manual
-        # endpointing turn handling. Only the realtime model is compatible.
-        if model_id != _ELEVENLABS_STT_DEFAULT_MODEL:
-            logger.warning(
-                "stt_model_not_valid_for_provider",
-                provider="elevenlabs",
-                configured_model=model_id,
-                fallback_model=_ELEVENLABS_STT_DEFAULT_MODEL,
-            )
-            model_id = _ELEVENLABS_STT_DEFAULT_MODEL
+    if stt_cfg is not None and stt_cfg.provider == STTProvider.ELEVENLABS:
+        model_id = _resolve_model(
+            stage="stt",
+            provider="elevenlabs",
+            configured=stt_cfg.model,
+            is_valid=_is_elevenlabs_stt_model,
+            fallback=_ELEVENLABS_STT_DEFAULT_MODEL,
+        )
         logger.info("stt_selected", provider="elevenlabs", model=model_id)
         return elevenlabs.STT(
             api_key=cfg.elevenlabs_api_key,
             model_id=model_id,
         )
 
-    model = cfg.deepgram_model
-    if stt_cfg is not None and stt_cfg.model:
-        if stt_cfg.model.startswith("scribe_"):
-            logger.warning(
-                "stt_model_not_valid_for_provider",
-                provider="deepgram",
-                configured_model=stt_cfg.model,
-                fallback_model=model,
-            )
-        else:
-            model = stt_cfg.model
+    model = _resolve_model(
+        stage="stt",
+        provider="deepgram",
+        configured=stt_cfg.model if stt_cfg is not None else None,
+        is_valid=_is_deepgram_stt_model,
+        fallback=cfg.deepgram_model,
+    )
     logger.info("stt_selected", provider="deepgram", model=model)
     return deepgram.STT(
         api_key=cfg.deepgram_api_key,
@@ -107,17 +155,15 @@ def _build_tts(cfg: Settings, agent_config: AgentConfig | None) -> deepgram.TTS 
     """
     tts_cfg = agent_config.tts if agent_config is not None else None
 
-    if tts_cfg is not None and tts_cfg.provider is TTSProvider.DEEPGRAM:
+    if tts_cfg is not None and tts_cfg.provider == TTSProvider.DEEPGRAM:
         # Aura voices are encoded in the model name; voice_id is unused here.
-        model = tts_cfg.model
-        if not model.startswith("aura"):
-            logger.warning(
-                "tts_model_not_valid_for_provider",
-                provider="deepgram",
-                configured_model=model,
-                fallback_model=_DEEPGRAM_TTS_DEFAULT_MODEL,
-            )
-            model = _DEEPGRAM_TTS_DEFAULT_MODEL
+        model = _resolve_model(
+            stage="tts",
+            provider="deepgram",
+            configured=tts_cfg.model,
+            is_valid=_is_deepgram_tts_model,
+            fallback=_DEEPGRAM_TTS_DEFAULT_MODEL,
+        )
         logger.info("tts_selected", provider="deepgram", model=model)
         return deepgram.TTS(
             api_key=cfg.deepgram_api_key,
@@ -133,17 +179,13 @@ def _build_tts(cfg: Settings, agent_config: AgentConfig | None) -> deepgram.TTS 
     if tts_cfg is not None and tts_cfg.voice_id:
         voice_id = tts_cfg.voice_id
         voice_source = "config"
-    model = cfg.elevenlabs_model
-    if tts_cfg is not None and tts_cfg.model:
-        if tts_cfg.model.startswith("eleven_"):
-            model = tts_cfg.model
-        else:
-            logger.warning(
-                "tts_model_not_valid_for_provider",
-                provider="elevenlabs",
-                configured_model=tts_cfg.model,
-                fallback_model=model,
-            )
+    model = _resolve_model(
+        stage="tts",
+        provider="elevenlabs",
+        configured=tts_cfg.model if tts_cfg is not None else None,
+        is_valid=_is_elevenlabs_tts_model,
+        fallback=cfg.elevenlabs_model,
+    )
     logger.info(
         "tts_selected",
         provider="elevenlabs",

@@ -89,9 +89,10 @@ tts_selected  provider=elevenlabs model=eleven_multilingual_v2 voice_id=... voic
 ```
 
 `voice_source` tells you whether the voice came from the agent config or
-the env fallback. Cross-provider model replacements log
-`stt_model_not_valid_for_provider` / `tts_model_not_valid_for_provider`
-warnings. Metadata problems are triaged: absent metadata logs info,
+the env fallback. When a configured model does not belong to the selected
+provider it is replaced with that provider's default and a single
+`model_not_valid_for_provider` warning is logged (the `stage` field marks
+it as `stt` or `tts`). Metadata problems are triaged: absent metadata logs info,
 invalid metadata logs error (the user's selection is being overridden by
 defaults), timeout/malformed JSON logs warning.
 
