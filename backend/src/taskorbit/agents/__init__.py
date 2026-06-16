@@ -278,7 +278,10 @@ class AgentRegistry:
                     logger.warning("agent_not_found", agent_name=agent_name, fallback="default")
                     return cls.create(config, orchestrator)
                 logger.info(
-                    "agent_selected", agent=custom_config.id, config_name=agent_name, via="db_fallback"
+                    "agent_selected",
+                    agent=custom_config.id,
+                    config_name=agent_name,
+                    via="db_fallback",
                 )
                 return cls.create_custom(custom_config, orchestrator)
 
