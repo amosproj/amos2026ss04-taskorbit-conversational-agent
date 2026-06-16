@@ -6,7 +6,7 @@
  * (instructions, first_message, agent_id).
  */
 
-import type { AgentConfig, ToolDefinition } from "@/types/agentConfig";
+import type { AgentConfig, SttProvider, ToolDefinition, TtsProvider } from "@/types/agentConfig";
 
 // ---------------------------------------------------------------------------
 // Wire types (backend shape)
@@ -71,9 +71,13 @@ export function backendToFrontendAgent(entry: UserAgentEntry): AgentConfig {
     name: c.name,
     instructions: c.persona ?? "",
     first_message: { type: "text", message: c.greeting ?? "", prompt: "" },
-    stt: { provider: c.stt.provider as "deepgram", model: c.stt.model },
+    stt: { provider: c.stt.provider as SttProvider, model: c.stt.model },
     llm: { provider: (c.llm.provider ?? "openai") as "openai" | "gemini", model: c.llm.model },
-    tts: { provider: c.tts.provider as "elevenlabs", voice_id: c.tts.voice_id, model: c.tts.model },
+    tts: {
+      provider: c.tts.provider as TtsProvider,
+      voice_id: c.tts.voice_id,
+      model: c.tts.model,
+    },
     tools: frontendTools,
     variables: c.variables ?? {},
     engine: c.engine ?? {},
