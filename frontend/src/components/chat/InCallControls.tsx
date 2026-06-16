@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowUp, Mic, PhoneOff, Wand2 } from "lucide-react";
+import { ArrowUp, Mic, PhoneOff, Volume2, VolumeX, Wand2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useMicRecorder } from "@/hooks/useMicRecorder";
@@ -34,6 +34,8 @@ type Props = {
   onSendText: (text: string) => void;
   onTriggerConfirmation: () => void;
   onMicError: (message: string | null) => void;
+  agentMuted: boolean;
+  onAgentMutedChange: (muted: boolean) => void;
 };
 
 export function InCallControls({
@@ -44,6 +46,8 @@ export function InCallControls({
   onSendText,
   onTriggerConfirmation,
   onMicError,
+  agentMuted,
+  onAgentMutedChange,
 }: Props) {
   const mic = useMicRecorder();
   const [draft, setDraft] = useState("");
@@ -338,6 +342,23 @@ export function InCallControls({
           ) : (
             <Mic size={18} />
           )}
+        </button>
+
+        {/* ── Agent output mute toggle ── */}
+        <button
+          type="button"
+          onClick={() => onAgentMutedChange(!agentMuted)}
+          aria-pressed={agentMuted}
+          aria-label={agentMuted ? "Unmute agent output" : "Mute agent output"}
+          className={cn(
+            "flex size-11 shrink-0 items-center justify-center rounded-full border",
+            "transition-all duration-200",
+            agentMuted
+              ? "border-transparent bg-destructive/15 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+              : "border-border bg-card text-foreground hover:bg-muted",
+          )}
+        >
+          {agentMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
         </button>
 
         {/* ── Demo confirmation (icon-only) ── */}
