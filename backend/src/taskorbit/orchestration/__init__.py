@@ -83,6 +83,11 @@ class ConversationOrchestrator:
             ):
                 return await self._handle_manual_transfer(request, db, user_id=user_id)
 
+            if db is not None and user_id is not None:
+                from taskorbit.database.crud import enrich_request_dependency_configs
+
+                request = await enrich_request_dependency_configs(request, db, user_id)
+
             last_user = next(
                 (m for m in reversed(request.messages) if m.role == MessageRole.USER),
                 None,

@@ -17,10 +17,10 @@ from taskorbit.database.crud import (
     create_conversation_message,
     create_slot_extractions,
     create_tool_execution,
+    enrich_request_dependency_configs,
     get_conversation,
     get_conversation_history,
     get_messages_by_conversation,
-    resolve_dependency_agent_config,
 )
 from taskorbit.database.models import Conversation  # used in POST "" route
 from taskorbit.logging.setup import get_logger
@@ -67,33 +67,7 @@ async def process_conversation(
         message_count=len(request.messages),
     )
     try:
-        # AC #71: Resolve dependency configurations from DB for the orchestrator.
-        # This ensures that when a workflow prerequisite is triggered, the engine
-        # can correctly act as that agent (using its persona/tools) even if the
-        # frontend didn't provide it yet.
-        if request.agent_config.workflow_dependencies:
-            dep_configs = {}
-            for dep_id in request.agent_config.workflow_dependencies:
-                # Priority 1: Already in request (frontend-provided)
-                if dep_id in request.dependency_configs:
-                    continue
-
-                # Priority 2: Fetch from DB by logical config id (agent_id in JSON blob)
-                resolved = await resolve_dependency_agent_config(db, dep_id, user_id)
-                if resolved:
-                    dep_configs[dep_id] = resolved
-                    continue
-
-                logger.warning(
-                    "workflow_dependency_config_unresolved",
-                    dependency=dep_id,
-                    conversation_id=conversation_id,
-                )
-
-            if dep_configs:
-                request = request.model_copy(
-                    update={"dependency_configs": {**request.dependency_configs, **dep_configs}}
-                )
+        request = await enrich_request_dependency_configs(request, db, user_id)
 
         response = await orchestrator.process_message(request, db=db, user_id=user_id)
 

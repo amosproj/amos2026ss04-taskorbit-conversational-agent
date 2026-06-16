@@ -18,8 +18,17 @@ import { useActiveAgent } from "@/components/active-agent-provider";
 import { buildLiveKitWorkerMetadata } from "@/lib/livekitAgentMetadata";
 import { sendMessage, getConversations } from "@/lib/conversationApi";
 import { playSynthesizedSpeech } from "@/lib/ttsApi";
-import { backendToFrontendAgent, fetchUserAgents } from "@/lib/userAgentsApi";
+import { backendToFrontendAgent, fetchUserAgents, type UserAgentEntry } from "@/lib/userAgentsApi";
 import type { LiveTranscriptTurn } from "@/types/callState";
+
+function findUserAgentEntry(
+  entries: UserAgentEntry[],
+  agentKey: string,
+): UserAgentEntry | undefined {
+  return entries.find(
+    (e) => e.template_id === agentKey || e.id === agentKey || e.config.id === agentKey,
+  );
+}
 
 // Tidy up common Deepgram artefacts in user transcription before display.
 // Runs at render time only — does not mutate stored state.
@@ -245,7 +254,12 @@ export function ConversationalChat() {
       // initialize the session here (which transitions the UI and generates an ID)
       // before dispatching the message.
       if (call.status === "idle") {
-        convId = call.start();
+        lockedIntentRef.current = null;
+        manualRoutingLockRef.current = false;
+        setRoutedAgent(null);
+        setCompletedWorkflowSteps([]);
+        pendingConfirmationIdRef.current = null;
+        convId = call.start({ tokenMetadata: buildLiveKitWorkerMetadata(agent) });
       }
 
       call.appendUserTurn(text);
@@ -278,10 +292,7 @@ export function ConversationalChat() {
             // Swapping card if agent changed after decision
             if (response.selected_agent !== agent.agent_id && !manualRoutingLockRef.current) {
               const entries = await fetchUserAgents(controller.signal);
-              const match = entries.find(
-                (e) =>
-                  e.template_id === response.selected_agent || e.id === response.selected_agent,
-              );
+              const match = findUserAgentEntry(entries, response.selected_agent);
               if (match) {
                 const next = backendToFrontendAgent(match);
                 setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
@@ -468,12 +479,35 @@ export function ConversationalChat() {
             lockedIntentRef.current,
             confirmationId,
             decision,
+            completedWorkflowSteps,
+            routedAgent,
           );
+          call.updateConversationId(response.conversation_id);
           lockedIntentRef.current = response.locked_intent_name ?? null;
+          setCompletedWorkflowSteps(response.completed_workflow_steps ?? []);
 
-          if (response.status === "confirmation_required" && response.confirmation) {
+          if (response.selected_agent) {
+            setRoutedAgent(response.selected_agent);
+            if (response.selected_agent !== agent.agent_id && !manualRoutingLockRef.current) {
+              const entries = await fetchUserAgents(controller.signal);
+              const match = findUserAgentEntry(entries, response.selected_agent);
+              if (match) {
+                const next = backendToFrontendAgent(match);
+                setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
+              }
+            }
+          }
+
+          if (
+            (response.status === "confirmation_required" ||
+              response.status === "workflow_confirmation_required") &&
+            response.confirmation
+          ) {
             pendingConfirmationIdRef.current = response.confirmation.confirmation_id;
-            call.triggerConfirmation(response.confirmation);
+            call.triggerConfirmation({
+              ...response.confirmation,
+              type: response.status === "workflow_confirmation_required" ? "workflow" : "tool",
+            });
             return;
           }
 
@@ -505,7 +539,7 @@ export function ConversationalChat() {
         }
       });
     },
-    [agent, call],
+    [agent, call, completedWorkflowSteps, routedAgent, setActiveAgent],
   );
 
   const handleApprove = useCallback(() => {
@@ -527,6 +561,7 @@ export function ConversationalChat() {
   const handleRestart = useCallback(() => {
     lockedIntentRef.current = null;
     manualRoutingLockRef.current = false;
+    pendingConfirmationIdRef.current = null;
     setRoutedAgent(null);
     setCompletedWorkflowSteps([]);
     call.restart();
@@ -535,6 +570,7 @@ export function ConversationalChat() {
   const handleStartSession = useCallback(() => {
     // console.log("[greeting] handleStartSession fired");
     lockedIntentRef.current = null;
+    pendingConfirmationIdRef.current = null;
     setRoutedAgent(null);
     setCompletedWorkflowSteps([]);
     call.start({ tokenMetadata: buildLiveKitWorkerMetadata(agent) });

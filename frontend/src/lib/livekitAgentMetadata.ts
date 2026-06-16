@@ -91,5 +91,7 @@ export function buildLiveKitWorkerMetadata(agent: AgentConfig): Record<string, u
     },
     tools: agent.tools.map((t) => adaptTool(t, agent.confirmations)),
     persona_constraints: agent.persona_constraints ?? null,
+    workflow_dependencies: agent.workflow_dependencies ?? [],
+    allowed_handoffs: agent.allowed_handoffs ?? [],
   };
 }

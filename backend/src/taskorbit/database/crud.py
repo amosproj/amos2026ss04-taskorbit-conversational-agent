@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from taskorbit.agent_config_util import agent_config_from_stored_blob, logical_id_from_stored_blob
 from taskorbit.logging.setup import get_logger
-from taskorbit.types import AgentConfig
+from taskorbit.types import AgentConfig, ConversationRequest
 
 from .models import (
     AgentConfiguration,
@@ -664,6 +664,36 @@ async def resolve_dependency_agent_config(
             error=str(e),
         )
         return None
+
+
+async def enrich_request_dependency_configs(
+    request: ConversationRequest,
+    db: AsyncSession,
+    user_id: int,
+) -> ConversationRequest:
+    """Attach resolved prerequisite AgentConfigs to a conversation request."""
+    if not request.agent_config.workflow_dependencies:
+        return request
+
+    dep_configs: dict[str, AgentConfig] = {}
+    for dep_id in request.agent_config.workflow_dependencies:
+        if dep_id in request.dependency_configs:
+            continue
+        resolved = await resolve_dependency_agent_config(db, dep_id, user_id)
+        if resolved:
+            dep_configs[dep_id] = resolved
+        else:
+            logger.warning(
+                "workflow_dependency_config_unresolved",
+                dependency=dep_id,
+                conversation_id=request.conversation_id,
+            )
+
+    if not dep_configs:
+        return request
+    return request.model_copy(
+        update={"dependency_configs": {**request.dependency_configs, **dep_configs}}
+    )
 
 
 async def update_user_agent(

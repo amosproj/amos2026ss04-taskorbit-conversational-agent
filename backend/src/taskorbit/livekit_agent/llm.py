@@ -15,6 +15,7 @@ later only requires changing ``ConversationOrchestrator.process_message``
 
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import AsyncIterable
 from typing import Any
@@ -44,6 +45,30 @@ from taskorbit.types import (
 )
 
 log = get_logger(__name__)
+
+_CONFIRM_PATTERNS = (
+    r"\byes\b",
+    r"\bproceed\b",
+    r"\bsure\b",
+    r"\bok\b",
+    r"\bgo ahead\b",
+)
+_REJECT_PATTERNS = (
+    r"\bno\b",
+    r"\bstop\b",
+    r"\bcancel\b",
+    r"\bwait\b",
+)
+
+
+def _voice_confirmation_decision(content: str) -> str | None:
+    """Map spoken text to a workflow/tool confirmation when one is pending."""
+    lowered = content.lower()
+    if any(re.search(pat, lowered) for pat in _CONFIRM_PATTERNS):
+        return "confirm"
+    if any(re.search(pat, lowered) for pat in _REJECT_PATTERNS):
+        return "reject"
+    return None
 
 
 def _default_agent_config() -> AgentConfig:
@@ -243,11 +268,7 @@ class OrchestratorAgent(Agent):
         # confirmation, we check if the user said something affirmative.
         decision = None
         if self._pending_confirmation_id and last_user:
-            content = last_user.content.lower()
-            if any(word in content for word in ["yes", "proceed", "sure", "ok", "go ahead"]):
-                decision = "confirm"
-            elif any(word in content for word in ["no", "stop", "cancel", "wait"]):
-                decision = "reject"
+            decision = _voice_confirmation_decision(last_user.content)
 
         request = ConversationRequest(
             conversation_id=self._conversation_id,
