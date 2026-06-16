@@ -25,7 +25,7 @@ from taskorbit.database.crud import (
 from taskorbit.database.models import Conversation  # used in POST "" route
 from taskorbit.logging.setup import get_logger
 from taskorbit.orchestration import ConversationOrchestrator
-from taskorbit.types import AgentConfig, ConversationRequest, ConversationResponse, MessageRole
+from taskorbit.types import ConversationRequest, ConversationResponse, MessageRole
 
 logger = get_logger(__name__)
 
