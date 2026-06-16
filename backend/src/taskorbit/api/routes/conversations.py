@@ -19,6 +19,7 @@ from taskorbit.database.crud import (
     create_conversation_message,
     create_slot_extractions,
     create_tool_execution,
+    enrich_request_dependency_configs,
     get_conversation,
     get_conversation_history,
     get_messages_by_conversation,
@@ -68,7 +69,9 @@ async def process_conversation(
         message_count=len(request.messages),
     )
     try:
-        response = await orchestrator.process_message(request)
+        request = await enrich_request_dependency_configs(request, db, user_id)
+
+        response = await orchestrator.process_message(request, db=db, user_id=user_id)
 
         # Save user message (last message in the list if sent by user)
         last_msg = request.messages[-1] if request.messages else None
@@ -202,7 +205,7 @@ async def _sse_generator(
                 conversation_id=request.conversation_id,
             )
 
-    yield f"data: {json.dumps({'type': 'done', 'intent': meta.selected_intent, 'status': meta.status, 'selected_agent': meta.selected_agent, 'slots': meta.extracted_slots, 'missing_slots': meta.missing_slots, 'conversation_id': meta.conversation_id, 'locked_intent_name': meta.locked_intent_name, 'next_active_tool_id': meta.next_active_tool_id, 'tool_invoked': meta.tool_invoked.model_dump() if meta.tool_invoked else None})}\n\n"
+    yield f"data: {json.dumps({'type': 'done', 'intent': meta.selected_intent, 'status': meta.status, 'selected_agent': meta.selected_agent, 'slots': meta.extracted_slots, 'missing_slots': meta.missing_slots, 'conversation_id': meta.conversation_id, 'locked_intent_name': meta.locked_intent_name, 'next_active_tool_id': meta.next_active_tool_id, 'tool_invoked': meta.tool_invoked.model_dump() if meta.tool_invoked else None, 'completed_workflow_steps': meta.completed_workflow_steps, 'confirmation': meta.confirmation.model_dump() if meta.confirmation else None})}\n\n"
 
 
 @router.post("/stream")

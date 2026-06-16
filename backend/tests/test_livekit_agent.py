@@ -12,14 +12,14 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, Iterator
+from collections.abc import Iterator
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from taskorbit.config import get_settings
-from taskorbit.livekit_agent.llm import OrchestratorAgent
+from taskorbit.livekit_agent.llm import OrchestratorAgent, _voice_confirmation_decision
 from taskorbit.livekit_agent.session import build_agent_session
 from taskorbit.types import (
     AgentConfig,
@@ -107,6 +107,17 @@ def _make_chat_ctx(messages: list[tuple[str, str]]) -> Any:
     return ctx
 
 
+@pytest.fixture(autouse=True)
+def _patch_async_session() -> Any:
+    """Prevent llm_node tests from opening a real DB connection."""
+    mock_db = AsyncMock()
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_db)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+    with patch("taskorbit.livekit_agent.llm.AsyncSessionLocal", return_value=mock_session):
+        yield
+
+
 def _make_agent(reply: str) -> tuple[OrchestratorAgent, MagicMock]:
     orchestrator = MagicMock()
     response = ConversationResponse(
@@ -115,13 +126,11 @@ def _make_agent(reply: str) -> tuple[OrchestratorAgent, MagicMock]:
     )
     captured: list[Any] = []
 
-    async def _stream(request: Any) -> AsyncGenerator[Any, None]:
+    async def _process_message(request: Any, db: Any = None, user_id: Any = None) -> Any:
         captured.append(request)
-        if reply:
-            yield reply
-        yield response
+        return response
 
-    orchestrator.process_message_stream = _stream
+    orchestrator.process_message = _process_message
     orchestrator._captured = captured
     agent = OrchestratorAgent(
         orchestrator=orchestrator,
@@ -266,11 +275,8 @@ async def test_voice_path_propagates_persona_guardrails_into_prompt(
     )
     voice_agent_config = _default_agent_config()
 
-    async def _reply_stream(*args: Any, **kwargs: Any) -> AsyncGenerator[str, None]:
-        yield "Sorry, only TechStore."
-
     mock_client = MagicMock()
-    mock_client.generate_stream = MagicMock(side_effect=_reply_stream)
+    mock_client.generate = AsyncMock(return_value="Sorry, only TechStore.")
 
     agent = OrchestratorAgent(
         orchestrator=orchestrator,
@@ -283,7 +289,7 @@ async def test_voice_path_propagates_persona_guardrails_into_prompt(
     with patch("taskorbit.integrations.llm.factory.get_llm_client", return_value=mock_client):
         [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
 
-    augmented_prompt = mock_client.generate_stream.call_args.args[0]
+    augmented_prompt = mock_client.generate.call_args.args[0]
     # Asserting against the new imperative headers
     assert "Authorized Scope:" in augmented_prompt
     assert "CORE CONSTRAINT - Forbidden Topics" in augmented_prompt
@@ -350,6 +356,17 @@ async def test_llm_node_normalizes_unicode_em_dash_from_stt() -> None:
     request = orchestrator._captured[0]
     assert "—" not in request.messages[0].content
     assert "-" in request.messages[0].content
+
+
+def test_voice_confirmation_does_not_match_ok_substring_in_hello() -> None:
+    assert _voice_confirmation_decision("hello") is None
+
+
+def test_voice_confirmation_matches_explicit_confirm_and_reject() -> None:
+    assert _voice_confirmation_decision("ok") == "confirm"
+    assert _voice_confirmation_decision("Yes, proceed") == "confirm"
+    assert _voice_confirmation_decision("go ahead please") == "confirm"
+    assert _voice_confirmation_decision("cancel") == "reject"
 
 
 # ---------------------------------------------------------------------------

@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ---------------------------------------------------------------------------
 # Enumerations
@@ -35,13 +35,19 @@ class ConversationStatus(str, Enum):
     SUCCESS = "success"
     CLARIFICATION = "clarification"
     CONFIRMATION_REQUIRED = "confirmation_required"
+    WORKFLOW_CONFIRMATION_REQUIRED = "workflow_confirmation_required"
+    HANDOFF_BLOCKED = "handoff_blocked"
     REJECTED = "rejected"
     ENDED = "ended"
     ERROR = "error"
 
 
 class STTProvider(str, Enum):
+    """Speech-to-text providers. Both entries support STT and TTS (#135),
+    so either can be selected independently of the TTS choice."""
+
     DEEPGRAM = "deepgram"
+    ELEVENLABS = "elevenlabs"
 
 
 class LLMProvider(str, Enum):
@@ -50,7 +56,11 @@ class LLMProvider(str, Enum):
 
 
 class TTSProvider(str, Enum):
+    """Text-to-speech providers. Mirror of STTProvider: both vendors are
+    dual-capability, enabling the full interchangeable matrix (#135)."""
+
     ELEVENLABS = "elevenlabs"
+    DEEPGRAM = "deepgram"
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +162,8 @@ class AgentConfig(BaseModel):
     tools: list[ToolDefinition] = Field(default_factory=list)
     persona_constraints: PersonaConstraints | None = None
     context_limit: ContextLimitConfig | None = None
+    workflow_dependencies: list[str] = Field(default_factory=list)
+    allowed_handoffs: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -165,15 +177,42 @@ class ConfirmationResponsePayload(BaseModel):
     description: str
 
 
+class ManualTransferRequest(BaseModel):
+    """Carries a UI-initiated agent transfer directive.
+
+    Either ``target_agent_id`` (UUID hex of a saved AgentConfiguration) or
+    ``target_agent_name`` (human-readable name) must be set. When both are
+    provided, ``target_agent_id`` takes precedence.
+    """
+
+    target_agent_id: str | None = None
+    target_agent_name: str | None = None
+
+    @model_validator(mode="after")
+    def require_at_least_one_target(self) -> ManualTransferRequest:
+        if not (self.target_agent_id or self.target_agent_name):
+            raise ValueError(
+                "ManualTransferRequest requires at least one of target_agent_id or target_agent_name"
+            )
+        return self
+
+
 class ConversationRequest(BaseModel):
     conversation_id: str | None = None  # omit on first message; backend assigns and returns one
     agent_config: AgentConfig
     messages: list[Message]
     current_intent_name: str | None = None
+    selected_agent: str | None = None
     active_tool_id: str | None = None
     # AC #49: Decision fields
     confirmation_id: str | None = None
     decision: Literal["confirm", "reject"] | None = None
+    # #71: Workflow state
+    completed_workflow_steps: list[str] = Field(default_factory=list)
+    # AC #71: Map of agent IDs to their full configurations for resolving dependencies.
+    dependency_configs: dict[str, AgentConfig] = Field(default_factory=dict)
+    # Manual transfer: UI-initiated handoff to a specific agent (bypasses intent detection)
+    manual_transfer: ManualTransferRequest | None = None
 
 
 class ConversationResponse(BaseModel):
@@ -191,6 +230,8 @@ class ConversationResponse(BaseModel):
     missing_slots: list[str] = Field(default_factory=list)
     locked_intent_name: str | None = None
     next_active_tool_id: str | None = None
+    # #71: Workflow state
+    completed_workflow_steps: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

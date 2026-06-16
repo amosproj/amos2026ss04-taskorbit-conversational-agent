@@ -111,6 +111,8 @@ You are the main orchestrator who guides customers through the service flow:
     },
   ],
   engine: {},
+  workflow_dependencies: [],
+  allowed_handoffs: [],
   persona_constraints: {
     scope:
       "TechStore customer service: account setup, order tracking, returns, and product questions.",
@@ -141,4 +143,6 @@ export const EMPTY_AGENT: AgentConfig = {
   llm: { provider: "openai", model: "" },
   tools: [],
   engine: {},
+  workflow_dependencies: [],
+  allowed_handoffs: [],
 };

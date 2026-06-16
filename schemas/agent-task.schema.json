@@ -116,6 +116,16 @@
         "persona_constraints": {
           "$ref": "#/$defs/personaConstraints",
           "description": "Optional scope/refusal guardrails — keeps agent in role on off-topic input (ticket #69)."
+        },
+        "workflow_dependencies": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of agent IDs that must be completed before this agent can be executed."
+        },
+        "allowed_handoffs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of agent IDs that this agent is allowed to hand off the conversation to."
         }
       }
     },

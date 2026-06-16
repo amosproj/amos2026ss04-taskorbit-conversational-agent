@@ -69,28 +69,49 @@ async def entrypoint(ctx: JobContext) -> None:
         participant = await asyncio.wait_for(ctx.wait_for_participant(), timeout=30.0)
         meta = json.loads(participant.metadata or "{}")
         greeting = str(meta.get("greeting") or "")
-        try:
-            agent_config = AgentConfig.model_validate(meta)
+        if not meta:
+            # No metadata at all (e.g. LiveKit playground / CLI joins): the
+            # defaults are the correct behavior, not a failure.
             logger.info(
-                "worker_agent_config_loaded_from_metadata",
-                agent_id=agent_config.id,
-                agent_name=agent_config.name,
+                "worker_no_participant_metadata",
+                effect="default agent config and STT/TTS providers",
             )
-            logger.info(
-                "worker_agent_config_tools_loaded",
-                tools_count=len(agent_config.tools),
-                tool_types=[t.type for t in agent_config.tools],
-            )
-        except ValidationError as exc:
-            logger.warning(
-                "worker_agent_config_parse_failed",
-                error=str(exc),
-                fallback="_default_agent_config",
-            )
-    except Exception:  # noqa: BLE001
-        pass
+        else:
+            try:
+                agent_config = AgentConfig.model_validate(meta)
+                logger.info(
+                    "worker_agent_config_loaded_from_metadata",
+                    agent_id=agent_config.id,
+                    agent_name=agent_config.name,
+                )
+                logger.info(
+                    "worker_agent_config_tools_loaded",
+                    tools_count=len(agent_config.tools),
+                    tool_types=[t.type for t in agent_config.tools],
+                )
+            except ValidationError as exc:
+                # Error-level on purpose: metadata WAS provided but could not
+                # be used, so the session falls back to DEFAULT STT/TTS
+                # providers (#135), overriding whatever the user selected in
+                # the agent config. Must be loud in logs.
+                logger.error(
+                    "worker_agent_config_parse_failed",
+                    error=str(exc),
+                    fallback="_default_agent_config",
+                    effect="default STT/TTS providers will be used",
+                )
+    except Exception as exc:  # noqa: BLE001
+        # Covers wait_for_participant timeout and malformed-JSON metadata;
+        # both land on default config + providers, so say so in the logs.
+        logger.warning(
+            "worker_participant_metadata_unavailable",
+            error=str(exc),
+            effect="default agent config and STT/TTS providers",
+        )
 
-    session = build_agent_session(settings=cfg)
+    # #135: forward the parsed config so the session constructs the STT/TTS
+    # providers the user selected, instead of always using the env defaults.
+    session = build_agent_session(settings=cfg, agent_config=agent_config)
     agent = build_default_agent(
         settings=cfg,
         agent_config=agent_config,
@@ -150,6 +171,7 @@ async def entrypoint(ctx: JobContext) -> None:
             get_metrics().pipeline_latency_seconds.labels(stage="worker_turn").observe(
                 _turn_elapsed
             )
+            logger.info("voice_turn_complete", latency_ms=round(_turn_elapsed * 1000, 1))
             logger.info(
                 "worker_generate_reply_triggered",
                 turn_latency_ms=round(_turn_elapsed * 1000, 1),

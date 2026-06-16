@@ -18,8 +18,17 @@ import { useActiveAgent } from "@/components/active-agent-provider";
 import { buildLiveKitWorkerMetadata } from "@/lib/livekitAgentMetadata";
 import { sendMessage, sendMessageStream, getConversations } from "@/lib/conversationApi";
 import { playSynthesizedSpeech } from "@/lib/ttsApi";
-import { backendToFrontendAgent, fetchUserAgents } from "@/lib/userAgentsApi";
+import { backendToFrontendAgent, fetchUserAgents, type UserAgentEntry } from "@/lib/userAgentsApi";
 import type { LiveTranscriptTurn } from "@/types/callState";
+
+function findUserAgentEntry(
+  entries: UserAgentEntry[],
+  agentKey: string,
+): UserAgentEntry | undefined {
+  return entries.find(
+    (e) => e.template_id === agentKey || e.id === agentKey || e.config.id === agentKey,
+  );
+}
 
 // Tidy up common Deepgram artefacts in user transcription before display.
 // Runs at render time only — does not mutate stored state.
@@ -84,7 +93,16 @@ export function ConversationalChat() {
   // Starts true (no call active). Set false on call start, then back to
   // true once the first speaking→idle_in_call transition is detected.
   const [greetingDone, setGreetingDone] = useState(true);
+  const [agentMuted, setAgentMuted] = useState(false);
   const [routedAgent, setRoutedAgent] = useState<string | null>(null);
+  // Stable ref so async playback closures always read the current mute state.
+  const agentVolumeRef = useRef(1);
+  useEffect(() => {
+    agentVolumeRef.current = agentMuted ? 0 : 1;
+  }, [agentMuted]);
+  // When the user manually routes via the @chip, lock out voice-based routing
+  // overrides until the manual routing is cleared or the session restarts.
+  const manualRoutingLockRef = useRef(false);
   const greetingSeenSpeakingRef = useRef(false);
   const greetingTimeoutRef = useRef<number | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
@@ -92,6 +110,7 @@ export function ConversationalChat() {
   const lastUserTurnIdRef = useRef<string | null>(null);
   const lockedIntentRef = useRef<string | null>(null);
   const pendingConfirmationIdRef = useRef<string | null>(null);
+  const [completedWorkflowSteps, setCompletedWorkflowSteps] = useState<string[]>([]);
   const [previousConversations, setPreviousConversations] = useState<
     Record<string, string | null>[]
   >([]);
@@ -147,6 +166,13 @@ export function ConversationalChat() {
       if (greetingTimeoutRef.current !== null) clearTimeout(greetingTimeoutRef.current);
     };
   }, []);
+
+  // Reset mute state between calls so a new session is never silently muted.
+  useEffect(() => {
+    if (call.status === "idle" || call.status === "ended") {
+      setAgentMuted(false);
+    }
+  }, [call.status]);
 
   // Detect greeting completion: first speaking → idle_in_call transition after
   // a call starts. Unlocks the mic button and triggers continuous mode.
@@ -218,14 +244,22 @@ export function ConversationalChat() {
   );
 
   const handleSendText = useCallback(
-    (text: string) => {
+    (
+      text: string,
+      manualTransfer?: { target_agent_id: string; target_agent_name: string } | null,
+    ) => {
       let convId = call.conversationId;
       // If the user starts a session via the "Use text instead" input rather than the
       // "Start session" button, the UI state is still 'idle'. We must explicitly
       // initialize the session here (which transitions the UI and generates an ID)
       // before dispatching the message.
       if (call.status === "idle") {
-        convId = call.start();
+        lockedIntentRef.current = null;
+        manualRoutingLockRef.current = false;
+        setRoutedAgent(null);
+        setCompletedWorkflowSteps([]);
+        pendingConfirmationIdRef.current = null;
+        convId = call.start({ tokenMetadata: buildLiveKitWorkerMetadata(agent) });
       }
 
       call.appendUserTurn(text);
@@ -246,6 +280,11 @@ export function ConversationalChat() {
             convId,
             controller.signal,
             lockedIntentRef.current,
+            null,
+            null,
+            completedWorkflowSteps,
+            routedAgent,
+            manualTransfer ?? null,
           );
 
           for await (const event of stream) {
@@ -254,14 +293,78 @@ export function ConversationalChat() {
               call.upsertTurnById(assistantTurnId, "assistant", replyText, false);
             } else if (event.type === "done") {
               call.upsertTurnById(assistantTurnId, "assistant", replyText, true);
+
+              if (event.conversation_id) call.updateConversationId(event.conversation_id);
               lockedIntentRef.current = event.locked_intent_name ?? null;
-              if (event.selected_agent) setRoutedAgent(event.selected_agent);
+              setCompletedWorkflowSteps(event.completed_workflow_steps ?? []);
+
+              if (!manualTransfer && event.selected_agent) {
+                setRoutedAgent(event.selected_agent);
+                if (event.selected_agent !== agent.agent_id && !manualRoutingLockRef.current) {
+                  const entries = await fetchUserAgents(controller.signal);
+                  const match = findUserAgentEntry(entries, event.selected_agent);
+                  if (match) {
+                    const next = backendToFrontendAgent(match);
+                    setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
+                  }
+                }
+              }
+
+              if (
+                (event.status === "confirmation_required" ||
+                  event.status === "workflow_confirmation_required") &&
+                event.confirmation
+              ) {
+                pendingConfirmationIdRef.current = event.confirmation.confirmation_id;
+                call.triggerConfirmation({
+                  ...event.confirmation,
+                  type: event.status === "workflow_confirmation_required" ? "workflow" : "tool",
+                });
+                return;
+              }
+
+              // Manual transfer: swap active agent config after backend confirmation.
+              // The transcript announcement was already appended in handleRoutingTargetChange.
+              if (manualTransfer?.target_agent_id && event.status !== "error") {
+                const badgeName = manualTransfer.target_agent_name
+                  .replace(/\s+[Aa]gent$/i, "")
+                  .trim();
+                manualRoutingLockRef.current = true;
+                setRoutedAgent(badgeName);
+                try {
+                  const entries = await fetchUserAgents(controller.signal);
+                  const match = entries.find(
+                    (e) =>
+                      e.id === manualTransfer.target_agent_id ||
+                      e.template_id === manualTransfer.target_agent_id,
+                  );
+                  if (match) {
+                    const next = backendToFrontendAgent(match);
+                    setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
+                  } else {
+                    call.appendAssistantTurn(
+                      `[Could not transfer to ${manualTransfer.target_agent_name}]`,
+                    );
+                    setRoutedAgent(null);
+                    manualRoutingLockRef.current = false;
+                  }
+                } catch (transferErr) {
+                  if ((transferErr as Error).name !== "AbortError") {
+                    call.appendAssistantTurn(
+                      `[Could not transfer to ${manualTransfer.target_agent_name}]`,
+                    );
+                    setRoutedAgent(null);
+                    manualRoutingLockRef.current = false;
+                  }
+                }
+              }
 
               if (event.status === "ended") {
                 if (replyText) {
-                  await playSynthesizedSpeech(replyText, { signal: controller.signal }).catch(
-                    () => {},
-                  );
+                  await playSynthesizedSpeech(replyText, {
+                    signal: controller.signal,
+                    volumeRef: agentVolumeRef,
+                  }).catch(() => {});
                 }
                 call.end();
                 return;
@@ -270,11 +373,7 @@ export function ConversationalChat() {
               // Agent handoff (#8 Task 6): backend's IntentRouter / dispatch decided
               // to transfer the conversation. Swap the displayed agent and add a
               // transcript marker so the user sees the switch.
-              // NOTE: backend currently exposes only the agent's configured targets
-              // in tool_invoked.parameters; the actual transferred_to id from
-              // ToolResult.data is not propagated (orchestration/__init__.py:169).
-              // First target works for single-target configs (e.g. JOHN_DOE_AGENT).
-              if (event.tool_invoked?.type === "agent_transfer") {
+              if (!manualTransfer && event.tool_invoked?.type === "agent_transfer") {
                 const targets = (event.tool_invoked.parameters as { targets?: string[] })?.targets;
                 const targetId = targets?.[0];
                 if (targetId) {
@@ -308,7 +407,10 @@ export function ConversationalChat() {
           if (speakable) {
             call.setPhase("speaking");
             try {
-              await playSynthesizedSpeech(replyText, { signal: controller.signal });
+              await playSynthesizedSpeech(replyText, {
+                signal: controller.signal,
+                volumeRef: agentVolumeRef,
+              });
             } catch (audioErr) {
               if ((audioErr as Error).name !== "AbortError") {
                 console.warn("[ConversationalChat] ElevenLabs playback failed", audioErr);
@@ -354,8 +456,31 @@ export function ConversationalChat() {
   );
 
   const handleVoiceAgentRouted = useCallback((agentName: string) => {
+    if (manualRoutingLockRef.current) return;
     setRoutedAgent(agentName);
   }, []);
+
+  // Fires the moment the user picks an agent from the route dropdown.
+  // Shows the transcript announcement and speaks it immediately so the user
+  // gets visual + audio feedback on selection. setActiveAgent is intentionally
+  // NOT called here — the config swap happens in handleSendText after backend
+  // confirmation to avoid swapping before the turn is actually sent.
+  const handleRoutingTargetChange = useCallback(
+    (target: { id: string; name: string } | null) => {
+      if (!target) {
+        manualRoutingLockRef.current = false;
+        setRoutedAgent(null);
+        return;
+      }
+      const badgeName = target.name.replace(/\s+[Aa]gent$/i, "").trim();
+      manualRoutingLockRef.current = true;
+      setRoutedAgent(badgeName);
+      const transferMsg = `Transferring you to ${target.name} upon your request.`;
+      call.appendAssistantTurn(transferMsg);
+      playSynthesizedSpeech(transferMsg).catch(() => {});
+    },
+    [call],
+  );
 
   const handleTriggerConfirmation = useCallback(() => {
     // Confirmation is triggered by the backend response, not a UI button.
@@ -377,12 +502,35 @@ export function ConversationalChat() {
             lockedIntentRef.current,
             confirmationId,
             decision,
+            completedWorkflowSteps,
+            routedAgent,
           );
+          call.updateConversationId(response.conversation_id);
           lockedIntentRef.current = response.locked_intent_name ?? null;
+          setCompletedWorkflowSteps(response.completed_workflow_steps ?? []);
 
-          if (response.status === "confirmation_required" && response.confirmation) {
+          if (response.selected_agent) {
+            setRoutedAgent(response.selected_agent);
+            if (response.selected_agent !== agent.agent_id && !manualRoutingLockRef.current) {
+              const entries = await fetchUserAgents(controller.signal);
+              const match = findUserAgentEntry(entries, response.selected_agent);
+              if (match) {
+                const next = backendToFrontendAgent(match);
+                setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
+              }
+            }
+          }
+
+          if (
+            (response.status === "confirmation_required" ||
+              response.status === "workflow_confirmation_required") &&
+            response.confirmation
+          ) {
             pendingConfirmationIdRef.current = response.confirmation.confirmation_id;
-            call.triggerConfirmation(response.confirmation);
+            call.triggerConfirmation({
+              ...response.confirmation,
+              type: response.status === "workflow_confirmation_required" ? "workflow" : "tool",
+            });
             return;
           }
 
@@ -393,7 +541,10 @@ export function ConversationalChat() {
           if (speakable) {
             call.setPhase("speaking");
             try {
-              await playSynthesizedSpeech(replyText, { signal: controller.signal });
+              await playSynthesizedSpeech(replyText, {
+                signal: controller.signal,
+                volumeRef: agentVolumeRef,
+              });
             } catch (audioErr) {
               if ((audioErr as Error).name !== "AbortError") {
                 console.warn("[ConversationalChat] ElevenLabs playback failed", audioErr);
@@ -411,7 +562,7 @@ export function ConversationalChat() {
         }
       });
     },
-    [agent, call],
+    [agent, call, completedWorkflowSteps, routedAgent, setActiveAgent],
   );
 
   const handleApprove = useCallback(() => {
@@ -432,14 +583,19 @@ export function ConversationalChat() {
 
   const handleRestart = useCallback(() => {
     lockedIntentRef.current = null;
+    manualRoutingLockRef.current = false;
+    pendingConfirmationIdRef.current = null;
     setRoutedAgent(null);
+    setCompletedWorkflowSteps([]);
     call.restart();
   }, [call]);
 
   const handleStartSession = useCallback(() => {
     // console.log("[greeting] handleStartSession fired");
     lockedIntentRef.current = null;
+    pendingConfirmationIdRef.current = null;
     setRoutedAgent(null);
+    setCompletedWorkflowSteps([]);
     call.start({ tokenMetadata: buildLiveKitWorkerMetadata(agent) });
     setGreetingDone(false);
     greetingSeenSpeakingRef.current = false;
@@ -566,8 +722,11 @@ export function ConversationalChat() {
             onPhase={call.setPhase}
             onEnd={call.end}
             onSendText={handleSendText}
+            onRoutingTargetChange={handleRoutingTargetChange}
             onTriggerConfirmation={handleTriggerConfirmation}
             onMicError={call.setMicError}
+            agentMuted={agentMuted}
+            onAgentMutedChange={setAgentMuted}
           />
         </div>
       ) : isInCall ? null : (
@@ -592,7 +751,7 @@ export function ConversationalChat() {
           video={false}
           onError={handleRoomError}
         >
-          <RoomAudioRenderer />
+          <RoomAudioRenderer volume={agentMuted ? 0 : 1} />
           <VoiceSessionBridge
             status={call.status}
             onPhase={call.setPhase}
