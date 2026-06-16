@@ -6,6 +6,8 @@ sees the context for the *currently active* task, never the full agent
 config. This prevents prompt drift and keeps the agent grounded.
 
 Flow per message:
+  0a. Manual transfer short-circuit: if request.manual_transfer is set, bypass
+      steps 1–6 entirely and route directly via _handle_manual_transfer.
   1. Detect intent via keyword routing.
   2. Select the agent via AgentRegistry.
   3. Determine which tool (if any) should be in scope right now.
@@ -19,6 +21,7 @@ Flow per message:
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -302,7 +305,17 @@ class ConversationOrchestrator:
                         targets = active_tool.parameters.get("targets") or []
                         if targets:
                             raw = str(targets[0])
-                            normalized = raw.removesuffix("-agent").replace("-", "_")
+                            # Custom agent IDs are UUIDs (hex + hyphens). Pass
+                            # them through untouched; only slug-normalize built-in
+                            # kebab-case names (e.g. "technical-support-agent").
+                            if re.match(
+                                r"^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$",
+                                raw,
+                                re.IGNORECASE,
+                            ):
+                                normalized = raw
+                            else:
+                                normalized = raw.removesuffix("-agent").replace("-", "_")
                             dispatch_context["target_agent_id"] = normalized
                         dispatch_context["conversation_history"] = [
                             {"role": m.role.value, "content": m.content} for m in request.messages
@@ -319,7 +332,9 @@ class ConversationOrchestrator:
                             **active_tool.parameters,
                             "args": dict(slot_result.to_dict()),
                         }
-                    tool_data = await self._dispatch_tool(active_tool, dispatch_context)
+                    tool_data = await self._dispatch_tool(
+                        active_tool, dispatch_context, db=db, user_id=user_id
+                    )
                     logger.info(
                         "tool_dispatch_complete",
                         tool_type=active_tool.type,
@@ -699,6 +714,8 @@ class ConversationOrchestrator:
         self,
         tool: ToolDefinition,
         context: dict[str, Any],
+        db: AsyncSession | None = None,
+        user_id: int | None = None,
     ) -> dict[str, Any]:
         """Execute a tool after the user has confirmed (if required).
 
@@ -724,7 +741,10 @@ class ConversationOrchestrator:
             logger.warning("unknown_tool_type", tool_type=tool.type, tool_id=tool.id)
             return {}
 
-        result: ToolResult = await tool_cls().execute(context)
+        if tool.type == ToolType.AGENT_TRANSFER:
+            result: ToolResult = await AgentTransferTool(db=db, user_id=user_id).execute(context)
+        else:
+            result = await tool_cls().execute(context)
 
         if not result.success:
             logger.warning(

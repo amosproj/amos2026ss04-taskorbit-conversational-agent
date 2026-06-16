@@ -20,8 +20,9 @@ def _get_known_agent_names() -> frozenset[str]:
 class AgentTransferTool(BaseTool):
     tool_type = ToolType.AGENT_TRANSFER
 
-    def __init__(self, db: AsyncSession | None = None) -> None:
+    def __init__(self, db: AsyncSession | None = None, user_id: int | None = None) -> None:
         self._db = db
+        self._user_id = user_id
 
     async def _is_valid_target(self, target_agent_id: str) -> bool:
         """Return True when target_agent_id is a built-in agent name or a saved custom agent."""
@@ -30,7 +31,9 @@ class AgentTransferTool(BaseTool):
         if self._db is not None:
             from taskorbit.database.crud import get_agent_configuration_by_id
 
-            record = await get_agent_configuration_by_id(self._db, target_agent_id)
+            record = await get_agent_configuration_by_id(
+                self._db, target_agent_id, user_id=self._user_id
+            )
             return record is not None
         return False
 

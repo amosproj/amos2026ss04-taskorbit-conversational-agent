@@ -265,14 +265,14 @@ export function ConversationalChat() {
             return;
           }
 
-          // Manual transfer: swap active agent config and show badge/marker.
+          // Manual transfer: swap active agent config after backend confirmation.
+          // The transcript announcement was already appended in handleRoutingTargetChange.
           if (manualTransfer?.target_agent_id && response.status !== "error") {
             // The badge appends " Agent", so strip it from the stored name to avoid "Sales Agent Agent".
             const badgeName = manualTransfer.target_agent_name.replace(/\s+[Aa]gent$/i, "").trim();
             manualRoutingLockRef.current = true;
             setRoutedAgent(badgeName);
-            call.appendAssistantTurn(`[Transferred to ${manualTransfer.target_agent_name}]`);
-            // Then try to swap the full agent config so subsequent messages use the new agent.
+            // Try to swap the full agent config so subsequent messages use the new agent.
             try {
               const entries = await fetchUserAgents(controller.signal);
               const match = entries.find(
@@ -283,13 +283,20 @@ export function ConversationalChat() {
               if (match) {
                 const next = backendToFrontendAgent(match);
                 setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
+              } else {
+                call.appendAssistantTurn(
+                  `[Could not transfer to ${manualTransfer.target_agent_name}]`,
+                );
+                setRoutedAgent(null);
+                manualRoutingLockRef.current = false;
               }
             } catch (transferErr) {
               if ((transferErr as Error).name !== "AbortError") {
-                console.warn(
-                  "[ConversationalChat] manual transfer agent lookup failed",
-                  transferErr,
+                call.appendAssistantTurn(
+                  `[Could not transfer to ${manualTransfer.target_agent_name}]`,
                 );
+                setRoutedAgent(null);
+                manualRoutingLockRef.current = false;
               }
             }
           }
@@ -376,9 +383,13 @@ export function ConversationalChat() {
     setRoutedAgent(agentName);
   }, []);
 
-  // Fires the moment the user picks an agent from the @route dropdown — no send needed.
+  // Fires the moment the user picks an agent from the route dropdown.
+  // Shows the transcript announcement and speaks it immediately so the user
+  // gets visual + audio feedback on selection. setActiveAgent is intentionally
+  // NOT called here — the config swap happens in handleSendText after backend
+  // confirmation to avoid swapping before the turn is actually sent.
   const handleRoutingTargetChange = useCallback(
-    async (target: { id: string; name: string } | null) => {
+    (target: { id: string; name: string } | null) => {
       if (!target) {
         manualRoutingLockRef.current = false;
         setRoutedAgent(null);
@@ -390,18 +401,8 @@ export function ConversationalChat() {
       const transferMsg = `Transferring you to ${target.name} upon your request.`;
       call.appendAssistantTurn(transferMsg);
       playSynthesizedSpeech(transferMsg).catch(() => {});
-      try {
-        const entries = await fetchUserAgents();
-        const match = entries.find((e) => e.id === target.id || e.template_id === target.id);
-        if (match) {
-          const next = backendToFrontendAgent(match);
-          setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
-        }
-      } catch {
-        // badge already updated; agent config swap is best-effort
-      }
     },
-    [call, setActiveAgent],
+    [call],
   );
 
   const handleTriggerConfirmation = useCallback(() => {

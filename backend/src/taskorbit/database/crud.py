@@ -731,13 +731,21 @@ async def copy_on_write_user_agent(
 
 
 async def get_agent_configuration_by_id(
-    db: AsyncSession, agent_id: str
+    db: AsyncSession, agent_id: str, user_id: int | None = None
 ) -> AgentConfiguration | None:
-    """Look up a single AgentConfiguration by its primary key (async)."""
+    """Look up a single AgentConfiguration by its primary key (async).
+
+    When user_id is provided, only returns records owned by that user OR global
+    template records (user_id IS NULL). Returns None for both missing rows and
+    rows owned by another user — callers cannot distinguish the two cases.
+    """
     try:
-        result = await db.execute(
-            select(AgentConfiguration).where(AgentConfiguration.id == agent_id)
-        )
+        query = select(AgentConfiguration).where(AgentConfiguration.id == agent_id)
+        if user_id is not None:
+            query = query.where(
+                (AgentConfiguration.user_id == user_id) | (AgentConfiguration.user_id.is_(None))
+            )
+        result = await db.execute(query)
         return result.scalar_one_or_none()
     except SQLAlchemyError as e:
         logger.error("get_agent_configuration_by_id_failed", agent_id=agent_id, error=str(e))
@@ -747,11 +755,20 @@ async def get_agent_configuration_by_id(
 async def get_agent_configuration_by_name(
     db: AsyncSession, name: str, user_id: int | None = None
 ) -> AgentConfiguration | None:
-    """Look up a single AgentConfiguration by name, optionally scoped to a user."""
+    """Look up a single AgentConfiguration by name, scoped to a user.
+
+    When user_id is provided, matches records owned by that user only.
+    When user_id is None (e.g. voice path before auth lands), fails closed:
+    only global template records (user_id IS NULL) are returned so the voice
+    path cannot resolve one user's custom agent into another user's session.
+    """
     try:
         query = select(AgentConfiguration).where(AgentConfiguration.name == name)
         if user_id is not None:
             query = query.where(AgentConfiguration.user_id == user_id)
+        else:
+            # Fail-closed: unauthenticated callers see global templates only.
+            query = query.where(AgentConfiguration.user_id.is_(None))
         result = await db.execute(query)
         return result.scalar_one_or_none()
     except SQLAlchemyError as e:

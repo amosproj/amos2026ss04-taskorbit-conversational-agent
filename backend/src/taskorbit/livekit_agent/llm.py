@@ -169,6 +169,7 @@ class OrchestratorAgent(Agent):
         instructions: str | None = None,
         agent_config: AgentConfig | None = None,
         conversation_id: str = "livekit-session",
+        user_id: int | None = None,
     ) -> None:
         super().__init__(
             instructions=instructions or "You are TaskOrbit, a helpful voice assistant.",
@@ -176,6 +177,7 @@ class OrchestratorAgent(Agent):
         self._orchestrator = orchestrator
         self._agent_config = agent_config or _default_agent_config()
         self._conversation_id = conversation_id
+        self._user_id = user_id
         self._reply_requested: bool = False
         self._t_commit: float | None = None
         self._locked_intent_name: str | None = None
@@ -244,7 +246,9 @@ class OrchestratorAgent(Agent):
         # and custom-agent DB lookups work in the voice path too.
         try:
             async with AsyncSessionLocal() as db:
-                response = await self._orchestrator.process_message(request, db=db)
+                response = await self._orchestrator.process_message(
+                    request, db=db, user_id=self._user_id
+                )
         except Exception as exc:
             log.error(
                 "voice_turn_orchestrator_failed",

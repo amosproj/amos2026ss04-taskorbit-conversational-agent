@@ -70,9 +70,7 @@ export function InCallControls({
   const [routingTarget, setRoutingTarget] = useState<RoutingTarget | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [agents, setAgents] = useState<RoutingTarget[]>([]);
-  const [menuFilter, setMenuFilter] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
-  const atMentionStartRef = useRef<number | null>(null);
 
   // Fetch all agents (built-in templates + user DB copies) once when menu first opens.
   // Load all agents: every custom agent + every built-in template, deduplicated by id only.
@@ -98,7 +96,6 @@ export function InCallControls({
 
   const openMenu = () => {
     void loadAgents();
-    setMenuFilter("");
     setMenuOpen(true);
   };
 
@@ -106,11 +103,6 @@ export function InCallControls({
     setRoutingTarget(agent);
     onRoutingTargetChange?.(agent);
     setMenuOpen(false);
-    // Remove any trailing @-mention text from draft
-    if (atMentionStartRef.current !== null) {
-      setDraft((d) => d.slice(0, atMentionStartRef.current!));
-      atMentionStartRef.current = null;
-    }
     textareaRef.current?.focus();
   };
 
@@ -118,7 +110,6 @@ export function InCallControls({
     setRoutingTarget(null);
     onRoutingTargetChange?.(null);
     setMenuOpen(false);
-    atMentionStartRef.current = null;
   };
 
   // Close menu on outside click
@@ -127,16 +118,13 @@ export function InCallControls({
     const handler = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
-        atMentionStartRef.current = null;
       }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [menuOpen]);
 
-  const filteredAgents = agents.filter((a) =>
-    a.name.toLowerCase().includes(menuFilter.toLowerCase()),
-  );
+  const filteredAgents = agents;
 
   useEffect(() => {
     if (mic.error) {
@@ -298,7 +286,6 @@ export function InCallControls({
     onSendText(text, transfer);
     setDraft("");
     setRoutingTarget(null);
-    atMentionStartRef.current = null;
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   };
 

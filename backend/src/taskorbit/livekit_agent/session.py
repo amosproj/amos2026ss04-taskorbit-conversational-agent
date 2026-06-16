@@ -102,6 +102,7 @@ def build_default_agent(
     settings: Settings | None = None,
     agent_config: AgentConfig | None = None,
     conversation_id: str | None = None,
+    user_id: int | None = None,
 ) -> OrchestratorAgent:
     """Build the ``OrchestratorAgent`` paired with this session.
 
@@ -123,4 +124,6 @@ def build_default_agent(
     )
     if conversation_id is not None:
         kwargs["conversation_id"] = conversation_id
+    if user_id is not None:
+        kwargs["user_id"] = user_id
     return OrchestratorAgent(**kwargs)
