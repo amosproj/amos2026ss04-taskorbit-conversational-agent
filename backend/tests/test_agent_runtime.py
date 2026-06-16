@@ -90,16 +90,21 @@ def test_mock_intent_result_has_workflow_steps() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_registry_returns_sales_agent_by_default() -> None:
+def test_registry_returns_generic_agent_by_default() -> None:
     config = _make_config("generic-agent")
     agent = AgentRegistry.get_agent(config, ConversationOrchestrator())
-    assert isinstance(agent, SalesAgent)
+    # AC #71: Now returns GenericAgent instead of SalesAgent for unknown IDs
+    from taskorbit.agents import GenericAgent
+
+    assert isinstance(agent, GenericAgent)
+    assert agent.agent_name == "generic-agent"
 
 
 def test_registry_returns_sales_agent_for_sales_id() -> None:
-    config = _make_config("sales-lead-agent")
-    agent = AgentRegistry.get_agent(config, ConversationOrchestrator())
+    config = _make_config("sales-id")
+    agent = AgentRegistry.create(config, ConversationOrchestrator())
     assert isinstance(agent, SalesAgent)
+
 
 
 def test_registry_returns_technical_support_agent_for_support_id() -> None:
@@ -324,7 +329,10 @@ def test_create_and_get_agent_return_same_type() -> None:
     )
 
 
-def test_registry_default_falls_back_to_sales_agent() -> None:
+def test_registry_default_falls_back_to_generic_agent() -> None:
     config = _make_config("unknown-xyz-agent")
     agent = AgentRegistry.create(config, ConversationOrchestrator())
-    assert isinstance(agent, SalesAgent)
+    from taskorbit.agents import GenericAgent
+
+    assert isinstance(agent, GenericAgent)
+    assert agent.agent_name == "unknown-xyz-agent"

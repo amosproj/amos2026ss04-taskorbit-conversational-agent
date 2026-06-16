@@ -58,12 +58,19 @@ async def test_workflow_dependency_triggers_confirmation(orchestrator, base_conf
 @pytest.mark.asyncio
 async def test_workflow_dependency_executes_after_proceed(orchestrator, base_config, mock_intent):
     """After Proceed, messages on the prereq agent must not re-show the prerequisite card."""
+    prereq_config = AgentConfig(
+        id="prereq-agent",
+        name="Prereq Agent",
+        persona="I am the prerequisite.",
+        greeting="Ready to help with prereqs.",
+    )
     request = ConversationRequest(
         conversation_id="conv-1",
         agent_config=base_config,
         messages=[Message(role=MessageRole.USER, content="My router isn't working")],
         completed_workflow_steps=[],
         selected_agent="prereq-agent",
+        dependency_configs={"prereq-agent": prereq_config},
     )
 
     with mock.patch.object(orchestrator._intent_router, "detect", return_value=mock_intent):
@@ -75,6 +82,27 @@ async def test_workflow_dependency_executes_after_proceed(orchestrator, base_con
         assert response.status == ConversationStatus.SUCCESS
         assert "rebooting" in response.reply.content.lower()
         assert "prereq-agent" in response.completed_workflow_steps
+
+
+@pytest.mark.asyncio
+async def test_workflow_dependency_deadlock_guard(orchestrator, base_config, mock_intent):
+    """AC #9: If a dependency config cannot be resolved, the handoff must be blocked."""
+    request = ConversationRequest(
+        conversation_id="conv-1",
+        agent_config=base_config,
+        messages=[Message(role=MessageRole.USER, content="My router isn't working")],
+        completed_workflow_steps=[],
+        selected_agent="prereq-agent",
+        dependency_configs={},  # MISSING!
+    )
+
+    with mock.patch.object(orchestrator._intent_router, "detect", return_value=mock_intent):
+        with mock.patch.object(orchestrator, "_call_llm", return_value="Staying on target."):
+            response = await orchestrator.process_message(request)
+
+            # Should be blocked because of the deadlock guard (unresolvable dependency)
+            assert response.status == ConversationStatus.HANDOFF_BLOCKED
+            assert response.selected_agent == "target-agent"
 
 
 @pytest.mark.asyncio

@@ -233,16 +233,30 @@ class ConversationOrchestrator:
                 if executing_prereq:
                     # User already confirmed — run the prerequisite agent, do not re-prompt.
                     executing_prereq_id = next_dep
-                    agent = AgentRegistry.create_by_name(
-                        AgentRegistry.get_agent_name_for_id(next_dep),
-                        request.agent_config,
-                        self,
-                    )
-                    logger.info(
-                        "workflow_dependency_executing",
-                        dependency=next_dep,
-                        conversation_id=request.conversation_id,
-                    )
+
+                    # AC #71: Resolve the prerequisite agent's config from dependency_configs.
+                    # This ensures the LLM sees the CORRECT persona and tools for the prerequisite.
+                    dep_config = request.dependency_configs.get(next_dep)
+                    if not dep_config:
+                        # Deadlock guard (AC #9): If we can't resolve the config for a required 
+                        # dependency, we cannot proceed. Block the handoff and stay on current agent.
+                        logger.error(
+                            "workflow_dependency_config_missing",
+                            dependency=next_dep,
+                            conversation_id=request.conversation_id,
+                        )
+                        handoff_blocked = True
+                        # AC #9: Reset agent to the entry agent so we don't accidentally act as 
+                        # an unconfigured prerequisite or the requested (blocked) handoff target.
+                        agent = AgentRegistry.create(request.agent_config, self)
+                    else:
+                        agent = AgentRegistry.create(dep_config, self)
+                        logger.info(
+                            "workflow_dependency_executing",
+                            dependency=next_dep,
+                            agent=agent.agent_name,
+                            conversation_id=request.conversation_id,
+                        )
                 else:
                     logger.info(
                         "workflow_dependency_missing",
@@ -256,22 +270,30 @@ class ConversationOrchestrator:
                     has_decision = is_decision_for_this_workflow and request.decision is not None
 
                     if not has_decision:
+                        # Deadlock guard (AC #9): If we can't resolve the metadata for the prompt,
+                        # we still offer the handoff but falling back to the ID name.
+                        dep_name = next_dep.replace("-", " ")
+                        dep_config = request.dependency_configs.get(next_dep)
+                        if dep_config:
+                            dep_name = dep_config.name
+
                         return ConversationResponse(
                             conversation_id=request.conversation_id,
                             reply=self._make_assistant_message(
-                                f"Before we proceed with {request.agent_config.name}, I'll need to complete some prerequisite steps regarding {next_dep.replace('-', ' ')}. Shall I start with that?"
+                                f"Before we proceed with {request.agent_config.name}, I'll need to complete some prerequisite steps regarding {dep_name}. Shall I start with that?"
                             ),
                             status=ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED,
                             confirmation=ConfirmationResponsePayload(
                                 confirmation_id=f"workflow_{next_dep}",
                                 action=f"Start {next_dep} workflow",
-                                description=f"Prerequisite: {next_dep}",
+                                description=f"Prerequisite: {dep_name}",
                             ),
                             selected_intent=intent.name,
                             selected_agent=agent.agent_name,
                             intent_confidence=intent.confidence,
                             completed_workflow_steps=request.completed_workflow_steps,
                         )
+
 
                     if request.decision == "reject":
                         logger.info(
@@ -309,7 +331,8 @@ class ConversationOrchestrator:
 
             # Now enforce handoff rules (if any)
             if (
-                request.selected_agent
+                not executing_prereq_id  # AC #71: Prerequisite execution bypasses handoff blocks
+                and request.selected_agent
                 and intent.agent_name != request.selected_agent
                 and request.agent_config.allowed_handoffs
             ):

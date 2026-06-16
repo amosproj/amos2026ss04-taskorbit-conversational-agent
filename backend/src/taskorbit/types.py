@@ -181,6 +181,8 @@ class ConversationRequest(BaseModel):
     decision: Literal["confirm", "reject"] | None = None
     # #71: Workflow state
     completed_workflow_steps: list[str] = Field(default_factory=list)
+    # AC #71: Map of agent IDs to their full configurations for resolving dependencies.
+    dependency_configs: dict[str, AgentConfig] = Field(default_factory=dict)
 
 
 class ConversationResponse(BaseModel):

@@ -20,11 +20,12 @@ from taskorbit.database.crud import (
     get_conversation,
     get_conversation_history,
     get_messages_by_conversation,
+    get_user_agent,
 )
 from taskorbit.database.models import Conversation  # used in POST "" route
 from taskorbit.logging.setup import get_logger
 from taskorbit.orchestration import ConversationOrchestrator
-from taskorbit.types import ConversationRequest, ConversationResponse, MessageRole
+from taskorbit.types import AgentConfig, ConversationRequest, ConversationResponse, MessageRole
 
 logger = get_logger(__name__)
 
@@ -66,6 +67,36 @@ async def process_conversation(
         message_count=len(request.messages),
     )
     try:
+        # AC #71: Resolve dependency configurations from DB for the orchestrator.
+        # This ensures that when a workflow prerequisite is triggered, the engine 
+        # can correctly act as that agent (using its persona/tools) even if the 
+        # frontend didn't provide it yet.
+        if request.agent_config.workflow_dependencies:
+            dep_configs = {}
+            for dep_id in request.agent_config.workflow_dependencies:
+                # Priority 1: Already in request (frontend-provided)
+                if dep_id in request.dependency_configs:
+                    continue
+
+                # Priority 2: Fetch from DB
+                db_agent = await get_user_agent(db, dep_id, user_id)
+                if db_agent:
+                    try:
+                        # db_agent.config is the full FE-compatible JSON
+                        dep_configs[dep_id] = AgentConfig(**db_agent.config)
+                    except Exception as e:
+                        logger.warning(
+                            "failed_to_parse_dep_config", 
+                            agent_id=dep_id, 
+                            error=str(e),
+                            conversation_id=conversation_id
+                        )
+            
+            if dep_configs:
+                request = request.model_copy(
+                    update={"dependency_configs": {**request.dependency_configs, **dep_configs}}
+                )
+
         response = await orchestrator.process_message(request)
 
         # Save user message (last message in the list if sent by user)

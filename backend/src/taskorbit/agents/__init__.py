@@ -138,6 +138,26 @@ class CustomerDissatisfactionAgent(BaseAgent):
         return self.config.tools
 
 
+class GenericAgent(BaseAgent):
+    """Fallback agent for custom IDs that don't match any specialized class.
+    
+    Preserves the original config.id as its agent_name to ensure metrics
+    and handoff logic correctly identify the specific custom agent.
+    """
+
+    def __init__(self, config: AgentConfig, orchestrator: ConversationOrchestrator) -> None:
+        super().__init__(config, orchestrator)
+        # AC #71: Use the actual config.id as the agent name instead of a hardcoded string.
+        # This prevents silent fallbacks to 'sales' in logs and response status.
+        self.agent_name = config.id
+
+    async def handle_message(self, request: ConversationRequest) -> ConversationResponse:
+        return await self.orchestrator.process_message(request)
+
+    def get_task_definitions(self) -> list[ToolDefinition]:
+        return self.config.tools
+
+
 # ---------------------------------------------------------------------------
 # Registry / constructor
 # ---------------------------------------------------------------------------
@@ -173,8 +193,9 @@ class AgentRegistry:
         agent_id = config_id.lower()
         for keywords, agent_cls in cls._REGISTRY:
             if any(kw in agent_id for kw in keywords):
-                return agent_cls.agent_name
-        return cls._DEFAULT.agent_name
+                return agent_cls.agent_name.lower()
+        # AC #71: Return the ID itself if no keyword matches, instead of falling back to 'sales'.
+        return agent_id
 
     @classmethod
     def create(
@@ -184,27 +205,23 @@ class AgentRegistry:
     ) -> BaseAgent:
         """Construct and return the agent that matches *config.id*.
 
-        Falls back to SalesAgent when no keyword matches.
+        Falls back to GenericAgent (preserving the ID) when no keyword matches.
         """
         agent_id = config.id.lower()
         for keywords, agent_cls in cls._REGISTRY:
             if any(kw in agent_id for kw in keywords):
-                _agent_call_counts[agent_cls.agent_name] += 1
-                count = _agent_call_counts[agent_cls.agent_name]
-                print(f"[AgentRegistry] {agent_cls.agent_name} called (total: {count})", flush=True)
-                logger.info("agent_selected", agent=agent_cls.agent_name, total_calls=count)
+                normalized_name = agent_cls.agent_name.lower()
+                _agent_call_counts[normalized_name] += 1
+                count = _agent_call_counts[normalized_name]
+                logger.info("agent_selected", agent=normalized_name, total_calls=count)
                 return agent_cls(config, orchestrator)
 
-        _agent_call_counts[cls._DEFAULT.agent_name] += 1
-        count = _agent_call_counts[cls._DEFAULT.agent_name]
-        print(
-            f"[AgentRegistry] {cls._DEFAULT.agent_name} called (default) (total: {count})",
-            flush=True,
-        )
-        logger.info(
-            "agent_selected", agent=cls._DEFAULT.agent_name, total_calls=count, via="default"
-        )
-        return cls._DEFAULT(config, orchestrator)
+        # AC #71: Explicitly use GenericAgent for custom IDs to avoid silent 'sales' fallback.
+        normalized_id = config.id.lower()
+        _agent_call_counts[normalized_id] += 1
+        count = _agent_call_counts[normalized_id]
+        logger.info("agent_selected", agent=normalized_id, total_calls=count, via="generic")
+        return GenericAgent(config, orchestrator)
 
     @classmethod
     def create_by_name(
@@ -215,20 +232,21 @@ class AgentRegistry:
     ) -> BaseAgent:
         """Construct an agent directly by agent_name (e.g. from an IntentResult).
 
-        Falls back to the default agent if agent_name is empty or unrecognised.
+        Falls back to the GenericAgent if agent_name is unrecognised.
         """
+        target_name = agent_name.lower()
         for _, agent_cls in cls._REGISTRY:
-            if agent_cls.agent_name == agent_name:
-                _agent_call_counts[agent_cls.agent_name] += 1
-                count = _agent_call_counts[agent_cls.agent_name]
-                print(
-                    f"[AgentRegistry] {agent_cls.agent_name} called via intent (total: {count})",
-                    flush=True,
-                )
+            if agent_cls.agent_name.lower() == target_name:
+                normalized_name = agent_cls.agent_name.lower()
+                _agent_call_counts[normalized_name] += 1
+                count = _agent_call_counts[normalized_name]
                 logger.info(
-                    "agent_selected", agent=agent_cls.agent_name, total_calls=count, via="intent"
+                    "agent_selected", agent=normalized_name, total_calls=count, via="intent"
                 )
                 return agent_cls(config, orchestrator)
+        
+        # If the name is not in registry, it might be a custom ID.
+        # cls.create will handle the GenericAgent instantiation using config.id.
         return cls.create(config, orchestrator)
 
     # Keep the old name available so existing call sites don't break.
