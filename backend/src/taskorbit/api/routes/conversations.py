@@ -68,8 +68,8 @@ async def process_conversation(
     )
     try:
         # AC #71: Resolve dependency configurations from DB for the orchestrator.
-        # This ensures that when a workflow prerequisite is triggered, the engine 
-        # can correctly act as that agent (using its persona/tools) even if the 
+        # This ensures that when a workflow prerequisite is triggered, the engine
+        # can correctly act as that agent (using its persona/tools) even if the
         # frontend didn't provide it yet.
         if request.agent_config.workflow_dependencies:
             dep_configs = {}
@@ -86,12 +86,12 @@ async def process_conversation(
                         dep_configs[dep_id] = AgentConfig(**db_agent.config)
                     except Exception as e:
                         logger.warning(
-                            "failed_to_parse_dep_config", 
-                            agent_id=dep_id, 
+                            "failed_to_parse_dep_config",
+                            agent_id=dep_id,
                             error=str(e),
                             conversation_id=conversation_id
                         )
-            
+
             if dep_configs:
                 request = request.model_copy(
                     update={"dependency_configs": {**request.dependency_configs, **dep_configs}}

@@ -238,7 +238,7 @@ class ConversationOrchestrator:
                     # This ensures the LLM sees the CORRECT persona and tools for the prerequisite.
                     dep_config = request.dependency_configs.get(next_dep)
                     if not dep_config:
-                        # Deadlock guard (AC #9): If we can't resolve the config for a required 
+                        # Deadlock guard (AC #9): If we can't resolve the config for a required
                         # dependency, we cannot proceed. Block the handoff and stay on current agent.
                         logger.error(
                             "workflow_dependency_config_missing",
@@ -246,7 +246,7 @@ class ConversationOrchestrator:
                             conversation_id=request.conversation_id,
                         )
                         handoff_blocked = True
-                        # AC #9: Reset agent to the entry agent so we don't accidentally act as 
+                        # AC #9: Reset agent to the entry agent so we don't accidentally act as
                         # an unconfigured prerequisite or the requested (blocked) handoff target.
                         agent = AgentRegistry.create(request.agent_config, self)
                     else:

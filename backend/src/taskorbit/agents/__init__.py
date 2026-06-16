@@ -140,7 +140,7 @@ class CustomerDissatisfactionAgent(BaseAgent):
 
 class GenericAgent(BaseAgent):
     """Fallback agent for custom IDs that don't match any specialized class.
-    
+
     Preserves the original config.id as its agent_name to ensure metrics
     and handoff logic correctly identify the specific custom agent.
     """
@@ -244,7 +244,7 @@ class AgentRegistry:
                     "agent_selected", agent=normalized_name, total_calls=count, via="intent"
                 )
                 return agent_cls(config, orchestrator)
-        
+
         # If the name is not in registry, it might be a custom ID.
         # cls.create will handle the GenericAgent instantiation using config.id.
         return cls.create(config, orchestrator)
