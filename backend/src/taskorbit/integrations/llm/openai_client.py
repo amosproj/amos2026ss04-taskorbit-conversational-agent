@@ -209,6 +209,7 @@ class OpenAIClient:
 
         char_count = 0
         usage_chunk = None
+        completed = False
         try:
             async for chunk in stream:
                 delta = chunk.choices[0].delta.content if chunk.choices else None
@@ -217,6 +218,7 @@ class OpenAIClient:
                     yield delta
                 if chunk.usage:
                     usage_chunk = chunk.usage
+            completed = True
         except openai.APIError as exc:
             _log.error("llm_stream_failed", provider="openai", error_type="api", error=str(exc))
             raise LLMAPIError(f"OpenAI streaming error: {exc}") from exc
@@ -235,9 +237,10 @@ class OpenAIClient:
                 llm_api_latency_ms=round(_api_elapsed * 1000, 1),
             )
             _m = get_metrics()
-            _m.llm_requests_total.labels(
-                provider="openai", model=llm_config.model, status="success"
-            ).inc()
+            if completed:
+                _m.llm_requests_total.labels(
+                    provider="openai", model=llm_config.model, status="success"
+                ).inc()
             _m.pipeline_latency_seconds.labels(stage="llm_api_openai").observe(_api_elapsed)
             _m.llm_response_chars.labels(provider="openai", model=llm_config.model).observe(
                 char_count

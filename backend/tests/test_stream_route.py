@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
+from taskorbit.api.deps import get_current_user_id
 from taskorbit.api.main import create_app
 from taskorbit.api.routes.conversations import get_orchestrator, get_session
 from taskorbit.types import ConversationResponse, Message, MessageRole
@@ -189,6 +190,118 @@ def test_stream_conversation_emits_error_event_on_orchestrator_error() -> None:
 
 def test_stream_conversation_rejects_invalid_payload() -> None:
     app = create_app()
+    app.dependency_overrides[get_current_user_id] = lambda: 1
+    app.dependency_overrides[get_session] = _mock_db
     with TestClient(app) as client:
         response = client.post("/v1/conversations/stream", json={"bad": "payload"})
     assert response.status_code == 422
+    app.dependency_overrides = {}
+
+
+# ---------------------------------------------------------------------------
+# Auto-create conversation
+# ---------------------------------------------------------------------------
+
+
+def test_stream_conversation_auto_creates_conversation_when_id_absent() -> None:
+    """When conversation_id is absent/unknown the endpoint creates one and uses its id."""
+    mock_orchestrator = MagicMock()
+
+    new_conv_id = "auto-created-conv-id"
+    mock_conv = MagicMock()
+    mock_conv.id = new_conv_id
+
+    async def _stream_with_new_id(*tokens: str):
+        for token in tokens:
+            yield token
+        yield ConversationResponse(
+            conversation_id=new_conv_id,
+            reply=Message(role=MessageRole.ASSISTANT, content="Hi!"),
+            status="success",
+            selected_intent="general",
+            selected_agent="base",
+        )
+
+    mock_orchestrator.process_message_stream = MagicMock(return_value=_stream_with_new_id("Hi!"))
+
+    app = create_app()
+    app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
+    app.dependency_overrides[get_session] = _mock_db
+    app.dependency_overrides[get_current_user_id] = lambda: 1
+
+    payload_no_id = {
+        "agent_config": {
+            "id": "agent-1",
+            "name": "Bot",
+            "persona": "Helpful",
+            "greeting": "Hi!",
+        },
+        "messages": [{"role": "user", "content": "Hello"}],
+    }
+
+    with patch(
+        "taskorbit.api.routes.conversations.get_conversation",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        with patch(
+            "taskorbit.api.routes.conversations.create_conversation",
+            new_callable=AsyncMock,
+            return_value=mock_conv,
+        ):
+            with patch(
+                "taskorbit.api.routes.conversations.create_conversation_message",
+                new_callable=AsyncMock,
+                return_value=MagicMock(),
+            ):
+                with TestClient(app) as client:
+                    response = client.post("/v1/conversations/stream", json=payload_no_id)
+
+    assert response.status_code == 200
+    events = _parse_sse_events(response.text)
+    done_events = [e for e in events if e["type"] == "done"]
+    assert len(done_events) == 1
+    assert done_events[0]["conversation_id"] == new_conv_id
+    app.dependency_overrides = {}
+
+
+# ---------------------------------------------------------------------------
+# User message persistence
+# ---------------------------------------------------------------------------
+
+
+def test_stream_conversation_saves_user_message_upfront_with_user_id() -> None:
+    """User message is saved before streaming begins and carries user_id attribution."""
+    mock_orchestrator = MagicMock()
+    mock_orchestrator.process_message_stream = MagicMock(
+        return_value=_stream_chunks_then_done("ok")
+    )
+
+    app = create_app()
+    app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
+    app.dependency_overrides[get_session] = _mock_db
+    app.dependency_overrides[get_current_user_id] = lambda: 99
+
+    save_kwargs: list[dict] = []
+
+    async def _capture_save(**kwargs):  # type: ignore[override]
+        save_kwargs.append(kwargs)
+        return MagicMock()
+
+    with patch(
+        "taskorbit.api.routes.conversations.get_conversation",
+        new_callable=AsyncMock,
+        return_value=MagicMock(),
+    ):
+        with patch(
+            "taskorbit.api.routes.conversations.create_conversation_message",
+            side_effect=_capture_save,
+        ):
+            with TestClient(app) as client:
+                response = client.post("/v1/conversations/stream", json=_VALID_PAYLOAD)
+
+    assert response.status_code == 200
+    user_saves = [c for c in save_kwargs if c.get("role") == "user"]
+    assert len(user_saves) >= 1
+    assert user_saves[0]["user_id"] == 99
+    app.dependency_overrides = {}

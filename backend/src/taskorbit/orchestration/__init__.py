@@ -59,6 +59,16 @@ class _ReplyPrep:
     pipeline_start: float
 
 
+@dataclass
+class _DispatchResult:
+    """Result from _run_dispatch_step — shared by process_message and process_message_stream."""
+
+    early_response: ConversationResponse | None  # non-None → caller must short-circuit
+    tool_data: dict[str, Any]
+    response_status: Any  # ConversationStatus
+    llm_text_override: str | None  # non-None on reject
+
+
 class ConversationOrchestrator:
     """Routes messages through intent detection → agent → LLM → response."""
 
@@ -257,106 +267,13 @@ class ConversationOrchestrator:
             get_metrics().pipeline_latency_seconds.labels(stage="llm_call").observe(_llm_elapsed)
 
             # Step 5b: Dispatch active tool when slots are complete
-            from taskorbit.types import (
-                ConfirmationResponsePayload,
-                ConversationStatus,
-                ToolType,
-            )
-
-            tool_data: dict[str, Any] = {}
-            response_status = ConversationStatus.SUCCESS
-
-            no_slots_tool_ready = prep.active_tool is not None and prep.active_tool.type in (
-                ToolType.END_CALL,
-                ToolType.AGENT_TRANSFER,
-            )
-            slots_ready = (
-                prep.active_tool is not None
-                and prep.slot_result.is_complete
-                and bool(prep.intent.required_inputs)
-            )
-            if no_slots_tool_ready or slots_ready:
-                is_decision_for_this_tool = request.confirmation_id == prep.active_tool.id
-                has_decision = is_decision_for_this_tool and request.decision is not None
-
-                if prep.active_tool.confirmation.required and not has_decision:
-                    logger.info(
-                        "confirmation_required",
-                        tool_id=prep.active_tool.id,
-                        conversation_id=request.conversation_id,
-                    )
-                    return ConversationResponse(
-                        conversation_id=request.conversation_id,
-                        reply=self._make_assistant_message(
-                            prep.active_tool.confirmation.prompt
-                            or f"I need your confirmation before I proceed with {prep.active_tool.name}. Should I go ahead?"
-                        ),
-                        status=ConversationStatus.CONFIRMATION_REQUIRED,
-                        tool_invoked=prep.active_tool,
-                        confirmation=ConfirmationResponsePayload(
-                            confirmation_id=prep.active_tool.id,
-                            action=prep.active_tool.name,
-                            description=prep.active_tool.confirmation.prompt
-                            or f"Execute {prep.active_tool.name}",
-                        ),
-                        selected_intent=prep.intent.name,
-                        selected_agent=prep.agent.agent_name,
-                        intent_confidence=prep.intent.confidence,
-                        extracted_slots=prep.slot_result.to_dict(),
-                        missing_slots=prep.slot_result.missing,
-                        locked_intent_name=prep.intent.name,
-                        next_active_tool_id=prep.active_tool.id,
-                    )
-
-                if has_decision and request.decision == "reject":
-                    logger.info(
-                        "tool_execution_rejected",
-                        tool_id=prep.active_tool.id,
-                        conversation_id=request.conversation_id,
-                    )
-                    response_status = ConversationStatus.REJECTED
-                    # Mark as "aborted" so we advance to the next tool/step
-                    tool_data = {"aborted": True}
-                    llm_text = "Understood. I've cancelled that action. How else can I help you?"
-                else:
-                    # Proceed either because it's confirmed or not required
-                    dispatch_context: dict[str, Any] = dict(prep.slot_result.to_dict())
-                    if prep.active_tool.type == ToolType.AGENT_TRANSFER:
-                        targets = prep.active_tool.parameters.get("targets") or []
-                        if targets:
-                            raw = str(targets[0])
-                            normalized = raw.removesuffix("-agent").replace("-", "_")
-                            dispatch_context["target_agent_id"] = normalized
-                        dispatch_context["conversation_history"] = [
-                            {"role": m.role.value, "content": m.content} for m in request.messages
-                        ]
-                    elif prep.active_tool.type == ToolType.EXTERNAL_API:
-                        # GenericApiTool (#66) reads its config from the same
-                        # parameters dict it expects on ToolDefinition.parameters,
-                        # plus runtime args under an `args` key. The slot dict
-                        # carries the LLM-extracted values; surface them as
-                        # `args` so they substitute into the template, and
-                        # overlay the tool's static config (request, response,
-                        # auth, error_mapping, args_schema).
-                        dispatch_context = {
-                            **prep.active_tool.parameters,
-                            "args": dict(prep.slot_result.to_dict()),
-                        }
-                    tool_data = await self._dispatch_tool(prep.active_tool, dispatch_context)
-                    logger.info(
-                        "tool_dispatch_complete",
-                        tool_type=prep.active_tool.type,
-                        conversation_id=request.conversation_id,
-                    )
-                    if prep.active_tool.type == ToolType.END_CALL:
-                        response_status = ConversationStatus.ENDED
-                    elif prep.active_tool.type == ToolType.AGENT_TRANSFER:
-                        logger.info(
-                            "agent_handoff",
-                            from_agent=request.agent_config.name,
-                            to_agent=tool_data.get("transferred_to"),
-                            conversation_id=request.conversation_id,
-                        )
+            dispatch = await self._run_dispatch_step(prep, request)
+            if dispatch.early_response is not None:
+                return dispatch.early_response
+            tool_data = dispatch.tool_data
+            response_status = dispatch.response_status
+            if dispatch.llm_text_override is not None:
+                llm_text = dispatch.llm_text_override
 
             if tool_data and prep.active_tool:
                 all_tools = prep.agent.get_task_definitions()
@@ -501,37 +418,14 @@ class ConversationOrchestrator:
                 raise LLMConfigError("LLM returned an empty streaming response")
 
             # Step 5b: Dispatch active tool when slots are complete
-            from taskorbit.types import ConversationStatus, ToolType
-
-            tool_data: dict[str, Any] = {}
-            response_status = ConversationStatus.SUCCESS
-
-            if prep.active_tool and prep.slot_result.is_complete and prep.intent.required_inputs:
-                dispatch_context: dict[str, Any] = dict(prep.slot_result.to_dict())
-                if prep.active_tool.type == ToolType.AGENT_TRANSFER:
-                    targets = prep.active_tool.parameters.get("targets") or []
-                    if targets:
-                        raw = str(targets[0])
-                        normalized = raw.removesuffix("-agent").replace("-", "_")
-                        dispatch_context["target_agent_id"] = normalized
-                    dispatch_context["conversation_history"] = [
-                        {"role": m.role.value, "content": m.content} for m in request.messages
-                    ]
-                tool_data = await self._dispatch_tool(prep.active_tool, dispatch_context)
-                logger.info(
-                    "tool_dispatch_complete",
-                    tool_type=prep.active_tool.type,
-                    conversation_id=request.conversation_id,
-                )
-                if prep.active_tool.type == ToolType.END_CALL:
-                    response_status = ConversationStatus.ENDED
-                elif prep.active_tool.type == ToolType.AGENT_TRANSFER:
-                    logger.info(
-                        "agent_handoff",
-                        from_agent=request.agent_config.name,
-                        to_agent=tool_data.get("transferred_to"),
-                        conversation_id=request.conversation_id,
-                    )
+            dispatch = await self._run_dispatch_step(prep, request)
+            if dispatch.early_response is not None:
+                yield dispatch.early_response
+                return
+            tool_data = dispatch.tool_data
+            response_status = dispatch.response_status
+            if dispatch.llm_text_override is not None:
+                llm_text = dispatch.llm_text_override
 
             if tool_data and prep.active_tool:
                 all_tools = prep.agent.get_task_definitions()
@@ -791,6 +685,134 @@ class ConversationOrchestrator:
         augmented_prompt = with_same_language_instruction(system_prompt)
         client = get_llm_client(llm_config, settings=self._settings)
         return client.generate_stream(augmented_prompt, messages, llm_config)
+
+    async def _run_dispatch_step(
+        self,
+        prep: _ReplyPrep,
+        request: ConversationRequest,
+    ) -> _DispatchResult:
+        """Shared tool-dispatch logic for process_message and process_message_stream.
+
+        Handles confirmation gate, reject-decision, EXTERNAL_API, AGENT_TRANSFER,
+        and END_CALL so neither path can drift from the other.
+        """
+        from taskorbit.types import (
+            ConfirmationResponsePayload,
+            ConversationStatus,
+            ToolType,
+        )
+
+        tool_data: dict[str, Any] = {}
+        response_status = ConversationStatus.SUCCESS
+
+        no_slots_tool_ready = prep.active_tool is not None and prep.active_tool.type in (
+            ToolType.END_CALL,
+            ToolType.AGENT_TRANSFER,
+        )
+        slots_ready = (
+            prep.active_tool is not None
+            and prep.slot_result.is_complete
+            and bool(prep.intent.required_inputs)
+        )
+
+        if not (no_slots_tool_ready or slots_ready):
+            return _DispatchResult(
+                early_response=None,
+                tool_data=tool_data,
+                response_status=response_status,
+                llm_text_override=None,
+            )
+
+        is_decision_for_this_tool = request.confirmation_id == prep.active_tool.id
+        has_decision = is_decision_for_this_tool and request.decision is not None
+
+        if prep.active_tool.confirmation.required and not has_decision:
+            logger.info(
+                "confirmation_required",
+                tool_id=prep.active_tool.id,
+                conversation_id=request.conversation_id,
+            )
+            return _DispatchResult(
+                early_response=ConversationResponse(
+                    conversation_id=request.conversation_id,
+                    reply=self._make_assistant_message(
+                        prep.active_tool.confirmation.prompt
+                        or f"I need your confirmation before I proceed with {prep.active_tool.name}. Should I go ahead?"
+                    ),
+                    status=ConversationStatus.CONFIRMATION_REQUIRED,
+                    tool_invoked=prep.active_tool,
+                    confirmation=ConfirmationResponsePayload(
+                        confirmation_id=prep.active_tool.id,
+                        action=prep.active_tool.name,
+                        description=prep.active_tool.confirmation.prompt
+                        or f"Execute {prep.active_tool.name}",
+                    ),
+                    selected_intent=prep.intent.name,
+                    selected_agent=prep.agent.agent_name,
+                    intent_confidence=prep.intent.confidence,
+                    extracted_slots=prep.slot_result.to_dict(),
+                    missing_slots=prep.slot_result.missing,
+                    locked_intent_name=prep.intent.name,
+                    next_active_tool_id=prep.active_tool.id,
+                ),
+                tool_data={},
+                response_status=ConversationStatus.SUCCESS,
+                llm_text_override=None,
+            )
+
+        if has_decision and request.decision == "reject":
+            logger.info(
+                "tool_execution_rejected",
+                tool_id=prep.active_tool.id,
+                conversation_id=request.conversation_id,
+            )
+            return _DispatchResult(
+                early_response=None,
+                tool_data={"aborted": True},
+                response_status=ConversationStatus.REJECTED,
+                llm_text_override="Understood. I've cancelled that action. How else can I help you?",
+            )
+
+        # Proceed: confirmed or confirmation not required
+        dispatch_context: dict[str, Any] = dict(prep.slot_result.to_dict())
+        if prep.active_tool.type == ToolType.AGENT_TRANSFER:
+            targets = prep.active_tool.parameters.get("targets") or []
+            if targets:
+                raw = str(targets[0])
+                normalized = raw.removesuffix("-agent").replace("-", "_")
+                dispatch_context["target_agent_id"] = normalized
+            dispatch_context["conversation_history"] = [
+                {"role": m.role.value, "content": m.content} for m in request.messages
+            ]
+        elif prep.active_tool.type == ToolType.EXTERNAL_API:
+            # GenericApiTool (#66) reads its static config from parameters plus
+            # LLM-extracted runtime values under an `args` key.
+            dispatch_context = {
+                **prep.active_tool.parameters,
+                "args": dict(prep.slot_result.to_dict()),
+            }
+        tool_data = await self._dispatch_tool(prep.active_tool, dispatch_context)
+        logger.info(
+            "tool_dispatch_complete",
+            tool_type=prep.active_tool.type,
+            conversation_id=request.conversation_id,
+        )
+        if prep.active_tool.type == ToolType.END_CALL:
+            response_status = ConversationStatus.ENDED
+        elif prep.active_tool.type == ToolType.AGENT_TRANSFER:
+            logger.info(
+                "agent_handoff",
+                from_agent=request.agent_config.name,
+                to_agent=tool_data.get("transferred_to"),
+                conversation_id=request.conversation_id,
+            )
+
+        return _DispatchResult(
+            early_response=None,
+            tool_data=tool_data,
+            response_status=response_status,
+            llm_text_override=None,
+        )
 
     async def _dispatch_tool(
         self,

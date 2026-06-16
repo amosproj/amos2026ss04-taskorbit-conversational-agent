@@ -243,15 +243,22 @@ class OrchestratorAgent(Agent):
         from taskorbit.types import ToolType as _ToolType
 
         response: _ConversationResponse | None = None
+        chunk_yielded = False
 
         async for event in self._orchestrator.process_message_stream(request):
             if isinstance(event, str):
+                chunk_yielded = True
                 yield event
             else:
                 response = event
 
         if response is None:
             return
+
+        # Error or clarification responses yield no str chunks; fall back to
+        # the reply text so TTS speaks the message instead of staying silent.
+        if not chunk_yielded and response.reply and response.reply.content:
+            yield response.reply.content
 
         self._locked_intent_name = response.locked_intent_name
         if response.selected_agent:

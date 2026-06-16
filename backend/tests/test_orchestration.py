@@ -714,6 +714,141 @@ async def test_process_message_stream_clarification_yields_response_without_chun
     mock_stream.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_process_message_stream_confirmation_required_does_not_dispatch_tool(
+    mock_good_intent: Any,
+) -> None:
+    """Confirmation-required tool must block dispatch and emit CONFIRMATION_REQUIRED."""
+    from taskorbit.slots import SlotExtractionResult
+    from taskorbit.types import (
+        ConfirmationConfig,
+        ConversationStatus,
+        ToolDefinition,
+        ToolType,
+    )
+
+    orch = ConversationOrchestrator()
+    req = _make_request("book me")
+    req.agent_config.tools = [
+        ToolDefinition(
+            id="tool-confirm",
+            name="BookAppointment",
+            type=ToolType.DATA_EXTRACTION,
+            description="Book",
+            confirmation=ConfirmationConfig(required=True, prompt="Confirm booking?"),
+        )
+    ]
+    mock_good_intent.required_inputs = [{"name": "date", "type": "string", "required": True}]
+
+    with patch.object(
+        ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="{}"
+    ):
+        with patch.object(
+            ConversationOrchestrator,
+            "_call_llm_stream",
+            return_value=_fake_llm_chunks("Sure, I can book that."),
+        ):
+            with patch.object(
+                ConversationOrchestrator, "_extract_slots", new_callable=AsyncMock
+            ) as mock_extract:
+                mock_extract.return_value = SlotExtractionResult(
+                    filled={"date": MagicMock(value="tomorrow")}, missing=[]
+                )
+                with patch.object(
+                    ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock
+                ) as mock_dispatch:
+                    events = []
+                    async for event in orch.process_message_stream(req):
+                        events.append(event)
+
+    responses = [e for e in events if not isinstance(e, str)]
+    assert len(responses) == 1
+    assert responses[0].status == ConversationStatus.CONFIRMATION_REQUIRED
+    assert responses[0].confirmation is not None
+    assert responses[0].confirmation.confirmation_id == "tool-confirm"
+    mock_dispatch.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_process_message_stream_mid_stream_error_yields_error_response(
+    mock_good_intent: Any,
+) -> None:
+    """A provider that raises mid-stream produces an error ConversationResponse."""
+    from taskorbit.integrations.llm.errors import LLMAPIError
+
+    orch = ConversationOrchestrator()
+
+    async def _failing_stream(*args: Any, **kwargs: Any):
+        yield "Hello "
+        raise LLMAPIError("provider blew up")
+
+    with patch.object(
+        ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="{}"
+    ):
+        with patch.object(
+            ConversationOrchestrator, "_call_llm_stream", return_value=_failing_stream()
+        ):
+            events = []
+            async for event in orch.process_message_stream(_make_request("hi")):
+                events.append(event)
+
+    # The partial "Hello " chunk may or may not have been yielded before the
+    # error; what must always be true is that the final event is an error response.
+    assert len(events) >= 1
+    final = events[-1]
+    assert not isinstance(final, str)
+    assert final.status == "error"
+
+
+@pytest.mark.asyncio
+async def test_process_message_stream_dispatches_tool_when_slots_complete(
+    mock_good_intent: Any,
+) -> None:
+    """Tool is dispatched (once) when all required slots are filled."""
+    from taskorbit.slots import SlotExtractionResult
+    from taskorbit.types import ConversationStatus, ToolDefinition, ToolType
+
+    orch = ConversationOrchestrator()
+    req = _make_request("book me")
+    req.agent_config.tools = [
+        ToolDefinition(
+            id="tool-data",
+            name="SaveData",
+            type=ToolType.DATA_EXTRACTION,
+            description="Save",
+        )
+    ]
+    mock_good_intent.required_inputs = [{"name": "name", "type": "string", "required": True}]
+
+    with patch.object(
+        ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="{}"
+    ):
+        with patch.object(
+            ConversationOrchestrator,
+            "_call_llm_stream",
+            return_value=_fake_llm_chunks("Saved!"),
+        ):
+            with patch.object(
+                ConversationOrchestrator, "_extract_slots", new_callable=AsyncMock
+            ) as mock_extract:
+                mock_extract.return_value = SlotExtractionResult(
+                    filled={"name": MagicMock(value="Alice")}, missing=[]
+                )
+                with patch.object(
+                    ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock
+                ) as mock_dispatch:
+                    mock_dispatch.return_value = {"saved": True}
+                    events = []
+                    async for event in orch.process_message_stream(req):
+                        events.append(event)
+
+    responses = [e for e in events if not isinstance(e, str)]
+    assert len(responses) == 1
+    assert responses[0].status == ConversationStatus.SUCCESS
+    assert responses[0].tool_invoked is not None
+    mock_dispatch.assert_called_once()
+
+
 # ---------------------------------------------------------------------------
 # _user_requested_end_call — keyword detection
 # ---------------------------------------------------------------------------

@@ -142,6 +142,7 @@ async def _sse_generator(
     request: ConversationRequest,
     orchestrator: ConversationOrchestrator,
     db: AsyncSession,
+    user_id: int,
 ):
     """Yield SSE-formatted events from process_message_stream.
 
@@ -151,6 +152,23 @@ async def _sse_generator(
               "slots": {...}, "missing_slots": [...], "conversation_id": "..."}
       data: {"type": "error", "message": "..."}
     """
+    # Persist user message upfront so it survives client disconnects.
+    last_msg = request.messages[-1] if request.messages else None
+    last_user = last_msg if last_msg and last_msg.role == MessageRole.USER else None
+    if last_user:
+        saved = await create_conversation_message(
+            db=db,
+            conversation_id=request.conversation_id,
+            role=last_user.role.value,
+            content=last_user.content,
+            user_id=user_id,
+        )
+        if saved is None:
+            logger.error(
+                "sse_failed_to_save_user_message",
+                conversation_id=request.conversation_id,
+            )
+
     meta: ConversationResponse | None = None
 
     async for event in orchestrator.process_message_stream(request):
@@ -170,21 +188,7 @@ async def _sse_generator(
         yield f"data: {json.dumps({'type': 'error', 'message': meta.error or 'Unknown error'})}\n\n"
         return
 
-    # Persist messages only after a successful full stream
-    last_msg = request.messages[-1] if request.messages else None
-    last_user = last_msg if last_msg and last_msg.role == MessageRole.USER else None
-    if last_user:
-        saved = await create_conversation_message(
-            db=db,
-            conversation_id=request.conversation_id,
-            role=last_user.role.value,
-            content=last_user.content,
-        )
-        if saved is None:
-            logger.error(
-                "sse_failed_to_save_user_message",
-                conversation_id=request.conversation_id,
-            )
+    # Persist assistant reply after successful full stream
     if meta.reply:
         saved = await create_conversation_message(
             db=db,
@@ -207,20 +211,36 @@ async def stream_conversation(
     request: ConversationRequest,
     orchestrator: ConversationOrchestrator = Depends(get_orchestrator),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
+    user_id: int = Depends(get_current_user_id),  # noqa: B008
 ) -> StreamingResponse:
     """Stream one turn of a conversation token by token via Server-Sent Events.
 
     The client reads the event stream and renders tokens as they arrive.
     The final 'done' event carries intent, agent, and slot metadata.
-    Persists messages to the database only after the full stream completes.
+    The user message is persisted upfront so it survives disconnects; the
+    assistant reply is persisted after the full stream completes.
     """
+    # Auto-create conversation when absent or unknown, mirroring /process.
+    conversation_id = request.conversation_id
+    if not conversation_id or not await get_conversation(db, conversation_id):
+        conv = await create_conversation(
+            db=db,
+            agent_id=request.agent_config.id,
+            agent_name=request.agent_config.name,
+        )
+        if conv is None:
+            raise HTTPException(status_code=500, detail="Failed to create conversation")
+        conversation_id = conv.id
+        request = request.model_copy(update={"conversation_id": conversation_id})
+        logger.info("conversation_auto_created", conversation_id=conversation_id)
+
     logger.info(
         "sse_stream_request_received",
         conversation_id=request.conversation_id,
         message_count=len(request.messages),
     )
     return StreamingResponse(
-        _sse_generator(http_request, request, orchestrator, db),
+        _sse_generator(http_request, request, orchestrator, db, user_id),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

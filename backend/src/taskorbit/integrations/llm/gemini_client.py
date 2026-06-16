@@ -179,6 +179,7 @@ class GeminiClient:
 
         _api_start = time.perf_counter()
         char_count = 0
+        completed = False
         try:
             async for chunk in await self._client.aio.models.generate_content_stream(
                 model=llm_config.model,
@@ -189,6 +190,7 @@ class GeminiClient:
                 if text:
                     char_count += len(text)
                     yield text
+            completed = True
         except genai_errors.ClientError as exc:
             code = getattr(exc, "code", None)
             if code in (401, 403):
@@ -239,9 +241,10 @@ class GeminiClient:
                 llm_api_latency_ms=round(_api_elapsed * 1000, 1),
             )
             _m = get_metrics()
-            _m.llm_requests_total.labels(
-                provider="google", model=llm_config.model, status="success"
-            ).inc()
+            if completed:
+                _m.llm_requests_total.labels(
+                    provider="google", model=llm_config.model, status="success"
+                ).inc()
             _m.pipeline_latency_seconds.labels(stage="llm_api_google").observe(_api_elapsed)
             _m.llm_response_chars.labels(provider="google", model=llm_config.model).observe(
                 char_count
