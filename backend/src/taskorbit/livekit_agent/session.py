@@ -226,6 +226,15 @@ def build_agent_session(
     The orchestrator instance is owned by the returned session via the
     bound ``OrchestratorAgent`` — both share its lifetime. Caller is
     responsible for ``session.start(...)`` and ``session.aclose()``.
+
+    The STT and TTS plugins are built here, so the per-agent selections
+    parsed from participant metadata (#87 — STT model, TTS voice + model)
+    must be threaded in or the user's dropdown choices never reach the
+    audio path and the env defaults are used regardless. When
+    ``agent_config`` is absent or a field is empty the env defaults apply
+    (legacy / fallback, AC5). The LLM model is intentionally NOT taken from
+    here: ``OrchestratorAgent.llm_node`` overrides the bridge LLM and calls
+    the model named in ``agent_config.llm.model`` itself.
     """
     cfg = settings or get_settings()
 
