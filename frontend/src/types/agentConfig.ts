@@ -13,8 +13,10 @@
  * touches them.
  */
 
-export type SttProvider = "deepgram";
-export type TtsProvider = "elevenlabs";
+// Both vendors are dual-capability (#135): either can serve STT or TTS,
+// selected independently. Mirrors STTProvider/TTSProvider in backend types.py.
+export type SttProvider = "deepgram" | "elevenlabs";
+export type TtsProvider = "elevenlabs" | "deepgram";
 export type LlmProvider = "openai" | "gemini";
 
 export type ParamType = "string" | "number" | "boolean" | "date";
