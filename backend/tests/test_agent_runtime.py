@@ -328,3 +328,64 @@ def test_registry_default_falls_back_to_sales_agent() -> None:
     config = _make_config("unknown-xyz-agent")
     agent = AgentRegistry.create(config, ConversationOrchestrator())
     assert isinstance(agent, SalesAgent)
+
+
+# ---------------------------------------------------------------------------
+# CustomAgent
+# ---------------------------------------------------------------------------
+
+
+def test_registry_known_agent_names_returns_all_builtins() -> None:
+    names = AgentRegistry.known_agent_names()
+    assert "sales" in names
+    assert "technical_support" in names
+    assert "general_inquiry" in names
+    assert "appointment_management" in names
+    assert "customer_dissatisfaction" in names
+
+
+def test_registry_known_agent_names_excludes_custom() -> None:
+    assert "custom" not in AgentRegistry.known_agent_names()
+
+
+def test_create_custom_returns_custom_agent() -> None:
+    from taskorbit.agents import CustomAgent
+
+    config = _make_config("my-custom-bot", name="My Custom Bot")
+    agent = AgentRegistry.create_custom(config, ConversationOrchestrator())
+    assert isinstance(agent, CustomAgent)
+
+
+def test_create_custom_agent_carries_config() -> None:
+    config = _make_config("custom-id", name="Brand Bot")
+    agent = AgentRegistry.create_custom(config, ConversationOrchestrator())
+    assert agent.config.name == "Brand Bot"
+
+
+def test_create_custom_agent_returns_config_tools() -> None:
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    tool = ToolDefinition(
+        id="t1",
+        name="end_call",
+        type=ToolType.END_CALL,
+        description="end",
+        confirmation=ConfirmationConfig(),
+    )
+    config = AgentConfig(
+        id="custom-agent",
+        name="Custom",
+        persona="A custom agent.",
+        greeting="Hi!",
+        tools=[tool],
+    )
+    agent = AgentRegistry.create_custom(config, ConversationOrchestrator())
+    assert agent.get_task_definitions() == [tool]
+
+
+def test_custom_agent_name_is_custom() -> None:
+    from taskorbit.agents import CustomAgent
+
+    config = _make_config("custom-id")
+    agent = CustomAgent(config, ConversationOrchestrator())
+    assert agent.agent_name == "custom"

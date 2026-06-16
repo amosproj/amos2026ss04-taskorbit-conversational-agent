@@ -17,13 +17,22 @@
  */
 
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowUp, Mic, PhoneOff, Wand2 } from "lucide-react";
+import { ArrowUp, Check, Mic, PhoneOff, UserRoundCog, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useMicRecorder } from "@/hooks/useMicRecorder";
 import { useSilenceDetection } from "@/hooks/useSilenceDetection";
 import { useVoiceActivityMonitor } from "@/hooks/useVoiceActivityMonitor";
+import { fetchUserAgents } from "@/lib/userAgentsApi";
 import type { CallStatus } from "@/types/callState";
+
+type RoutingTarget = { id: string; name: string };
+
+const AGENT_COLORS = [
+  "oklch(0.66 0.18 295)", // purple
+  "oklch(0.68 0.16 245)", // blue
+  "oklch(0.74 0.15 162)", // green
+];
 
 type Props = {
   status: CallStatus;
@@ -31,7 +40,12 @@ type Props = {
   greetingInProgress?: boolean;
   onPhase: (phase: CallStatus) => void;
   onEnd: () => void;
-  onSendText: (text: string) => void;
+  onSendText: (
+    text: string,
+    manualTransfer?: { target_agent_id: string; target_agent_name: string } | null,
+  ) => void;
+  /** Fires immediately when the user picks (or clears) an agent from the @route menu. */
+  onRoutingTargetChange?: (target: { id: string; name: string } | null) => void;
   onTriggerConfirmation: () => void;
   onMicError: (message: string | null) => void;
 };
@@ -42,7 +56,8 @@ export function InCallControls({
   onPhase,
   onEnd,
   onSendText,
-  onTriggerConfirmation,
+  onRoutingTargetChange,
+  onTriggerConfirmation: _onTriggerConfirmation,
   onMicError,
 }: Props) {
   const mic = useMicRecorder();
@@ -50,6 +65,66 @@ export function InCallControls({
   const [continuousMode, setContinuousMode] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputId = useId();
+
+  // ── Agent routing ────────────────────────────────────────────────────────
+  const [routingTarget, setRoutingTarget] = useState<RoutingTarget | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [agents, setAgents] = useState<RoutingTarget[]>([]);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Fetch all agents (built-in templates + user DB copies) once when menu first opens.
+  // Load all agents: every custom agent + every built-in template, deduplicated by id only.
+  // We intentionally show both a user's custom copy AND the original built-in so the user
+  // can route to any of them independently.
+  const loadAgents = async () => {
+    if (agents.length > 0) return;
+    try {
+      const entries = await fetchUserAgents();
+      const seen = new Set<string>();
+      const result: RoutingTarget[] = [];
+      for (const e of entries) {
+        if (!seen.has(e.id)) {
+          seen.add(e.id);
+          result.push({ id: e.id, name: e.name });
+        }
+      }
+      setAgents(result);
+    } catch {
+      // silently ignore — menu stays empty
+    }
+  };
+
+  const openMenu = () => {
+    void loadAgents();
+    setMenuOpen(true);
+  };
+
+  const selectAgent = (agent: RoutingTarget) => {
+    setRoutingTarget(agent);
+    onRoutingTargetChange?.(agent);
+    setMenuOpen(false);
+    textareaRef.current?.focus();
+  };
+
+  const clearRouting = () => {
+    setRoutingTarget(null);
+    onRoutingTargetChange?.(null);
+    setMenuOpen(false);
+  };
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuOpen]);
+
+  const filteredAgents = agents;
 
   useEffect(() => {
     if (mic.error) {
@@ -205,8 +280,12 @@ export function InCallControls({
   const handleSendText = (): void => {
     const text = draft.trim();
     if (!text) return;
-    onSendText(text);
+    const transfer = routingTarget
+      ? { target_agent_id: routingTarget.id, target_agent_name: routingTarget.name }
+      : null;
+    onSendText(text, transfer);
     setDraft("");
+    setRoutingTarget(null);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   };
 
@@ -258,7 +337,7 @@ export function InCallControls({
   return (
     <div className="rounded-xl border bg-card p-3.5">
       <div className="flex items-center gap-2.5">
-        {/* ── Pill input (always text mode) ── */}
+        {/* ── Pill input ── */}
         <div
           className={cn(
             "flex flex-1 items-end gap-2 rounded-full border bg-background px-5 py-2 transition-colors",
@@ -340,16 +419,74 @@ export function InCallControls({
           )}
         </button>
 
-        {/* ── Demo confirmation (icon-only) ── */}
-        <button
-          type="button"
-          onClick={onTriggerConfirmation}
-          aria-label="Demo: trigger agent confirmation"
-          title="Demo: simulate the agent asking for confirmation"
-          className="flex size-9 shrink-0 items-center justify-center rounded-full border bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <Wand2 size={15} />
-        </button>
+        {/* ── Agent routing button + dropdown ── */}
+        <div className="relative shrink-0">
+          {menuOpen && (
+            <div
+              ref={menuRef}
+              className="absolute bottom-full right-0 mb-2 z-50 w-56 rounded-xl border bg-popover shadow-lg py-1.5"
+            >
+              <p className="px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                Route to agent
+              </p>
+              {filteredAgents.length === 0 ? (
+                <p className="px-3 py-2 text-xs text-muted-foreground">No agents found</p>
+              ) : (
+                filteredAgents.map((a, i) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => selectAgent(a)}
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-sm hover:bg-muted transition-colors"
+                  >
+                    <span
+                      className="size-2.5 shrink-0 rounded-full"
+                      style={{ background: AGENT_COLORS[i % AGENT_COLORS.length] }}
+                    />
+                    <span className="flex-1 truncate text-left">{a.name}</span>
+                    {routingTarget?.id === a.id && (
+                      <Check size={13} className="shrink-0 text-primary" />
+                    )}
+                  </button>
+                ))
+              )}
+              {routingTarget && (
+                <>
+                  <div className="my-1 border-t" />
+                  <button
+                    type="button"
+                    onClick={clearRouting}
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-muted-foreground hover:bg-muted transition-colors"
+                  >
+                    <X size={13} className="shrink-0" />
+                    Clear routing
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={openMenu}
+            disabled={status !== "idle_in_call"}
+            aria-label="Route to agent"
+            title={routingTarget ? `Routed to ${routingTarget.name}` : "Route to agent"}
+            className={cn(
+              "flex size-11 shrink-0 items-center justify-center rounded-full border transition-all",
+              "disabled:cursor-not-allowed disabled:opacity-40",
+              routingTarget
+                ? "border-transparent text-white"
+                : "border-border bg-card text-foreground hover:bg-muted",
+            )}
+            style={
+              routingTarget && status === "idle_in_call"
+                ? { background: AGENT_COLORS[0] }
+                : undefined
+            }
+          >
+            <UserRoundCog size={16} />
+          </button>
+        </div>
 
         {/* ── End call ── */}
         <button

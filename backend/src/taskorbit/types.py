@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ---------------------------------------------------------------------------
 # Enumerations
@@ -173,6 +173,26 @@ class ConfirmationResponsePayload(BaseModel):
     description: str
 
 
+class ManualTransferRequest(BaseModel):
+    """Carries a UI-initiated agent transfer directive.
+
+    Either ``target_agent_id`` (UUID hex of a saved AgentConfiguration) or
+    ``target_agent_name`` (human-readable name) must be set. When both are
+    provided, ``target_agent_id`` takes precedence.
+    """
+
+    target_agent_id: str | None = None
+    target_agent_name: str | None = None
+
+    @model_validator(mode="after")
+    def require_at_least_one_target(self) -> ManualTransferRequest:
+        if not (self.target_agent_id or self.target_agent_name):
+            raise ValueError(
+                "ManualTransferRequest requires at least one of target_agent_id or target_agent_name"
+            )
+        return self
+
+
 class ConversationRequest(BaseModel):
     conversation_id: str | None = None  # omit on first message; backend assigns and returns one
     agent_config: AgentConfig
@@ -182,6 +202,8 @@ class ConversationRequest(BaseModel):
     # AC #49: Decision fields
     confirmation_id: str | None = None
     decision: Literal["confirm", "reject"] | None = None
+    # Manual transfer: UI-initiated handoff to a specific agent (bypasses intent detection)
+    manual_transfer: ManualTransferRequest | None = None
 
 
 class ConversationResponse(BaseModel):
