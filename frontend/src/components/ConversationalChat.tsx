@@ -154,6 +154,13 @@ export function ConversationalChat() {
     };
   }, []);
 
+  // Reset mute state between calls so a new session is never silently muted.
+  useEffect(() => {
+    if (call.status === "idle" || call.status === "ended") {
+      setAgentMuted(false);
+    }
+  }, [call.status]);
+
   // Detect greeting completion: first speaking → idle_in_call transition after
   // a call starts. Unlocks the mic button and triggers continuous mode.
   useEffect(() => {
