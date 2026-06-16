@@ -18,6 +18,8 @@ scrape_configs:
         target_label: container
       - source_labels: [__meta_docker_container_label_com_docker_compose_service]
         target_label: service
+      - replacement: cloud-run-logs
+        target_label: job
     pipeline_stages:
       - json:
           expressions:
