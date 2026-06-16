@@ -150,6 +150,7 @@ async def entrypoint(ctx: JobContext) -> None:
             get_metrics().pipeline_latency_seconds.labels(stage="worker_turn").observe(
                 _turn_elapsed
             )
+            logger.info("voice_turn_complete", latency_ms=round(_turn_elapsed * 1000, 1))
             logger.info(
                 "worker_generate_reply_triggered",
                 turn_latency_ms=round(_turn_elapsed * 1000, 1),
