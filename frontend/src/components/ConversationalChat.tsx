@@ -101,6 +101,7 @@ export function ConversationalChat() {
   const lastUserTurnIdRef = useRef<string | null>(null);
   const lockedIntentRef = useRef<string | null>(null);
   const pendingConfirmationIdRef = useRef<string | null>(null);
+  const [completedWorkflowSteps, setCompletedWorkflowSteps] = useState<string[]>([]);
   const [previousConversations, setPreviousConversations] = useState<
     Record<string, string | null>[]
   >([]);
@@ -527,6 +528,7 @@ export function ConversationalChat() {
     lockedIntentRef.current = null;
     manualRoutingLockRef.current = false;
     setRoutedAgent(null);
+    setCompletedWorkflowSteps([]);
     call.restart();
   }, [call]);
 
@@ -534,6 +536,7 @@ export function ConversationalChat() {
     // console.log("[greeting] handleStartSession fired");
     lockedIntentRef.current = null;
     setRoutedAgent(null);
+    setCompletedWorkflowSteps([]);
     call.start({ tokenMetadata: buildLiveKitWorkerMetadata(agent) });
     setGreetingDone(false);
     greetingSeenSpeakingRef.current = false;
