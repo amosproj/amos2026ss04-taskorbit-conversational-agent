@@ -265,7 +265,10 @@ export function ConversationalChat() {
 
           if (response.status === "ended") {
             if (replyText) {
-              await playSynthesizedSpeech(replyText, { signal: controller.signal, volumeRef: agentVolumeRef }).catch(() => {});
+              await playSynthesizedSpeech(replyText, {
+                signal: controller.signal,
+                volumeRef: agentVolumeRef,
+              }).catch(() => {});
             }
             call.end();
             return;
@@ -303,7 +306,10 @@ export function ConversationalChat() {
           if (speakable) {
             call.setPhase("speaking");
             try {
-              await playSynthesizedSpeech(replyText, { signal: controller.signal, volumeRef: agentVolumeRef });
+              await playSynthesizedSpeech(replyText, {
+                signal: controller.signal,
+                volumeRef: agentVolumeRef,
+              });
             } catch (audioErr) {
               if ((audioErr as Error).name !== "AbortError") {
                 console.warn("[ConversationalChat] ElevenLabs playback failed", audioErr);
@@ -383,7 +389,10 @@ export function ConversationalChat() {
           if (speakable) {
             call.setPhase("speaking");
             try {
-              await playSynthesizedSpeech(replyText, { signal: controller.signal, volumeRef: agentVolumeRef });
+              await playSynthesizedSpeech(replyText, {
+                signal: controller.signal,
+                volumeRef: agentVolumeRef,
+              });
             } catch (audioErr) {
               if ((audioErr as Error).name !== "AbortError") {
                 console.warn("[ConversationalChat] ElevenLabs playback failed", audioErr);
