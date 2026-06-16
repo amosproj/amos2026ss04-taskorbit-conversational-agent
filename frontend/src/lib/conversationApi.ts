@@ -308,6 +308,11 @@ export async function* sendMessageStream(
   conversationId: string,
   signal?: AbortSignal,
   lockedIntentName?: string | null,
+  confirmationId?: string | null,
+  decision?: "confirm" | "reject" | null,
+  completedWorkflowSteps?: string[],
+  selectedAgent?: string | null,
+  manualTransfer?: ManualTransfer | null,
 ): AsyncGenerator<StreamEvent> {
   const messages: BackendMessage[] = transcript.map((turn) => ({
     role: turn.role === "user" ? "user" : "assistant",
@@ -319,6 +324,11 @@ export async function* sendMessageStream(
     agent_config: adaptAgentConfig(agent),
     messages,
     current_intent_name: lockedIntentName ?? null,
+    confirmation_id: confirmationId ?? null,
+    decision: decision ?? null,
+    completed_workflow_steps: completedWorkflowSteps ?? [],
+    selected_agent: selectedAgent ?? null,
+    manual_transfer: manualTransfer ?? null,
   };
 
   const res = await fetch("/api/v1/conversations/stream", {
