@@ -17,7 +17,17 @@
  */
 
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowUp, Check, Mic, PhoneOff, UserRoundCog, X } from "lucide-react";
+import {
+  ArrowUp,
+  Check,
+  Mic,
+  PhoneOff,
+  UserRoundCog,
+  Volume2,
+  VolumeX,
+  Wand2,
+  X,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useMicRecorder } from "@/hooks/useMicRecorder";
@@ -48,6 +58,8 @@ type Props = {
   onRoutingTargetChange?: (target: { id: string; name: string } | null) => void;
   onTriggerConfirmation: () => void;
   onMicError: (message: string | null) => void;
+  agentMuted: boolean;
+  onAgentMutedChange: (muted: boolean) => void;
 };
 
 export function InCallControls({
@@ -57,8 +69,10 @@ export function InCallControls({
   onEnd,
   onSendText,
   onRoutingTargetChange,
-  onTriggerConfirmation: _onTriggerConfirmation,
+  onTriggerConfirmation,
   onMicError,
+  agentMuted,
+  onAgentMutedChange,
 }: Props) {
   const mic = useMicRecorder();
   const [draft, setDraft] = useState("");
@@ -419,6 +433,23 @@ export function InCallControls({
           )}
         </button>
 
+        {/* ── Agent output mute toggle ── */}
+        <button
+          type="button"
+          onClick={() => onAgentMutedChange(!agentMuted)}
+          aria-pressed={agentMuted}
+          aria-label={agentMuted ? "Unmute agent output" : "Mute agent output"}
+          className={cn(
+            "flex size-11 shrink-0 items-center justify-center rounded-full border",
+            "transition-all duration-200",
+            agentMuted
+              ? "border-transparent bg-destructive/15 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+              : "border-border bg-card text-foreground hover:bg-muted",
+          )}
+        >
+          {agentMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+        </button>
+
         {/* ── Agent routing button + dropdown ── */}
         <div className="relative shrink-0">
           {menuOpen && (
@@ -487,6 +518,17 @@ export function InCallControls({
             <UserRoundCog size={16} />
           </button>
         </div>
+
+        {/* ── Demo confirmation (icon-only) ── */}
+        <button
+          type="button"
+          onClick={onTriggerConfirmation}
+          aria-label="Demo: trigger agent confirmation"
+          title="Demo: simulate the agent asking for confirmation"
+          className="flex size-9 shrink-0 items-center justify-center rounded-full border bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <Wand2 size={15} />
+        </button>
 
         {/* ── End call ── */}
         <button

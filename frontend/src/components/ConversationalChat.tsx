@@ -84,7 +84,13 @@ export function ConversationalChat() {
   // Starts true (no call active). Set false on call start, then back to
   // true once the first speaking→idle_in_call transition is detected.
   const [greetingDone, setGreetingDone] = useState(true);
+  const [agentMuted, setAgentMuted] = useState(false);
   const [routedAgent, setRoutedAgent] = useState<string | null>(null);
+  // Stable ref so async playback closures always read the current mute state.
+  const agentVolumeRef = useRef(1);
+  useEffect(() => {
+    agentVolumeRef.current = agentMuted ? 0 : 1;
+  }, [agentMuted]);
   // When the user manually routes via the @chip, lock out voice-based routing
   // overrides until the manual routing is cleared or the session restarts.
   const manualRoutingLockRef = useRef(false);
@@ -150,6 +156,13 @@ export function ConversationalChat() {
       if (greetingTimeoutRef.current !== null) clearTimeout(greetingTimeoutRef.current);
     };
   }, []);
+
+  // Reset mute state between calls so a new session is never silently muted.
+  useEffect(() => {
+    if (call.status === "idle" || call.status === "ended") {
+      setAgentMuted(false);
+    }
+  }, [call.status]);
 
   // Detect greeting completion: first speaking → idle_in_call transition after
   // a call starts. Unlocks the mic button and triggers continuous mode.
@@ -306,7 +319,10 @@ export function ConversationalChat() {
 
           if (response.status === "ended") {
             if (replyText) {
-              await playSynthesizedSpeech(replyText, { signal: controller.signal }).catch(() => {});
+              await playSynthesizedSpeech(replyText, {
+                signal: controller.signal,
+                volumeRef: agentVolumeRef,
+              }).catch(() => {});
             }
             call.end();
             return;
@@ -338,7 +354,10 @@ export function ConversationalChat() {
           if (speakable) {
             call.setPhase("speaking");
             try {
-              await playSynthesizedSpeech(replyText, { signal: controller.signal });
+              await playSynthesizedSpeech(replyText, {
+                signal: controller.signal,
+                volumeRef: agentVolumeRef,
+              });
             } catch (audioErr) {
               if ((audioErr as Error).name !== "AbortError") {
                 console.warn("[ConversationalChat] ElevenLabs playback failed", audioErr);
@@ -441,7 +460,10 @@ export function ConversationalChat() {
           if (speakable) {
             call.setPhase("speaking");
             try {
-              await playSynthesizedSpeech(replyText, { signal: controller.signal });
+              await playSynthesizedSpeech(replyText, {
+                signal: controller.signal,
+                volumeRef: agentVolumeRef,
+              });
             } catch (audioErr) {
               if ((audioErr as Error).name !== "AbortError") {
                 console.warn("[ConversationalChat] ElevenLabs playback failed", audioErr);
@@ -618,6 +640,8 @@ export function ConversationalChat() {
             onRoutingTargetChange={handleRoutingTargetChange}
             onTriggerConfirmation={handleTriggerConfirmation}
             onMicError={call.setMicError}
+            agentMuted={agentMuted}
+            onAgentMutedChange={setAgentMuted}
           />
         </div>
       ) : isInCall ? null : (
@@ -642,7 +666,7 @@ export function ConversationalChat() {
           video={false}
           onError={handleRoomError}
         >
-          <RoomAudioRenderer />
+          <RoomAudioRenderer volume={agentMuted ? 0 : 1} />
           <VoiceSessionBridge
             status={call.status}
             onPhase={call.setPhase}
