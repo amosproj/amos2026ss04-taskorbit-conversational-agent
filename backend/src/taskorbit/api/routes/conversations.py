@@ -89,7 +89,7 @@ async def process_conversation(
                             "failed_to_parse_dep_config",
                             agent_id=dep_id,
                             error=str(e),
-                            conversation_id=conversation_id
+                            conversation_id=conversation_id,
                         )
 
             if dep_configs:

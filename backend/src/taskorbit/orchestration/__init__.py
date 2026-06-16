@@ -294,7 +294,6 @@ class ConversationOrchestrator:
                             completed_workflow_steps=request.completed_workflow_steps,
                         )
 
-
                     if request.decision == "reject":
                         logger.info(
                             "workflow_dependency_rejected",

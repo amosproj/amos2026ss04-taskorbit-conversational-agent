@@ -106,7 +106,6 @@ def test_registry_returns_sales_agent_for_sales_id() -> None:
     assert isinstance(agent, SalesAgent)
 
 
-
 def test_registry_returns_technical_support_agent_for_support_id() -> None:
     config = _make_config("technical-support-bot")
     agent = AgentRegistry.get_agent(config, ConversationOrchestrator())
