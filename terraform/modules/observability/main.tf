@@ -66,6 +66,52 @@ locals {
     analytics:
       reporting_enabled: false
   YAML
+
+  promtail_config = <<-YAML
+    server:
+      http_listen_port: 9080
+      grpc_listen_port: 0
+
+    positions:
+      filename: /tmp/positions.yaml
+
+    clients:
+      - url: ${google_cloud_run_v2_service.loki.uri}/loki/api/v1/push
+
+    scrape_configs:
+      - job_name: taskorbit-cloud-run
+        gcplog:
+          project_id: ${var.project_id}
+          subscription_type: pull
+          subscription: taskorbit-loki-logs-pull
+          use_incoming_timestamp: true
+          labels:
+            job: cloud-run-logs
+        relabel_configs:
+          - source_labels: [__gcp_resource_labels_service_name]
+            regex: "taskorbit-(.*)"
+            target_label: service
+            replacement: "$1"
+          - source_labels: [__gcp_resource_labels_revision_name]
+            target_label: revision
+        pipeline_stages:
+          # Cloud Logging wraps the original structlog JSON under jsonPayload.
+          # Extract labels from the nested path so they match what local
+          # Promtail (Docker socket) reads directly from container stdout.
+          - json:
+              expressions:
+                level: jsonPayload.level
+                event: jsonPayload.event
+                payload: jsonPayload
+          # Replace the stored log line with just the jsonPayload content so
+          # the line body in Loki is identical to local dev (raw structlog JSON).
+          # This lets all LogQL queries (| json | unwrap latency_ms, etc.) work
+          # the same in both local and production without dual query paths.
+          - output:
+              source: payload
+          - labels:
+              level:
+  YAML
 }
 
 # ── GCS buckets ───────────────────────────────────────────────────────────────
@@ -594,24 +640,155 @@ resource "google_pubsub_topic_iam_member" "sink_publisher" {
   member  = google_logging_project_sink.loki.writer_identity
 }
 
-# Push subscription: delivers messages from the Pub/Sub topic to Loki's HTTP
-# push endpoint. Without this the sink publishes logs but nothing consumes them.
-resource "google_pubsub_subscription" "loki_push" {
-  name    = "taskorbit-loki-push"
+# Grant the observability SA permission to pull and ack messages from the subscription
+resource "google_pubsub_subscription_iam_member" "promtail_subscriber" {
+  project      = var.project_id
+  subscription = google_pubsub_subscription.loki_pull.name
+  role         = "roles/pubsub.subscriber"
+  member       = "serviceAccount:${var.observability_sa_email}"
+}
+
+# ── Promtail Cloud Run service ─────────────────────────────────────────────────
+# Promtail bridges Cloud Logging → Pub/Sub → Loki. It pulls raw Cloud Logging
+# LogEntry messages from Pub/Sub via the gcplog target, strips the taskorbit-
+# prefix from resource.labels.service_name to set the `service` label, and
+# pushes correctly-formatted streams to Loki. min_instance_count=1 is required
+# so Promtail keeps running between requests and does not miss messages.
+
+resource "google_secret_manager_secret" "promtail_config" {
+  secret_id = "taskorbit-promtail-config"
+  project   = var.project_id
+
+  replication {
+    auto {}
+  }
+
+  labels = {
+    managed-by = "terraform"
+    app        = "taskorbit"
+    component  = "promtail"
+  }
+}
+
+resource "google_secret_manager_secret_version" "promtail_config" {
+  secret      = google_secret_manager_secret.promtail_config.id
+  secret_data = local.promtail_config
+
+  depends_on = [google_cloud_run_v2_service.loki]
+}
+
+resource "google_secret_manager_secret_iam_member" "promtail_config_accessor" {
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.promtail_config.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.observability_sa_email}"
+}
+
+resource "google_cloud_run_v2_service" "promtail" {
+  name     = "taskorbit-promtail"
+  location = var.region
+  project  = var.project_id
+
+  # Promtail only needs to reach Loki (another Cloud Run service) and Pub/Sub.
+  # No inbound traffic required — it is a push-only sidecar.
+  ingress = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+
+  template {
+    service_account = var.observability_sa_email
+
+    # CPU must remain allocated even when no HTTP request is in flight so that
+    # Promtail can continuously pull from the Pub/Sub subscription. Without this
+    # annotation, Cloud Run throttles CPU to ~0 between requests and Promtail
+    # stops polling, causing log messages to pile up unprocessed in Pub/Sub.
+    annotations = {
+      "run.googleapis.com/cpu-throttling" = "false"
+    }
+
+    scaling {
+      # Must stay alive to continuously poll Pub/Sub; scaling to 0 drops messages.
+      min_instance_count = 1
+      max_instance_count = 1
+    }
+
+    volumes {
+      name = "promtail-config"
+      secret {
+        secret = google_secret_manager_secret.promtail_config.secret_id
+        items {
+          version = "latest"
+          path    = "promtail.yaml"
+          mode    = 0444
+        }
+      }
+    }
+
+    containers {
+      image = "grafana/promtail:3.2.0"
+      name  = "promtail"
+
+      args = ["-config.file=/etc/promtail/promtail.yaml"]
+
+      ports {
+        name           = "http1"
+        container_port = 9080
+      }
+
+      volume_mounts {
+        name       = "promtail-config"
+        mount_path = "/etc/promtail"
+      }
+
+      resources {
+        limits = {
+          cpu    = "1"
+          memory = "512Mi"
+        }
+      }
+
+      startup_probe {
+        http_get {
+          path = "/ready"
+          port = 9080
+        }
+        initial_delay_seconds = 10
+        period_seconds        = 10
+        failure_threshold     = 6
+      }
+
+      liveness_probe {
+        http_get {
+          path = "/ready"
+          port = 9080
+        }
+        period_seconds    = 30
+        failure_threshold = 3
+      }
+    }
+
+    timeout = "300s"
+  }
+
+  depends_on = [
+    google_secret_manager_secret_version.promtail_config,
+    google_pubsub_subscription_iam_member.promtail_subscriber,
+  ]
+}
+
+# Pull subscription: Promtail polls this to consume Cloud Logging log entries.
+# Direct push to Loki's HTTP API does not work — Cloud Logging wraps entries in
+# a Pub/Sub envelope that Loki's /push endpoint cannot parse. Promtail's gcplog
+# target understands the Cloud Logging LogEntry format and converts it correctly.
+resource "google_pubsub_subscription" "loki_pull" {
+  name    = "taskorbit-loki-logs-pull"
   project = var.project_id
   topic   = google_pubsub_topic.loki_logs.name
 
-  push_config {
-    push_endpoint = "${google_cloud_run_v2_service.loki.uri}/loki/api/v1/push"
-
-    oidc_token {
-      service_account_email = var.observability_sa_email
-      audience              = google_cloud_run_v2_service.loki.uri
-    }
-  }
-
-  message_retention_duration = "3600s"
+  # No push_config — Promtail pulls via the gcplog target
+  message_retention_duration = "86400s"
   ack_deadline_seconds       = 60
+  retain_acked_messages      = false
 
-  depends_on = [google_cloud_run_v2_service.loki]
+  expiration_policy {
+    ttl = "" # never expire
+  }
 }

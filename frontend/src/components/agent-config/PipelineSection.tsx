@@ -17,9 +17,7 @@ import {
   LLM_MODELS,
   LLM_MODEL_DEFAULTS,
   STT_MODELS,
-  STT_MODEL_DEFAULT,
   TTS_MODELS,
-  TTS_MODEL_DEFAULT,
   TTS_VOICES,
   withCurrent,
 } from "@/lib/pipelineOptions";
@@ -37,6 +35,22 @@ type Props = {
 // provider resets the model to that provider's default so a mismatch can't be
 // authored in the first place. The model lists themselves live in
 // pipelineOptions.ts — the single source of truth (ticket #87).
+
+// Same reset-on-switch rule for STT/TTS (#135). The elevenlabs STT default
+// must stay scribe_v2_realtime: it is the only Scribe model the voice
+// worker's streaming turn handling supports (batch models are rejected by
+// the backend factory and fall back to it anyway).
+const STT_MODEL_DEFAULTS: Record<SttProvider, string> = {
+  deepgram: "nova-3",
+  elevenlabs: "scribe_v2_realtime",
+};
+
+// Deepgram Aura encodes the voice in the model name (aura-2-<voice>-en),
+// so the Voice ID field only applies to ElevenLabs.
+const TTS_MODEL_DEFAULTS: Record<TtsProvider, string> = {
+  elevenlabs: "eleven_multilingual_v2",
+  deepgram: "aura-2-andromeda-en",
+};
 
 function StageHeader({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
   return (
@@ -82,12 +96,13 @@ export function PipelineSection({ value, onChange }: Props) {
               <FieldLabel>Provider</FieldLabel>
               <Select
                 value={value.stt.provider}
-                onValueChange={(v) =>
+                onValueChange={(v) => {
+                  const provider = v as SttProvider;
                   onChange({
                     ...value,
-                    stt: { provider: v as SttProvider, model: STT_MODEL_DEFAULT },
-                  })
-                }
+                    stt: { ...value.stt, provider, model: STT_MODEL_DEFAULTS[provider] },
+                  });
+                }}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -95,6 +110,7 @@ export function PipelineSection({ value, onChange }: Props) {
                 <SelectContent>
                   <SelectGroup>
                     <SelectItem value="deepgram">Deepgram</SelectItem>
+                    <SelectItem value="elevenlabs">ElevenLabs</SelectItem>
                   </SelectGroup>
                 </SelectContent>
               </Select>
@@ -180,12 +196,13 @@ export function PipelineSection({ value, onChange }: Props) {
               <FieldLabel>Provider</FieldLabel>
               <Select
                 value={value.tts.provider}
-                onValueChange={(v) =>
+                onValueChange={(v) => {
+                  const provider = v as TtsProvider;
                   onChange({
                     ...value,
-                    tts: { ...value.tts, provider: v as TtsProvider, model: TTS_MODEL_DEFAULT },
-                  })
-                }
+                    tts: { ...value.tts, provider, model: TTS_MODEL_DEFAULTS[provider] },
+                  });
+                }}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -193,6 +210,7 @@ export function PipelineSection({ value, onChange }: Props) {
                 <SelectContent>
                   <SelectGroup>
                     <SelectItem value="elevenlabs">ElevenLabs</SelectItem>
+                    <SelectItem value="deepgram">Deepgram</SelectItem>
                   </SelectGroup>
                 </SelectContent>
               </Select>

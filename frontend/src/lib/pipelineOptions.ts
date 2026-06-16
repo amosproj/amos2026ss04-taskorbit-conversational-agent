@@ -27,12 +27,14 @@ export const LLM_MODEL_DEFAULTS: Record<LlmProvider, string> = {
 
 export const STT_MODELS: Record<SttProvider, string[]> = {
   deepgram: ["nova-3", "nova-2"],
+  elevenlabs: ["scribe_v2_realtime"],
 };
 
 export const STT_MODEL_DEFAULT: string = STT_MODELS.deepgram[0];
 
 export const TTS_MODELS: Record<TtsProvider, string[]> = {
   elevenlabs: ["eleven_multilingual_v2", "eleven_flash_v2_5"],
+  deepgram: ["aura-2-andromeda-en", "aura-2-asteria-en", "aura-2-orion-en"],
 };
 
 export const TTS_MODEL_DEFAULT: string = TTS_MODELS.elevenlabs[0];
