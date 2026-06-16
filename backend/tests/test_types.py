@@ -205,3 +205,53 @@ def test_end_call_tool_found_after_validate_without_description() -> None:
     config = AgentConfig.model_validate(raw)
     end_call = next((t for t in config.tools if t.type == ToolType.END_CALL), None)
     assert end_call is not None
+
+
+# ---------------------------------------------------------------------------
+# Interchangeable STT/TTS providers (#135)
+# ---------------------------------------------------------------------------
+
+
+def test_provider_matrix_round_trips() -> None:
+    """Every cell of the 2x2 STT/TTS provider matrix validates and round-trips.
+
+    Both vendors are dual-capability (#135 AC2): deepgram and elevenlabs
+    must each be accepted for either pipeline stage, independently.
+    """
+    import itertools
+
+    for stt_provider, tts_provider in itertools.product(
+        ["deepgram", "elevenlabs"], ["elevenlabs", "deepgram"]
+    ):
+        raw = {
+            "id": "agent-1",
+            "name": "Bot",
+            "persona": "p",
+            "greeting": "hi",
+            "stt": {"provider": stt_provider, "language": "multi", "model": "m"},
+            "tts": {"provider": tts_provider, "voice_id": "v", "model": "m"},
+        }
+        config = AgentConfig.model_validate(raw)
+        assert config.stt.provider.value == stt_provider
+        assert config.tts.provider.value == tts_provider
+        # Round-trip: dump and re-validate without loss.
+        restored = AgentConfig.model_validate(config.model_dump())
+        assert restored.stt.provider == config.stt.provider
+        assert restored.tts.provider == config.tts.provider
+
+
+def test_provider_defaults_unchanged() -> None:
+    """Configs that omit providers keep the historical defaults, so existing
+    saved agents keep working exactly as before (#135 AC4 backward-compat)."""
+    assert STTConfig().provider.value == "deepgram"
+    assert TTSConfig().provider.value == "elevenlabs"
+
+
+def test_unknown_provider_rejected() -> None:
+    """A provider outside the supported set fails Pydantic validation loudly."""
+    import pytest
+
+    with pytest.raises(ValueError):
+        STTConfig.model_validate({"provider": "whisper", "language": "multi", "model": "m"})
+    with pytest.raises(ValueError):
+        TTSConfig.model_validate({"provider": "azure", "voice_id": "v", "model": "m"})

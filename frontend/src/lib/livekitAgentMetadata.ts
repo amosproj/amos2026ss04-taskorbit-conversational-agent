@@ -73,7 +73,9 @@ export function buildLiveKitWorkerMetadata(agent: AgentConfig): Record<string, u
     persona: agent.instructions,
     greeting: agent.first_message.message,
     stt: {
-      provider: "deepgram",
+      // #135: pass the user's selection through; this was hardcoded to
+      // "deepgram" before, silently discarding the configured provider.
+      provider: agent.stt.provider,
       language: "multi",
       model: agent.stt.model,
     },
@@ -82,7 +84,8 @@ export function buildLiveKitWorkerMetadata(agent: AgentConfig): Record<string, u
       model: agent.llm.model,
     },
     tts: {
-      provider: "elevenlabs",
+      // #135: same fix as stt.provider above (was hardcoded "elevenlabs").
+      provider: agent.tts.provider,
       voice_id: agent.tts.voice_id,
       model: agent.tts.model,
     },

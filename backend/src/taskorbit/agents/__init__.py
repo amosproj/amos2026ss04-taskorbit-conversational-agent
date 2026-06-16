@@ -16,6 +16,9 @@ from typing import TYPE_CHECKING
 from taskorbit.logging.setup import get_logger
 from taskorbit.types import AgentConfig, ConversationRequest, ConversationResponse, ToolDefinition
 
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
 logger = get_logger(__name__)
 
 # Tracks how many times each agent type has been invoked this process lifetime.
@@ -138,6 +141,23 @@ class CustomerDissatisfactionAgent(BaseAgent):
         return self.config.tools
 
 
+class CustomAgent(BaseAgent):
+    """Thin wrapper for user-defined agents loaded from the database.
+
+    Carries a user-supplied AgentConfig without any specialised class logic.
+    All behaviour is driven by the config (persona, tools, etc.) through the
+    shared orchestrator pipeline, exactly like the built-in agents.
+    """
+
+    agent_name = "custom"
+
+    async def handle_message(self, request: ConversationRequest) -> ConversationResponse:
+        return await self.orchestrator.process_message(request)
+
+    def get_task_definitions(self) -> list[ToolDefinition]:
+        return self.config.tools
+
+
 # ---------------------------------------------------------------------------
 # Registry / constructor
 # ---------------------------------------------------------------------------
@@ -198,15 +218,25 @@ class AgentRegistry:
         return cls._DEFAULT(config, orchestrator)
 
     @classmethod
-    def create_by_name(
+    def known_agent_names(cls) -> frozenset[str]:
+        """Return the set of built-in agent_name strings."""
+        return frozenset(agent_cls.agent_name for _, agent_cls in cls._REGISTRY)
+
+    @classmethod
+    async def create_by_name(
         cls,
         agent_name: str,
         config: AgentConfig,
         orchestrator: ConversationOrchestrator,
+        db: AsyncSession | None = None,
+        user_id: int | None = None,
     ) -> BaseAgent:
-        """Construct an agent directly by agent_name (e.g. from an IntentResult).
+        """Construct an agent by agent_name (e.g. from an IntentResult).
 
-        Falls back to the default agent if agent_name is empty or unrecognised.
+        Resolution order:
+          1. Built-in agents matched by agent_name.
+          2. Custom agents looked up by name in agent_configurations (when db given).
+          3. Default agent fallback.
         """
         for _, agent_cls in cls._REGISTRY:
             if agent_cls.agent_name == agent_name:
@@ -220,7 +250,47 @@ class AgentRegistry:
                     "agent_selected", agent=agent_cls.agent_name, total_calls=count, via="intent"
                 )
                 return agent_cls(config, orchestrator)
+
+        # Fall back to DB for custom agents — scope by user_id to prevent cross-user leakage.
+        if db is not None:
+            from pydantic import ValidationError
+
+            from taskorbit.database.crud import get_agent_configuration_by_name
+            from taskorbit.types import AgentConfig as AgentConfigType
+
+            record = await get_agent_configuration_by_name(db, agent_name, user_id=user_id)
+            if record is not None:
+                try:
+                    custom_config = AgentConfigType(**record.config)
+                except (ValidationError, Exception) as exc:
+                    logger.error(
+                        "custom_agent_invalid_config",
+                        agent_name=agent_name,
+                        error=str(exc),
+                    )
+                    logger.warning("agent_not_found", agent_name=agent_name, fallback="default")
+                    return cls.create(config, orchestrator)
+                logger.info(
+                    "agent_selected", agent="custom", config_name=agent_name, via="db_fallback"
+                )
+                return cls.create_custom(custom_config, orchestrator)
+
+        logger.warning("agent_not_found", agent_name=agent_name, fallback="default")
         return cls.create(config, orchestrator)
+
+    @classmethod
+    def create_custom(
+        cls, config: AgentConfig, orchestrator: ConversationOrchestrator
+    ) -> BaseAgent:
+        """Construct a CustomAgent from a DB-resolved AgentConfig.
+
+        Called by the orchestrator after it has loaded the config from the
+        agent_configurations table. Built-in routing is not consulted.
+        """
+        _agent_call_counts["custom"] += 1
+        count = _agent_call_counts["custom"]
+        logger.info("agent_selected", agent="custom", config_id=config.id, total_calls=count)
+        return CustomAgent(config, orchestrator)
 
     # Keep the old name available so existing call sites don't break.
     @classmethod
