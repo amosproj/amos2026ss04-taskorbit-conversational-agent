@@ -32,14 +32,32 @@ from taskorbit.types import AgentConfig
 def build_agent_session(
     *,
     settings: Settings | None = None,
+    agent_config: AgentConfig | None = None,
 ) -> AgentSession[Any]:
     """Construct an ``AgentSession`` from the current settings.
 
     The orchestrator instance is owned by the returned session via the
     bound ``OrchestratorAgent`` — both share its lifetime. Caller is
     responsible for ``session.start(...)`` and ``session.aclose()``.
+
+    The STT and TTS plugins are built here, so the per-agent selections
+    parsed from participant metadata (#87 — STT model, TTS voice + model)
+    must be threaded in or the user's dropdown choices never reach the
+    audio path and the env defaults are used regardless. When
+    ``agent_config`` is absent or a field is empty the env defaults apply
+    (legacy / fallback, AC5). The LLM model is intentionally NOT taken from
+    here: ``OrchestratorAgent.llm_node`` overrides the bridge LLM and calls
+    the model named in ``agent_config.llm.model`` itself.
     """
     cfg = settings or get_settings()
+
+    stt_model = cfg.deepgram_model
+    tts_voice_id = cfg.elevenlabs_voice_id
+    tts_model = cfg.elevenlabs_model
+    if agent_config is not None:
+        stt_model = agent_config.stt.model or stt_model
+        tts_voice_id = agent_config.tts.voice_id or tts_voice_id
+        tts_model = agent_config.tts.model or tts_model
 
     return AgentSession(
         vad=silero.VAD.load(
@@ -51,7 +69,7 @@ def build_agent_session(
         ),
         stt=deepgram.STT(
             api_key=cfg.deepgram_api_key,
-            model=cfg.deepgram_model,
+            model=stt_model,
             language=cfg.deepgram_language,
             smart_format=True,
             numerals=True,
@@ -65,8 +83,8 @@ def build_agent_session(
         ),
         tts=elevenlabs.TTS(
             api_key=cfg.elevenlabs_api_key,
-            voice_id=cfg.elevenlabs_voice_id,
-            model=cfg.elevenlabs_model,
+            voice_id=tts_voice_id,
+            model=tts_model,
             # Plugin default is mp3_22050_32 (22 kHz / 32 kbps) which sounds
             # noticeably different from the REST endpoint used for the greeting
             # (which returns mp3_44100_128 by default). Match that quality here
