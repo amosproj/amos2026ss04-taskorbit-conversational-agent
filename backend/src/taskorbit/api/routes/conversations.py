@@ -20,7 +20,7 @@ from taskorbit.database.crud import (
     get_conversation,
     get_conversation_history,
     get_messages_by_conversation,
-    get_user_agent,
+    resolve_dependency_agent_config,
 )
 from taskorbit.database.models import Conversation  # used in POST "" route
 from taskorbit.logging.setup import get_logger
@@ -78,19 +78,17 @@ async def process_conversation(
                 if dep_id in request.dependency_configs:
                     continue
 
-                # Priority 2: Fetch from DB
-                db_agent = await get_user_agent(db, dep_id, user_id)
-                if db_agent:
-                    try:
-                        # db_agent.config is the full FE-compatible JSON
-                        dep_configs[dep_id] = AgentConfig(**db_agent.config)
-                    except Exception as e:
-                        logger.warning(
-                            "failed_to_parse_dep_config",
-                            agent_id=dep_id,
-                            error=str(e),
-                            conversation_id=conversation_id,
-                        )
+                # Priority 2: Fetch from DB by logical config id (agent_id in JSON blob)
+                resolved = await resolve_dependency_agent_config(db, dep_id, user_id)
+                if resolved:
+                    dep_configs[dep_id] = resolved
+                    continue
+
+                logger.warning(
+                    "workflow_dependency_config_unresolved",
+                    dependency=dep_id,
+                    conversation_id=conversation_id,
+                )
 
             if dep_configs:
                 request = request.model_copy(

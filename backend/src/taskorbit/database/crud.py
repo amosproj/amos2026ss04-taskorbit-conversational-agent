@@ -8,7 +8,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from taskorbit.agent_config_util import agent_config_from_stored_blob, logical_id_from_stored_blob
 from taskorbit.logging.setup import get_logger
+from taskorbit.types import AgentConfig
 
 from .models import (
     AgentConfiguration,
@@ -616,6 +618,51 @@ async def get_user_agent(
         return result.scalar_one_or_none()
     except SQLAlchemyError as e:
         logger.error("get_user_agent_failed", agent_id=agent_id, error=str(e))
+        return None
+
+
+async def resolve_dependency_agent_config(
+    db: AsyncSession, logical_id: str, user_id: int
+) -> AgentConfig | None:
+    """Resolve a workflow dependency id to a full AgentConfig.
+
+    Workflow dependencies store logical ids (e.g. ``technical-support-agent-demo``),
+    but saved rows in ``agent_configurations`` use a DB uuid primary key. Search
+    user copies first, then admin/shared saves (``user_id IS NULL``).
+    """
+    row = await get_user_agent(db, logical_id, user_id)
+    if row:
+        return agent_config_from_stored_blob(row.config)
+
+    try:
+        result = await db.execute(
+            select(AgentConfiguration).where(
+                (AgentConfiguration.user_id == user_id) | (AgentConfiguration.user_id.is_(None))
+            )
+        )
+        user_blob: dict | None = None
+        admin_blob: dict | None = None
+        for candidate in result.scalars().all():
+            blob = candidate.config or {}
+            if logical_id_from_stored_blob(blob) != logical_id:
+                continue
+            if candidate.user_id == user_id:
+                user_blob = blob
+                break
+            if candidate.user_id is None and admin_blob is None:
+                admin_blob = blob
+
+        chosen = user_blob or admin_blob
+        if chosen is None:
+            return None
+        return agent_config_from_stored_blob(chosen)
+    except SQLAlchemyError as e:
+        logger.error(
+            "resolve_dependency_agent_config_failed",
+            logical_id=logical_id,
+            user_id=user_id,
+            error=str(e),
+        )
         return None
 
 
