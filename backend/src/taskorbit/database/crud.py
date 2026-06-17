@@ -671,28 +671,44 @@ async def enrich_request_dependency_configs(
     db: AsyncSession,
     user_id: int,
 ) -> ConversationRequest:
-    """Attach resolved prerequisite AgentConfigs to a conversation request."""
-    if not request.agent_config.workflow_dependencies:
-        return request
+    """Attach resolved prerequisite AgentConfigs to a conversation request (transitive)."""
+    from taskorbit.workflow_rules import collect_workflow_dependency_ids
 
-    dep_configs: dict[str, AgentConfig] = {}
-    for dep_id in request.agent_config.workflow_dependencies:
-        if dep_id in request.dependency_configs:
+    # Use a worklist to find all transitive dependencies
+    all_dep_ids: set[str] = set()
+    new_dep_configs: dict[str, AgentConfig] = {}
+    
+    # Start with the entry agent's dependencies
+    to_check = collect_workflow_dependency_ids(request.agent_config)
+    
+    while to_check:
+        dep_id = to_check.pop(0)
+        if dep_id in all_dep_ids:
             continue
-        resolved = await resolve_dependency_agent_config(db, dep_id, user_id)
+        all_dep_ids.add(dep_id)
+        
+        # Check if already in request or new_dep_configs
+        resolved = request.dependency_configs.get(dep_id) or new_dep_configs.get(dep_id)
+        if not resolved:
+            resolved = await resolve_dependency_agent_config(db, dep_id, user_id)
+            if resolved:
+                new_dep_configs[dep_id] = resolved
+            else:
+                logger.warning(
+                    "workflow_dependency_config_unresolved",
+                    dependency=dep_id,
+                    conversation_id=request.conversation_id,
+                )
+        
+        # If we have a config, add its dependencies to the worklist
         if resolved:
-            dep_configs[dep_id] = resolved
-        else:
-            logger.warning(
-                "workflow_dependency_config_unresolved",
-                dependency=dep_id,
-                conversation_id=request.conversation_id,
-            )
+            to_check.extend(collect_workflow_dependency_ids(resolved))
 
-    if not dep_configs:
+    if not new_dep_configs:
         return request
+        
     return request.model_copy(
-        update={"dependency_configs": {**request.dependency_configs, **dep_configs}}
+        update={"dependency_configs": {**request.dependency_configs, **new_dep_configs}}
     )
 
 

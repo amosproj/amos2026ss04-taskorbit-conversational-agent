@@ -152,7 +152,8 @@ async def _sse_generator(
     Event schema (agreed with frontend / Dev 2):
       data: {"type": "chunk", "text": "<token>"}
       data: {"type": "done", "intent": "...", "status": "...", "selected_agent": "...",
-              "slots": {...}, "missing_slots": [...], "conversation_id": "..."}
+              "slots": {...}, "missing_slots": [...], "conversation_id": "...",
+              "reply": "..." (when no chunks were streamed)}
       data: {"type": "error", "message": "..."}
     """
     # Persist user message upfront so it survives client disconnects.
@@ -205,7 +206,7 @@ async def _sse_generator(
                 conversation_id=request.conversation_id,
             )
 
-    yield f"data: {json.dumps({'type': 'done', 'intent': meta.selected_intent, 'status': meta.status, 'selected_agent': meta.selected_agent, 'slots': meta.extracted_slots, 'missing_slots': meta.missing_slots, 'conversation_id': meta.conversation_id, 'locked_intent_name': meta.locked_intent_name, 'next_active_tool_id': meta.next_active_tool_id, 'tool_invoked': meta.tool_invoked.model_dump() if meta.tool_invoked else None, 'completed_workflow_steps': meta.completed_workflow_steps, 'confirmation': meta.confirmation.model_dump() if meta.confirmation else None})}\n\n"
+    yield f"data: {json.dumps({'type': 'done', 'intent': meta.selected_intent, 'status': meta.status, 'selected_agent': meta.selected_agent, 'slots': meta.extracted_slots, 'missing_slots': meta.missing_slots, 'conversation_id': meta.conversation_id, 'locked_intent_name': meta.locked_intent_name, 'next_active_tool_id': meta.next_active_tool_id, 'tool_invoked': meta.tool_invoked.model_dump() if meta.tool_invoked else None, 'completed_workflow_steps': meta.completed_workflow_steps, 'confirmation': meta.confirmation.model_dump() if meta.confirmation else None, 'reply': meta.reply.content if meta.reply else None})}\n\n"
 
 
 @router.post("/stream")

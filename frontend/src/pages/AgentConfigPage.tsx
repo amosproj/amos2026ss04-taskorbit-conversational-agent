@@ -142,6 +142,7 @@ export function AgentConfigPage() {
         variables: raw.variables ?? {},
         engine: raw.engine ?? {},
         workflow_dependencies: raw.workflow_dependencies ?? [],
+        workflow_rules: raw.workflow_rules,
         allowed_handoffs: raw.allowed_handoffs ?? [],
       };
       setActiveAgent(normalized, saved.id);
@@ -300,10 +301,12 @@ export function AgentConfigPage() {
         <WorkflowSection
           currentAgentId={agent.agent_id}
           workflowDependencies={agent.workflow_dependencies}
+          workflowRules={agent.workflow_rules}
           allowedHandoffs={agent.allowed_handoffs}
           onWorkflowDependenciesChange={(workflow_dependencies) =>
             setAgent({ ...agent, workflow_dependencies })
           }
+          onWorkflowRulesChange={(workflow_rules) => setAgent({ ...agent, workflow_rules })}
           onAllowedHandoffsChange={(allowed_handoffs) => setAgent({ ...agent, allowed_handoffs })}
           onValidationChange={setWorkflowValidation}
         />

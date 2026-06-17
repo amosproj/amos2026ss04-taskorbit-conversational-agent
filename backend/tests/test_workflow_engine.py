@@ -210,6 +210,81 @@ async def test_turn_1_entry_agent_locked(orchestrator):
 
 
 @pytest.mark.asyncio
+async def test_workflow_rules_branch_tech_intent_requires_prereq(orchestrator):
+    """AC branching: technical intent → workflow block X (prereq); else → no prereq."""
+    config = AgentConfig(
+        id="router-agent",
+        name="Router Agent",
+        persona="I route requests.",
+        greeting="Hi.",
+        workflow_rules=[
+            {
+                "when": {"agent_name": "technical_support"},
+                "dependencies": ["prereq-agent"],
+            },
+            {"when": {"else": True}, "dependencies": []},
+        ],
+    )
+    tech_intent = IntentResult(
+        name="technical_support_request",
+        description="d",
+        agent_name="technical_support",
+        confidence=1.0,
+    )
+    request = ConversationRequest(
+        conversation_id="conv-branch-tech",
+        agent_config=config,
+        messages=[Message(role=MessageRole.USER, content="My router isn't working")],
+        completed_workflow_steps=[],
+    )
+
+    with mock.patch.object(orchestrator._intent_router, "detect", return_value=tech_intent):
+        response = await orchestrator.process_message(request)
+
+    assert response.status == ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED
+    assert "prereq-agent" in (
+        response.confirmation.confirmation_id if response.confirmation else ""
+    )
+
+
+@pytest.mark.asyncio
+async def test_workflow_rules_branch_sales_intent_skips_prereq(orchestrator):
+    """AC branching: non-technical intent → else branch → no prerequisite card."""
+    config = AgentConfig(
+        id="router-agent",
+        name="Router Agent",
+        persona="I route requests.",
+        greeting="Hi.",
+        workflow_rules=[
+            {
+                "when": {"agent_name": "technical_support"},
+                "dependencies": ["prereq-agent"],
+            },
+            {"when": {"else": True}, "dependencies": []},
+        ],
+    )
+    sales_intent = IntentResult(
+        name="book_service_appointment",
+        description="d",
+        agent_name="sales",
+        confidence=1.0,
+    )
+    request = ConversationRequest(
+        conversation_id="conv-branch-sales",
+        agent_config=config,
+        messages=[Message(role=MessageRole.USER, content="I want to buy a laptop")],
+        completed_workflow_steps=[],
+    )
+
+    with mock.patch.object(orchestrator._intent_router, "detect", return_value=sales_intent):
+        with mock.patch.object(orchestrator, "_call_llm", return_value="Happy to help you buy."):
+            response = await orchestrator.process_message(request)
+
+    assert response.status == ConversationStatus.SUCCESS
+    assert response.status != ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED
+
+
+@pytest.mark.asyncio
 async def test_handoff_allowed_via_mapping(orchestrator):
     config = AgentConfig(
         id="agent-a",

@@ -126,6 +126,28 @@
           "type": "array",
           "items": { "type": "string" },
           "description": "List of agent IDs that this agent is allowed to hand off the conversation to."
+        },
+        "workflow_rules": {
+          "type": "array",
+          "description": "Conditional workflow branches evaluated after intent routing (Issue #71).",
+          "items": {
+            "type": "object",
+            "required": ["when", "dependencies"],
+            "properties": {
+              "when": {
+                "type": "object",
+                "properties": {
+                  "intent": { "type": "string" },
+                  "agent_name": { "type": "string" },
+                  "else": { "type": "boolean" }
+                }
+              },
+              "dependencies": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
         }
       }
     },

@@ -232,12 +232,14 @@ export function ConversationalChat() {
       // Merged text = all previously finalized chunks + live text of the current chunk.
       const prefix = agentCommittedRef.current;
       const mergedText = prefix ? `${prefix} ${segment.text}` : segment.text;
+      const trimmed = mergedText.trim();
+      if (!trimmed) return;
 
-      call.upsertTurnById(agentTurnIdRef.current, "assistant", mergedText.trim(), segment.isFinal);
+      call.upsertTurnById(agentTurnIdRef.current, "assistant", trimmed, segment.isFinal);
 
       // Once this chunk is final, grow the committed base for the next chunk.
       if (segment.isFinal) {
-        agentCommittedRef.current = mergedText.trim();
+        agentCommittedRef.current = trimmed;
       }
     },
     [call],
@@ -292,7 +294,11 @@ export function ConversationalChat() {
               replyText += event.text;
               call.upsertTurnById(assistantTurnId, "assistant", replyText, false);
             } else if (event.type === "done") {
-              call.upsertTurnById(assistantTurnId, "assistant", replyText, true);
+              const finalText = (replyText.trim() || event.reply?.trim() || "").trim();
+              const isConfirmation =
+                (event.status === "confirmation_required" ||
+                  event.status === "workflow_confirmation_required") &&
+                event.confirmation;
 
               if (event.conversation_id) call.updateConversationId(event.conversation_id);
               lockedIntentRef.current = event.locked_intent_name ?? null;
@@ -310,17 +316,24 @@ export function ConversationalChat() {
                 }
               }
 
-              if (
-                (event.status === "confirmation_required" ||
-                  event.status === "workflow_confirmation_required") &&
-                event.confirmation
-              ) {
-                pendingConfirmationIdRef.current = event.confirmation.confirmation_id;
+              if (isConfirmation) {
+                // Proceed/Cancel card carries the prompt — no duplicate bubble in transcript.
+                call.removeTurnById(assistantTurnId);
+                pendingConfirmationIdRef.current = event.confirmation!.confirmation_id;
                 call.triggerConfirmation({
-                  ...event.confirmation,
-                  type: event.status === "workflow_confirmation_required" ? "workflow" : "tool",
+                  ...event.confirmation!,
+                  type:
+                    event.status === "workflow_confirmation_required" ? "workflow" : "tool",
                 });
+                call.setPhase("idle_in_call");
                 return;
+              }
+
+              replyText = finalText;
+              if (finalText) {
+                call.upsertTurnById(assistantTurnId, "assistant", finalText, true);
+              } else {
+                call.removeTurnById(assistantTurnId);
               }
 
               // Manual transfer: swap active agent config after backend confirmation.
