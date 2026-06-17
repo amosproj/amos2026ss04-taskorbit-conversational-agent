@@ -107,14 +107,31 @@ def _make_chat_ctx(messages: list[tuple[str, str]]) -> Any:
     return ctx
 
 
+@pytest.fixture(autouse=True)
+def _patch_async_session() -> Any:
+    """Prevent llm_node tests from opening a real DB connection."""
+    mock_db = AsyncMock()
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_db)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+    with patch("taskorbit.livekit_agent.llm.AsyncSessionLocal", return_value=mock_session):
+        yield
+
+
 def _make_agent(reply: str) -> tuple[OrchestratorAgent, MagicMock]:
     orchestrator = MagicMock()
-    orchestrator.process_message = AsyncMock(
-        return_value=ConversationResponse(
-            conversation_id="test-conv",
-            reply=Message(role=MessageRole.ASSISTANT, content=reply),
-        )
+    response = ConversationResponse(
+        conversation_id="test-conv",
+        reply=Message(role=MessageRole.ASSISTANT, content=reply),
     )
+    captured: list[Any] = []
+
+    async def _process_message(request: Any, db: Any = None, user_id: Any = None) -> Any:
+        captured.append(request)
+        return response
+
+    orchestrator.process_message = _process_message
+    orchestrator._captured = captured
     agent = OrchestratorAgent(
         orchestrator=orchestrator,
         agent_config=AgentConfig(
@@ -137,8 +154,8 @@ async def test_llm_node_yields_orchestrator_reply() -> None:
     chunks = [c async for c in agent.llm_node(chat_ctx, [], MagicMock())]
 
     assert chunks == ["Hello back!"]
-    orchestrator.process_message.assert_awaited_once()
-    request = orchestrator.process_message.await_args.args[0]
+    assert len(orchestrator._captured) == 1
+    request = orchestrator._captured[0]
     assert [(m.role, m.content) for m in request.messages] == [
         (MessageRole.USER, "Hello there"),
     ]
@@ -169,7 +186,7 @@ async def test_llm_node_filters_unsupported_chat_items() -> None:
     agent.request_reply()
     [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
 
-    request = orchestrator.process_message.await_args.args[0]
+    request = orchestrator._captured[0]
     assert [(m.role, m.content) for m in request.messages] == [
         (MessageRole.USER, "real message"),
     ]
@@ -293,7 +310,7 @@ async def test_llm_node_passes_formatted_number_unchanged() -> None:
     agent.request_reply()
     [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
 
-    request = orchestrator.process_message.await_args.args[0]
+    request = orchestrator._captured[0]
     assert request.messages[0].content == "my number is 321"
 
 
@@ -307,7 +324,7 @@ async def test_llm_node_passes_email_from_smart_format_unchanged() -> None:
     agent.request_reply()
     [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
 
-    request = orchestrator.process_message.await_args.args[0]
+    request = orchestrator._captured[0]
     assert request.messages[0].content == "my email is user@example.com"
 
 
@@ -321,7 +338,7 @@ async def test_llm_node_passes_date_from_smart_format_unchanged() -> None:
     agent.request_reply()
     [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
 
-    request = orchestrator.process_message.await_args.args[0]
+    request = orchestrator._captured[0]
     assert request.messages[0].content == "I need it by 05/29/2026"
 
 
@@ -336,7 +353,7 @@ async def test_llm_node_normalizes_unicode_em_dash_from_stt() -> None:
     agent.request_reply()
     [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
 
-    request = orchestrator.process_message.await_args.args[0]
+    request = orchestrator._captured[0]
     assert "—" not in request.messages[0].content
     assert "-" in request.messages[0].content
 

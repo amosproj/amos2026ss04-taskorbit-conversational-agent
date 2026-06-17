@@ -280,6 +280,7 @@ class OrchestratorAgent(Agent):
             confirmation_id=self._pending_confirmation_id if decision else None,
             decision=decision,
         )
+        from taskorbit.types import ToolType as _ToolType
 
         # Open the DB session before process_message so that manual transfers
         # and custom-agent DB lookups work in the voice path too.
@@ -295,6 +296,11 @@ class OrchestratorAgent(Agent):
                 conversation_id=self._conversation_id,
             )
             raise
+
+        # Error or clarification responses have no LLM stream in the voice path;
+        # yield the reply text so TTS speaks it instead of staying silent.
+        if response.reply and response.reply.content:
+            yield response.reply.content
 
         self._locked_intent_name = response.locked_intent_name
         self._completed_workflow_steps = response.completed_workflow_steps
@@ -369,12 +375,7 @@ class OrchestratorAgent(Agent):
             handler="/v1/conversations/process", status=status
         ).inc()
 
-        # Surface agent_transfer for the voice path (#8 Task 6 AC7). The
-        # worker reads self._pending_handoff_target after generate_reply()
-        # completes and publishes it on the taskorbit.agent_handoff topic
-        # so the FE swaps the active agent without dropping the LiveKit room.
-        from taskorbit.types import ToolType as _ToolType
-
+        # Surface agent_transfer for the voice path (#8 Task 6 AC7).
         if (
             response.tool_invoked is not None
             and response.tool_invoked.type == _ToolType.AGENT_TRANSFER
@@ -389,14 +390,8 @@ class OrchestratorAgent(Agent):
                     conversation_id=self._conversation_id,
                 )
 
-        text = response.reply.content or ""
-
         if self._t_commit is not None:
             elapsed = time.perf_counter() - self._t_commit
             get_metrics().voice_turn_latency_seconds.observe(elapsed)
             log.info("voice_turn_complete", latency_ms=round(elapsed * 1000, 1))
             self._t_commit = None
-
-        if not text:
-            return
-        yield text

@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -41,6 +42,7 @@ from taskorbit.types import (
     ContextLimitConfig,
     ConversationRequest,
     ConversationResponse,
+    ConversationStatus,
     LLMConfig,
     Message,
     MessageRole,
@@ -59,6 +61,16 @@ def _selected_agent_matches_dep(selected_agent: str | None, dep_id: str) -> bool
 
     dep_registry = AgentRegistry.get_agent_name_for_id(dep_id)
     return selected_agent == dep_id or selected_agent == dep_registry
+
+
+@dataclass
+class _DispatchResult:
+    """Result of _run_dispatch_step; non-None early_response means short-circuit."""
+
+    early_response: ConversationResponse | None
+    tool_data: dict[str, Any]
+    response_status: ConversationStatus
+    llm_text_override: str | None
 
 
 class ConversationOrchestrator:
@@ -431,107 +443,16 @@ class ConversationOrchestrator:
             _llm_elapsed = time.perf_counter() - _llm_start
             get_metrics().pipeline_latency_seconds.labels(stage="llm_call").observe(_llm_elapsed)
 
-            # 5b. Dispatch active tool when slots are complete
-            tool_data: dict[str, Any] = {}
-            response_status = ConversationStatus.SUCCESS
-
-            no_slots_tool_ready = active_tool is not None and active_tool.type in (
-                ToolType.END_CALL,
-                ToolType.AGENT_TRANSFER,
+            # 5b. Dispatch active tool when slots are complete.
+            dispatch = await self._run_dispatch_step(
+                request, active_tool, slot_result, intent, agent, db=db, user_id=user_id
             )
-            slots_ready = (
-                active_tool is not None and slot_result.is_complete and bool(intent.required_inputs)
-            )
-
-            if no_slots_tool_ready or slots_ready:
-                # AC #49: mid-call confirmation logic (Dhruvin's contract).
-                is_decision_for_this_tool = request.confirmation_id == active_tool.id
-                has_decision = is_decision_for_this_tool and request.decision is not None
-
-                if active_tool.confirmation.required and not has_decision:
-                    logger.info(
-                        "confirmation_required",
-                        tool_id=active_tool.id,
-                        conversation_id=request.conversation_id,
-                    )
-                    return ConversationResponse(
-                        conversation_id=request.conversation_id,
-                        reply=self._make_assistant_message(
-                            active_tool.confirmation.prompt
-                            or f"I need your confirmation before I proceed with {active_tool.name}. Should I go ahead?"
-                        ),
-                        status=ConversationStatus.CONFIRMATION_REQUIRED,
-                        tool_invoked=active_tool,
-                        confirmation=ConfirmationResponsePayload(
-                            confirmation_id=active_tool.id,
-                            action=active_tool.name,
-                            description=active_tool.confirmation.prompt
-                            or f"Execute {active_tool.name}",
-                        ),
-                        selected_intent=intent.name,
-                        selected_agent=agent.agent_name,
-                        intent_confidence=intent.confidence,
-                        extracted_slots=slot_result.to_dict(),
-                        missing_slots=slot_result.missing,
-                        locked_intent_name=intent.name,
-                        next_active_tool_id=active_tool.id,
-                        completed_workflow_steps=request.completed_workflow_steps,
-                    )
-
-                if has_decision and request.decision == "reject":
-                    logger.info(
-                        "tool_execution_rejected",
-                        tool_id=active_tool.id,
-                        conversation_id=request.conversation_id,
-                    )
-                    response_status = ConversationStatus.REJECTED
-                    # Mark as "aborted" so we advance to the next tool/step
-                    tool_data = {"aborted": True}
-                    llm_text = "Understood. I've cancelled that action. How else can I help you?"
-                else:
-                    # Proceed either because it's confirmed or not required
-                    dispatch_context: dict[str, Any] = dict(slot_result.to_dict())
-                    if active_tool.type == ToolType.AGENT_TRANSFER:
-                        targets = active_tool.parameters.get("targets") or []
-                        if targets:
-                            raw = str(targets[0])
-                            # Custom agent IDs are UUIDs (hex + hyphens). Pass
-                            # them through untouched; only slug-normalize built-in
-                            # kebab-case names (e.g. "technical-support-agent").
-                            if re.match(
-                                r"^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$",
-                                raw,
-                                re.IGNORECASE,
-                            ):
-                                normalized = raw
-                            else:
-                                normalized = raw.removesuffix("-agent").replace("-", "_")
-                            dispatch_context["target_agent_id"] = normalized
-                        dispatch_context["conversation_history"] = [
-                            {"role": m.role.value, "content": m.content} for m in request.messages
-                        ]
-                    elif active_tool.type == ToolType.EXTERNAL_API:
-                        dispatch_context = {
-                            **active_tool.parameters,
-                            "args": dict(slot_result.to_dict()),
-                        }
-                    tool_data = await self._dispatch_tool(
-                        active_tool, dispatch_context, db=db, user_id=user_id
-                    )
-                    logger.info(
-                        "tool_dispatch_complete",
-                        tool_type=active_tool.type,
-                        conversation_id=request.conversation_id,
-                    )
-                    if active_tool.type == ToolType.END_CALL:
-                        response_status = ConversationStatus.ENDED
-                    elif active_tool.type == ToolType.AGENT_TRANSFER:
-                        logger.info(
-                            "agent_handoff",
-                            from_agent=request.agent_config.name,
-                            to_agent=tool_data.get("transferred_to"),
-                            conversation_id=request.conversation_id,
-                        )
+            if dispatch.early_response is not None:
+                return dispatch.early_response
+            tool_data = dispatch.tool_data
+            response_status = dispatch.response_status
+            if dispatch.llm_text_override is not None:
+                llm_text = dispatch.llm_text_override
 
             # Advance to the next tool when the current one was dispatched
             updated_completed_steps = list(request.completed_workflow_steps)
@@ -647,6 +568,490 @@ class ConversationOrchestrator:
                 exc_info=True,
             )
             return ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message("An unexpected error occurred."),
+                status="error",
+                error=str(exc),
+            )
+
+    async def process_message_stream(
+        self,
+        request: ConversationRequest,
+        db: AsyncSession | None = None,
+        user_id: int | None = None,
+    ):
+        """Streaming variant of process_message; yields str chunks then ConversationResponse."""
+        _pipeline_start = time.perf_counter()
+        try:
+            # 0a. Manual transfer short-circuit.
+            if request.manual_transfer and (
+                request.manual_transfer.target_agent_id or request.manual_transfer.target_agent_name
+            ):
+                yield await self._handle_manual_transfer(request, db, user_id=user_id)
+                return
+
+            if db is not None and user_id is not None:
+                from taskorbit.database.crud import enrich_request_dependency_configs
+
+                request = await enrich_request_dependency_configs(request, db, user_id)
+
+            last_user = next(
+                (m for m in reversed(request.messages) if m.role == MessageRole.USER),
+                None,
+            )
+            if not last_user or not last_user.content.strip():
+                raise ValueError("No user message content found in request.")
+
+            # 0. User-initiated end-call.
+            end_call_tool = next(
+                (t for t in request.agent_config.tools if t.type == ToolType.END_CALL),
+                None,
+            )
+            logger.debug(
+                "end_call_check",
+                conversation_id=request.conversation_id,
+                tool_found=end_call_tool is not None,
+                tools_count=len(request.agent_config.tools),
+                tool_types=[t.type for t in request.agent_config.tools],
+                user_requested=self._user_requested_end_call(last_user.content),
+            )
+            if end_call_tool and self._user_requested_end_call(last_user.content):
+                try:
+                    farewell = await asyncio.wait_for(
+                        self._call_llm(
+                            f"You are {request.agent_config.name}. "
+                            f"Persona: {request.agent_config.persona}\n"
+                            "The user wants to end the conversation. "
+                            "Say a brief, warm farewell in one sentence.",
+                            request.messages,
+                            request.agent_config.llm,
+                        ),
+                        timeout=self._settings.llm_timeout_seconds,
+                    )
+                except Exception:  # noqa: BLE001
+                    farewell = "Goodbye! Take care."
+                    logger.warning(
+                        "end_call_farewell_llm_failed",
+                        conversation_id=request.conversation_id,
+                        fallback=farewell,
+                    )
+                await self._dispatch_tool(end_call_tool, {})
+                logger.info(
+                    "end_call_user_initiated",
+                    conversation_id=request.conversation_id,
+                )
+                yield ConversationResponse(
+                    conversation_id=request.conversation_id,
+                    reply=self._make_assistant_message(farewell),
+                    status=ConversationStatus.ENDED,
+                    selected_intent="",
+                    selected_agent="",
+                    tool_invoked=end_call_tool,
+                )
+                return
+
+            # 1. Detect intent.
+            from dataclasses import replace as _replace
+
+            from taskorbit.intent import _KNOWN_INTENTS
+
+            if request.current_intent_name and request.current_intent_name in _KNOWN_INTENTS:
+                fresh = await self._intent_router.detect(
+                    last_user.content,
+                    request.messages,
+                    self._call_llm,
+                    request.agent_config.llm,
+                )
+                if (
+                    fresh.name != request.current_intent_name
+                    and fresh.confidence >= self._intent_router._threshold
+                    and not fresh.requires_clarification
+                ):
+                    intent = fresh
+                    logger.info(
+                        "intent_lock_broken",
+                        old=request.current_intent_name,
+                        new=intent.name,
+                        confidence=intent.confidence,
+                        conversation_id=request.conversation_id,
+                    )
+                else:
+                    intent = _replace(_KNOWN_INTENTS[request.current_intent_name], confidence=1.0)
+                    logger.info(
+                        "intent_locked",
+                        intent=intent.name,
+                        conversation_id=request.conversation_id,
+                    )
+            else:
+                intent = await self._intent_router.detect(
+                    last_user.content,
+                    request.messages,
+                    self._call_llm,
+                    request.agent_config.llm,
+                )
+                logger.info(
+                    "intent_detected",
+                    intent=intent.name,
+                    confidence=intent.confidence,
+                    conversation_id=request.conversation_id,
+                )
+
+            if intent.requires_clarification:
+                from taskorbit.intent import _CLARIFICATION_REPLY
+
+                yield ConversationResponse(
+                    conversation_id=request.conversation_id,
+                    reply=self._make_assistant_message(_CLARIFICATION_REPLY),
+                    status=ConversationStatus.CLARIFICATION,
+                    selected_intent=intent.name,
+                    selected_agent="",
+                    intent_confidence=intent.confidence,
+                )
+                return
+
+            # 2. Select agent.
+            from taskorbit.agents import AgentRegistry
+
+            handoff_blocked = False
+            allowed_agent_names: list[str] = []
+            if not request.selected_agent:
+                agent = AgentRegistry.create(request.agent_config, self)
+                logger.info(
+                    "entry_agent_locked",
+                    agent=agent.agent_name,
+                    conversation_id=request.conversation_id,
+                )
+            else:
+                agent = await AgentRegistry.create_by_name(
+                    intent.agent_name, request.agent_config, self, db=db, user_id=user_id
+                )
+                allowed_agent_names = []
+                if (
+                    intent.agent_name != request.selected_agent
+                    and request.agent_config.allowed_handoffs
+                ):
+                    allowed_agent_names = [
+                        AgentRegistry.get_agent_name_for_id(cfg_id)
+                        for cfg_id in request.agent_config.allowed_handoffs
+                    ]
+
+            # Resolve workflow dependencies.
+            missing_dependencies = [
+                dep
+                for dep in request.agent_config.workflow_dependencies
+                if dep not in request.completed_workflow_steps
+            ]
+
+            executing_prereq_id: str | None = None
+            if missing_dependencies:
+                next_dep = missing_dependencies[0]
+                executing_prereq = _selected_agent_matches_dep(request.selected_agent, next_dep)
+
+                if executing_prereq:
+                    executing_prereq_id = next_dep
+                    dep_config = request.dependency_configs.get(next_dep)
+                    if not dep_config:
+                        logger.error(
+                            "workflow_dependency_config_missing",
+                            dependency=next_dep,
+                            conversation_id=request.conversation_id,
+                        )
+                        handoff_blocked = True
+                        agent = AgentRegistry.create(request.agent_config, self)
+                    else:
+                        agent = AgentRegistry.create(dep_config, self)
+                        logger.info(
+                            "workflow_dependency_executing",
+                            dependency=next_dep,
+                            agent=agent.agent_name,
+                            conversation_id=request.conversation_id,
+                        )
+                else:
+                    logger.info(
+                        "workflow_dependency_missing",
+                        dependency=next_dep,
+                        conversation_id=request.conversation_id,
+                    )
+
+                    is_decision_for_this_workflow = (
+                        request.confirmation_id == f"workflow_{next_dep}"
+                    )
+                    has_decision = is_decision_for_this_workflow and request.decision is not None
+
+                    if not has_decision:
+                        dep_name = next_dep.replace("-", " ")
+                        dep_config = request.dependency_configs.get(next_dep)
+                        if dep_config:
+                            dep_name = dep_config.name
+
+                        yield ConversationResponse(
+                            conversation_id=request.conversation_id,
+                            reply=self._make_assistant_message(
+                                f"Before we proceed with {request.agent_config.name}, I'll need to complete some prerequisite steps regarding {dep_name}. Shall I start with that?"
+                            ),
+                            status=ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED,
+                            confirmation=ConfirmationResponsePayload(
+                                confirmation_id=f"workflow_{next_dep}",
+                                action=f"Start {next_dep} workflow",
+                                description=f"Prerequisite: {dep_name}",
+                            ),
+                            selected_intent=intent.name,
+                            selected_agent=agent.agent_name,
+                            intent_confidence=intent.confidence,
+                            completed_workflow_steps=request.completed_workflow_steps,
+                        )
+                        return
+
+                    if request.decision == "reject":
+                        logger.info(
+                            "workflow_dependency_rejected",
+                            dependency=next_dep,
+                            conversation_id=request.conversation_id,
+                        )
+                        yield ConversationResponse(
+                            conversation_id=request.conversation_id,
+                            reply=self._make_assistant_message(
+                                "Understood. I can't proceed without those prerequisite steps. Is there anything else I can help you with?"
+                            ),
+                            status=ConversationStatus.REJECTED,
+                            selected_intent=intent.name,
+                            selected_agent=agent.agent_name,
+                            completed_workflow_steps=request.completed_workflow_steps,
+                        )
+                        return
+
+                    logger.info(
+                        "workflow_dependency_confirmed",
+                        dependency=next_dep,
+                        conversation_id=request.conversation_id,
+                    )
+                    yield ConversationResponse(
+                        conversation_id=request.conversation_id,
+                        reply=self._make_assistant_message(
+                            f"Understood. Let's start with the {next_dep.replace('-', ' ')} steps."
+                        ),
+                        status=ConversationStatus.SUCCESS,
+                        selected_agent=next_dep,
+                        selected_intent=intent.name,
+                        intent_confidence=1.0,
+                        completed_workflow_steps=request.completed_workflow_steps,
+                    )
+                    return
+
+            # Enforce handoff rules.
+            if (
+                not executing_prereq_id
+                and request.selected_agent
+                and intent.agent_name != request.selected_agent
+                and request.agent_config.allowed_handoffs
+            ):
+                if intent.agent_name not in allowed_agent_names:
+                    logger.warning(
+                        "handoff_blocked",
+                        current=request.selected_agent,
+                        target=intent.agent_name,
+                        conversation_id=request.conversation_id,
+                    )
+                    handoff_blocked = True
+                    agent = await AgentRegistry.create_by_name(
+                        request.selected_agent,
+                        request.agent_config,
+                        self,
+                        db=db,
+                        user_id=user_id,
+                    )
+                    if request.current_intent_name:
+                        intent = _replace(
+                            _KNOWN_INTENTS[request.current_intent_name], confidence=1.0
+                        )
+
+            if handoff_blocked:
+                yield ConversationResponse(
+                    conversation_id=request.conversation_id,
+                    reply=self._make_assistant_message(
+                        "I'm sorry, I'm only able to help you with the current topic right now. Is there anything else about that I can assist with?"
+                    ),
+                    status=ConversationStatus.HANDOFF_BLOCKED,
+                    selected_intent=intent.name,
+                    selected_agent=agent.agent_name,
+                    intent_confidence=intent.confidence,
+                    completed_workflow_steps=request.completed_workflow_steps,
+                )
+                return
+
+            logger.info(
+                "agent_selected",
+                agent=agent.agent_name,
+                conversation_id=request.conversation_id,
+            )
+
+            # 3. Select active tool.
+            active_tool = self._select_active_tool(
+                request.messages, agent, active_tool_id=request.active_tool_id
+            )
+
+            # 3b. Extract slots.
+            slot_result = await self._extract_slots(
+                request.messages, intent.required_inputs, request.agent_config.llm
+            )
+            logger.info(
+                "slots_extracted",
+                filled=list(slot_result.filled.keys()),
+                missing=slot_result.missing,
+                conversation_id=request.conversation_id,
+            )
+
+            # 4. Build system prompt.
+            system_prompt = self._build_system_prompt(
+                request.agent_config, active_tool, slot_result, routed_agent=agent
+            )
+
+            # 4b. Truncate messages.
+            truncated_messages = self._truncate_messages(
+                request.messages, request.agent_config.context_limit
+            )
+
+            # 5b. Run dispatch logic before streaming so confirmation short-circuits
+            # before any tokens are sent to the client.
+            dispatch = await self._run_dispatch_step(
+                request, active_tool, slot_result, intent, agent, db=db, user_id=user_id
+            )
+            if dispatch.early_response is not None:
+                yield dispatch.early_response
+                return
+
+            # 5. Stream LLM response or use rejection override.
+            _llm_start = time.perf_counter()
+            full_text_parts: list[str] = []
+            if dispatch.llm_text_override is not None:
+                full_text_parts = [dispatch.llm_text_override]
+            else:
+                async for chunk in self._call_llm_stream(
+                    system_prompt, truncated_messages, request.agent_config.llm
+                ):
+                    full_text_parts.append(chunk)
+                    yield chunk
+            _llm_elapsed = time.perf_counter() - _llm_start
+            get_metrics().pipeline_latency_seconds.labels(stage="llm_call").observe(_llm_elapsed)
+
+            llm_text = "".join(full_text_parts)
+            tool_data = dispatch.tool_data
+            response_status = dispatch.response_status
+
+            # Advance workflow steps.
+            updated_completed_steps = list(request.completed_workflow_steps)
+            if executing_prereq_id and executing_prereq_id not in updated_completed_steps:
+                updated_completed_steps.append(executing_prereq_id)
+                logger.info(
+                    "workflow_prerequisite_completed",
+                    step=executing_prereq_id,
+                    conversation_id=request.conversation_id,
+                )
+            if tool_data and active_tool and not tool_data.get("aborted"):
+                if request.agent_config.id not in updated_completed_steps:
+                    updated_completed_steps.append(request.agent_config.id)
+                    logger.info(
+                        "workflow_step_completed",
+                        step=request.agent_config.id,
+                        conversation_id=request.conversation_id,
+                    )
+
+                all_tools = agent.get_task_definitions()
+                current_idx = next(
+                    (i for i, t in enumerate(all_tools) if t.id == active_tool.id), -1
+                )
+                next_tool = (
+                    all_tools[current_idx + 1] if 0 <= current_idx < len(all_tools) - 1 else None
+                )
+                next_active_tool_id = next_tool.id if next_tool else None
+            else:
+                next_active_tool_id = active_tool.id if active_tool else None
+
+            _total_elapsed = time.perf_counter() - _pipeline_start
+            get_metrics().pipeline_latency_seconds.labels(stage="total").observe(_total_elapsed)
+            logger.info(
+                "pipeline_complete",
+                conversation_id=request.conversation_id,
+                llm_latency_ms=round(_llm_elapsed * 1000, 1),
+                total_latency_ms=round(_total_elapsed * 1000, 1),
+            )
+
+            yield ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message(llm_text),
+                selected_intent=intent.name,
+                selected_agent=agent.agent_name,
+                intent_confidence=intent.confidence,
+                status=response_status,
+                extracted_slots=slot_result.to_dict() if slot_result.is_complete else {},
+                missing_slots=slot_result.missing,
+                tool_invoked=active_tool if tool_data else None,
+                locked_intent_name=intent.name,
+                next_active_tool_id=next_active_tool_id,
+                completed_workflow_steps=updated_completed_steps,
+            )
+
+        except LLMConfigError as exc:
+            get_metrics().conversation_errors_total.labels(error_type="llm_config").inc()
+            logger.error(
+                "llm_config_error",
+                error=str(exc),
+                conversation_id=request.conversation_id,
+                hint="Check that the provider API key is set in .env",
+            )
+            yield ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message(
+                    "I'm not properly configured to respond right now. Please contact support."
+                ),
+                status="error",
+                error=str(exc),
+            )
+        except TimeoutError:
+            get_metrics().conversation_errors_total.labels(error_type="llm_timeout").inc()
+            logger.warning("llm_timeout", conversation_id=request.conversation_id)
+            yield ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message(
+                    "I'm sorry, I'm having trouble connecting to my brain right now. Please try again."
+                ),
+                status="error",
+                error=f"LLM call timed out after {self._settings.llm_timeout_seconds} seconds.",
+            )
+        except UnicodeEncodeError as exc:
+            get_metrics().conversation_errors_total.labels(error_type="encoding_error").inc()
+            logger.error(
+                "encoding_error",
+                error=str(exc),
+                conversation_id=request.conversation_id,
+                exc_info=True,
+            )
+            yield ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message("An unexpected error occurred."),
+                status="error",
+                error=str(exc),
+            )
+        except ValueError as exc:
+            get_metrics().conversation_errors_total.labels(error_type="invalid_input").inc()
+            logger.warning(
+                "invalid_runtime_input", error=str(exc), conversation_id=request.conversation_id
+            )
+            yield ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message("I encountered an error. Please try again."),
+                status="error",
+                error=str(exc),
+            )
+        except Exception as exc:
+            get_metrics().conversation_errors_total.labels(error_type="runtime_error").inc()
+            logger.error(
+                "runtime_error",
+                error=str(exc),
+                conversation_id=request.conversation_id,
+                exc_info=True,
+            )
+            yield ConversationResponse(
                 conversation_id=request.conversation_id,
                 reply=self._make_assistant_message("An unexpected error occurred."),
                 status="error",
@@ -885,6 +1290,142 @@ class ConversationOrchestrator:
         augmented_prompt = with_same_language_instruction(system_prompt)
         client = get_llm_client(llm_config, settings=self._settings)
         return await client.generate(augmented_prompt, messages, llm_config)
+
+    async def _call_llm_stream(
+        self,
+        system_prompt: str,
+        messages: list[Message],
+        llm_config: LLMConfig,
+    ):
+        """Stream LLM response tokens from the configured provider."""
+        from taskorbit.integrations.llm.factory import get_llm_client
+        from taskorbit.integrations.llm.prompts import with_same_language_instruction
+
+        augmented_prompt = with_same_language_instruction(system_prompt)
+        client = get_llm_client(llm_config, settings=self._settings)
+        async for chunk in client.generate_stream(augmented_prompt, messages, llm_config):
+            yield chunk
+
+    async def _run_dispatch_step(
+        self,
+        request: ConversationRequest,
+        active_tool: ToolDefinition | None,
+        slot_result: Any,
+        intent: Any,
+        agent: Any,
+        db: AsyncSession | None = None,
+        user_id: int | None = None,
+    ) -> _DispatchResult:
+        """Run the tool dispatch logic (step 5b) shared by streaming and non-streaming paths."""
+        tool_data: dict[str, Any] = {}
+        response_status = ConversationStatus.SUCCESS
+        llm_text_override: str | None = None
+
+        no_slots_tool_ready = active_tool is not None and active_tool.type in (
+            ToolType.END_CALL,
+            ToolType.AGENT_TRANSFER,
+        )
+        slots_ready = (
+            active_tool is not None and slot_result.is_complete and bool(intent.required_inputs)
+        )
+
+        if no_slots_tool_ready or slots_ready:
+            is_decision_for_this_tool = request.confirmation_id == active_tool.id
+            has_decision = is_decision_for_this_tool and request.decision is not None
+
+            if active_tool.confirmation.required and not has_decision:
+                logger.info(
+                    "confirmation_required",
+                    tool_id=active_tool.id,
+                    conversation_id=request.conversation_id,
+                )
+                return _DispatchResult(
+                    early_response=ConversationResponse(
+                        conversation_id=request.conversation_id,
+                        reply=self._make_assistant_message(
+                            active_tool.confirmation.prompt
+                            or f"I need your confirmation before I proceed with {active_tool.name}. Should I go ahead?"
+                        ),
+                        status=ConversationStatus.CONFIRMATION_REQUIRED,
+                        tool_invoked=active_tool,
+                        confirmation=ConfirmationResponsePayload(
+                            confirmation_id=active_tool.id,
+                            action=active_tool.name,
+                            description=active_tool.confirmation.prompt
+                            or f"Execute {active_tool.name}",
+                        ),
+                        selected_intent=intent.name,
+                        selected_agent=agent.agent_name,
+                        intent_confidence=intent.confidence,
+                        extracted_slots=slot_result.to_dict(),
+                        missing_slots=slot_result.missing,
+                        locked_intent_name=intent.name,
+                        next_active_tool_id=active_tool.id,
+                        completed_workflow_steps=request.completed_workflow_steps,
+                    ),
+                    tool_data={},
+                    response_status=ConversationStatus.CONFIRMATION_REQUIRED,
+                    llm_text_override=None,
+                )
+
+            if has_decision and request.decision == "reject":
+                logger.info(
+                    "tool_execution_rejected",
+                    tool_id=active_tool.id,
+                    conversation_id=request.conversation_id,
+                )
+                response_status = ConversationStatus.REJECTED
+                tool_data = {"aborted": True}
+                llm_text_override = (
+                    "Understood. I've cancelled that action. How else can I help you?"
+                )
+            else:
+                dispatch_context: dict[str, Any] = dict(slot_result.to_dict())
+                if active_tool.type == ToolType.AGENT_TRANSFER:
+                    targets = active_tool.parameters.get("targets") or []
+                    if targets:
+                        raw = str(targets[0])
+                        if re.match(
+                            r"^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$",
+                            raw,
+                            re.IGNORECASE,
+                        ):
+                            normalized = raw
+                        else:
+                            normalized = raw.removesuffix("-agent").replace("-", "_")
+                        dispatch_context["target_agent_id"] = normalized
+                    dispatch_context["conversation_history"] = [
+                        {"role": m.role.value, "content": m.content} for m in request.messages
+                    ]
+                elif active_tool.type == ToolType.EXTERNAL_API:
+                    dispatch_context = {
+                        **active_tool.parameters,
+                        "args": dict(slot_result.to_dict()),
+                    }
+                tool_data = await self._dispatch_tool(
+                    active_tool, dispatch_context, db=db, user_id=user_id
+                )
+                logger.info(
+                    "tool_dispatch_complete",
+                    tool_type=active_tool.type,
+                    conversation_id=request.conversation_id,
+                )
+                if active_tool.type == ToolType.END_CALL:
+                    response_status = ConversationStatus.ENDED
+                elif active_tool.type == ToolType.AGENT_TRANSFER:
+                    logger.info(
+                        "agent_handoff",
+                        from_agent=request.agent_config.name,
+                        to_agent=tool_data.get("transferred_to"),
+                        conversation_id=request.conversation_id,
+                    )
+
+        return _DispatchResult(
+            early_response=None,
+            tool_data=tool_data,
+            response_status=response_status,
+            llm_text_override=llm_text_override,
+        )
 
     async def _dispatch_tool(
         self,

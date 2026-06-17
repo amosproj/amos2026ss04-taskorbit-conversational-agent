@@ -16,7 +16,7 @@ import { useVoiceCall } from "@/hooks/useVoiceCall";
 import type { TranscriptionSegment } from "@/hooks/useAgentTranscription";
 import { useActiveAgent } from "@/components/active-agent-provider";
 import { buildLiveKitWorkerMetadata } from "@/lib/livekitAgentMetadata";
-import { sendMessage, getConversations } from "@/lib/conversationApi";
+import { sendMessage, sendMessageStream, getConversations } from "@/lib/conversationApi";
 import { playSynthesizedSpeech } from "@/lib/ttsApi";
 import { backendToFrontendAgent, fetchUserAgents, type UserAgentEntry } from "@/lib/userAgentsApi";
 import type { LiveTranscriptTurn } from "@/types/callState";
@@ -270,8 +270,11 @@ export function ConversationalChat() {
       abortRef.current = controller;
 
       void Promise.resolve().then(async () => {
+        const assistantTurnId = `assistant-stream-${Date.now()}`;
+        let replyText = "";
+
         try {
-          const response = await sendMessage(
+          const stream = sendMessageStream(
             agent,
             [...call.transcript, { id: "tmp", role: "user", text }],
             convId,
@@ -283,104 +286,119 @@ export function ConversationalChat() {
             routedAgent,
             manualTransfer ?? null,
           );
-          call.updateConversationId(response.conversation_id);
-          lockedIntentRef.current = response.locked_intent_name ?? null;
-          setCompletedWorkflowSteps(response.completed_workflow_steps ?? []);
 
-          if (!manualTransfer && response.selected_agent) {
-            setRoutedAgent(response.selected_agent);
-            // Swapping card if agent changed after decision
-            if (response.selected_agent !== agent.agent_id && !manualRoutingLockRef.current) {
-              const entries = await fetchUserAgents(controller.signal);
-              const match = findUserAgentEntry(entries, response.selected_agent);
-              if (match) {
-                const next = backendToFrontendAgent(match);
-                setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
-              }
-            }
-          }
+          for await (const event of stream) {
+            if (event.type === "chunk") {
+              replyText += event.text;
+              call.upsertTurnById(assistantTurnId, "assistant", replyText, false);
+            } else if (event.type === "done") {
+              call.upsertTurnById(assistantTurnId, "assistant", replyText, true);
 
-          if (
-            (response.status === "confirmation_required" ||
-              response.status === "workflow_confirmation_required") &&
-            response.confirmation
-          ) {
-            pendingConfirmationIdRef.current = response.confirmation.confirmation_id;
-            call.triggerConfirmation({
-              ...response.confirmation,
-              type: response.status === "workflow_confirmation_required" ? "workflow" : "tool",
-            });
-            return;
-          }
+              if (event.conversation_id) call.updateConversationId(event.conversation_id);
+              lockedIntentRef.current = event.locked_intent_name ?? null;
+              setCompletedWorkflowSteps(event.completed_workflow_steps ?? []);
 
-          // Manual transfer: swap active agent config after backend confirmation.
-          // The transcript announcement was already appended in handleRoutingTargetChange.
-          if (manualTransfer?.target_agent_id && response.status !== "error") {
-            // The badge appends " Agent", so strip it from the stored name to avoid "Sales Agent Agent".
-            const badgeName = manualTransfer.target_agent_name.replace(/\s+[Aa]gent$/i, "").trim();
-            manualRoutingLockRef.current = true;
-            setRoutedAgent(badgeName);
-            // Try to swap the full agent config so subsequent messages use the new agent.
-            try {
-              const entries = await fetchUserAgents(controller.signal);
-              const match = entries.find(
-                (e) =>
-                  e.id === manualTransfer.target_agent_id ||
-                  e.template_id === manualTransfer.target_agent_id,
-              );
-              if (match) {
-                const next = backendToFrontendAgent(match);
-                setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
-              } else {
-                call.appendAssistantTurn(
-                  `[Could not transfer to ${manualTransfer.target_agent_name}]`,
-                );
-                setRoutedAgent(null);
-                manualRoutingLockRef.current = false;
-              }
-            } catch (transferErr) {
-              if ((transferErr as Error).name !== "AbortError") {
-                call.appendAssistantTurn(
-                  `[Could not transfer to ${manualTransfer.target_agent_name}]`,
-                );
-                setRoutedAgent(null);
-                manualRoutingLockRef.current = false;
-              }
-            }
-          }
-
-          const replyText = response.reply.content;
-          call.appendAssistantTurn(replyText);
-
-          if (response.status === "ended") {
-            if (replyText) {
-              await playSynthesizedSpeech(replyText, {
-                signal: controller.signal,
-                volumeRef: agentVolumeRef,
-              }).catch(() => {});
-            }
-            call.end();
-            return;
-          }
-
-          // Auto agent handoff via agent_transfer tool (#8 Task 6).
-          if (!manualTransfer && response.tool_invoked?.type === "agent_transfer") {
-            const targets = (response.tool_invoked.parameters as { targets?: string[] })?.targets;
-            const targetId = targets?.[0];
-            if (targetId) {
-              try {
-                const entries = await fetchUserAgents(controller.signal);
-                const match = entries.find((e) => e.template_id === targetId || e.id === targetId);
-                if (match) {
-                  const next = backendToFrontendAgent(match);
-                  setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
-                  call.appendAssistantTurn(`[Transferred to ${next.name}]`);
-                }
-              } catch (transferErr) {
-                if ((transferErr as Error).name !== "AbortError") {
-                  console.warn("[ConversationalChat] agent transfer lookup failed", transferErr);
+              if (!manualTransfer && event.selected_agent) {
+                setRoutedAgent(event.selected_agent);
+                if (event.selected_agent !== agent.agent_id && !manualRoutingLockRef.current) {
+                  const entries = await fetchUserAgents(controller.signal);
+                  const match = findUserAgentEntry(entries, event.selected_agent);
+                  if (match) {
+                    const next = backendToFrontendAgent(match);
+                    setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
+                  }
                 }
               }
+
+              if (
+                (event.status === "confirmation_required" ||
+                  event.status === "workflow_confirmation_required") &&
+                event.confirmation
+              ) {
+                pendingConfirmationIdRef.current = event.confirmation.confirmation_id;
+                call.triggerConfirmation({
+                  ...event.confirmation,
+                  type: event.status === "workflow_confirmation_required" ? "workflow" : "tool",
+                });
+                return;
+              }
+
+              // Manual transfer: swap active agent config after backend confirmation.
+              // The transcript announcement was already appended in handleRoutingTargetChange.
+              if (manualTransfer?.target_agent_id && event.status !== "error") {
+                const badgeName = manualTransfer.target_agent_name
+                  .replace(/\s+[Aa]gent$/i, "")
+                  .trim();
+                manualRoutingLockRef.current = true;
+                setRoutedAgent(badgeName);
+                try {
+                  const entries = await fetchUserAgents(controller.signal);
+                  const match = entries.find(
+                    (e) =>
+                      e.id === manualTransfer.target_agent_id ||
+                      e.template_id === manualTransfer.target_agent_id,
+                  );
+                  if (match) {
+                    const next = backendToFrontendAgent(match);
+                    setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
+                  } else {
+                    call.appendAssistantTurn(
+                      `[Could not transfer to ${manualTransfer.target_agent_name}]`,
+                    );
+                    setRoutedAgent(null);
+                    manualRoutingLockRef.current = false;
+                  }
+                } catch (transferErr) {
+                  if ((transferErr as Error).name !== "AbortError") {
+                    call.appendAssistantTurn(
+                      `[Could not transfer to ${manualTransfer.target_agent_name}]`,
+                    );
+                    setRoutedAgent(null);
+                    manualRoutingLockRef.current = false;
+                  }
+                }
+              }
+
+              if (event.status === "ended") {
+                if (replyText) {
+                  await playSynthesizedSpeech(replyText, {
+                    signal: controller.signal,
+                    volumeRef: agentVolumeRef,
+                  }).catch(() => {});
+                }
+                call.end();
+                return;
+              }
+
+              // Agent handoff (#8 Task 6): backend's IntentRouter / dispatch decided
+              // to transfer the conversation. Swap the displayed agent and add a
+              // transcript marker so the user sees the switch.
+              if (!manualTransfer && event.tool_invoked?.type === "agent_transfer") {
+                const targets = (event.tool_invoked.parameters as { targets?: string[] })?.targets;
+                const targetId = targets?.[0];
+                if (targetId) {
+                  try {
+                    const entries = await fetchUserAgents(controller.signal);
+                    const match = entries.find(
+                      (e) => e.template_id === targetId || e.id === targetId,
+                    );
+                    if (match) {
+                      const next = backendToFrontendAgent(match);
+                      setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
+                      call.appendAssistantTurn(`[Transferred to ${next.name}]`);
+                    }
+                  } catch (transferErr) {
+                    if ((transferErr as Error).name !== "AbortError") {
+                      console.warn(
+                        "[ConversationalChat] agent transfer lookup failed",
+                        transferErr,
+                      );
+                    }
+                  }
+                }
+              }
+            } else if (event.type === "error") {
+              call.upsertTurnById(assistantTurnId, "assistant", `[Error: ${event.message}]`, true);
             }
           }
 
@@ -402,7 +420,12 @@ export function ConversationalChat() {
           call.setPhase("idle_in_call");
         } catch (err) {
           if ((err as Error).name === "AbortError") return;
-          call.appendAssistantTurn(`[Connection error: ${(err as Error).message}]`);
+          call.upsertTurnById(
+            assistantTurnId,
+            "assistant",
+            `[Connection error: ${(err as Error).message}]`,
+            true,
+          );
           call.setPhase("idle_in_call");
         }
       });
