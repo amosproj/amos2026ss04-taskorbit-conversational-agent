@@ -53,6 +53,14 @@ from taskorbit.types import (
 logger = get_logger(__name__)
 
 
+def _effective_selected_agent(selected_agent: str | None) -> str | None:
+    """Normalize empty strings from the voice path to None."""
+    if selected_agent is None:
+        return None
+    stripped = selected_agent.strip()
+    return stripped if stripped else None
+
+
 def _selected_agent_matches_dep(selected_agent: str | None, dep_id: str) -> bool:
     """True when the session is already executing a prerequisite agent step."""
     if not selected_agent:
@@ -99,6 +107,10 @@ class ConversationOrchestrator:
                 from taskorbit.database.crud import enrich_request_dependency_configs
 
                 request = await enrich_request_dependency_configs(request, db, user_id)
+
+            effective_selected = _effective_selected_agent(request.selected_agent)
+            if effective_selected != request.selected_agent:
+                request = request.model_copy(update={"selected_agent": effective_selected})
 
             last_user = next(
                 (m for m in reversed(request.messages) if m.role == MessageRole.USER),
@@ -604,6 +616,10 @@ class ConversationOrchestrator:
                 from taskorbit.database.crud import enrich_request_dependency_configs
 
                 request = await enrich_request_dependency_configs(request, db, user_id)
+
+            effective_selected = _effective_selected_agent(request.selected_agent)
+            if effective_selected != request.selected_agent:
+                request = request.model_copy(update={"selected_agent": effective_selected})
 
             last_user = next(
                 (m for m in reversed(request.messages) if m.role == MessageRole.USER),

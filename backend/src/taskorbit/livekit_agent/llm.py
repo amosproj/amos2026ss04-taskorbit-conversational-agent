@@ -206,7 +206,7 @@ class OrchestratorAgent(Agent):
         self._reply_requested: bool = False
         self._t_commit: float | None = None
         self._locked_intent_name: str | None = None
-        self._current_routed_agent: str = ""
+        self._current_routed_agent: str | None = None
         self._call_ended: bool = False
         # Voice-path handoff hook (#8 Task 6): the most recent agent_transfer
         # target surfaced by the orchestrator. A future LiveKit data-channel
@@ -216,6 +216,22 @@ class OrchestratorAgent(Agent):
         # #71: Workflow state for voice path
         self._completed_workflow_steps: list[str] = []
         self._pending_confirmation_id: str | None = None
+
+    def sync_workflow_state(
+        self,
+        *,
+        selected_agent: str | None = None,
+        completed_workflow_steps: list[str] | None = None,
+        clear_pending_confirmation: bool = True,
+    ) -> None:
+        """Apply workflow state from the text UI so voice turns stay in sync."""
+        if selected_agent is not None:
+            stripped = selected_agent.strip()
+            self._current_routed_agent = stripped if stripped else None
+        if completed_workflow_steps is not None:
+            self._completed_workflow_steps = list(completed_workflow_steps)
+        if clear_pending_confirmation:
+            self._pending_confirmation_id = None
 
     def request_reply(self, t_commit: float | None = None) -> None:
         """Signal that the next ``llm_node`` call should actually produce a reply.

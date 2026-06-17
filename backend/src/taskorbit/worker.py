@@ -37,7 +37,9 @@ _DEEPGRAM_FLUSH_DELAY_S: float = 0.3
 
 # Explicit allowlist of data-channel message types this worker handles.
 # Packets with any other `type` value are silently discarded.
-_RECOGNISED_MSG_TYPES: frozenset[str] = frozenset({"commit_turn", "interrupt_playback"})
+_RECOGNISED_MSG_TYPES: frozenset[str] = frozenset(
+    {"commit_turn", "interrupt_playback", "workflow_state"}
+)
 
 # Topic the FE subscribes to via useAgentHandoff to swap the active agent
 # card mid-call without dropping the LiveKit room. #8 Task 6 AC7.
@@ -256,6 +258,19 @@ async def entrypoint(ctx: JobContext) -> None:
                 logger.info("worker_interrupt_requested")
             except Exception as exc:  # noqa: BLE001
                 logger.warning("worker_interrupt_failed", error=str(exc))
+        elif msg_type == "workflow_state":
+            selected = msg.get("selected_agent")
+            completed = msg.get("completed_workflow_steps")
+            agent.sync_workflow_state(
+                selected_agent=selected if isinstance(selected, str) else None,
+                completed_workflow_steps=completed if isinstance(completed, list) else None,
+                clear_pending_confirmation=bool(msg.get("clear_pending_confirmation", True)),
+            )
+            logger.info(
+                "worker_workflow_state_synced",
+                selected_agent=agent._current_routed_agent,
+                completed_steps=len(agent._completed_workflow_steps),
+            )
 
     await session.start(agent, room=ctx.room)
 

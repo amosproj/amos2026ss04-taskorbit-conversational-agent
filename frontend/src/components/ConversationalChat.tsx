@@ -13,6 +13,11 @@ import { TranscriptBubble } from "@/components/history/TranscriptBubble";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useVoiceCall } from "@/hooks/useVoiceCall";
+import {
+  WorkflowVoiceSyncBridge,
+  type WorkflowVoiceSyncFn,
+  type WorkflowVoiceState,
+} from "@/hooks/useWorkflowVoiceSync";
 import type { TranscriptionSegment } from "@/hooks/useAgentTranscription";
 import { useActiveAgent } from "@/components/active-agent-provider";
 import { buildLiveKitWorkerMetadata } from "@/lib/livekitAgentMetadata";
@@ -111,6 +116,25 @@ export function ConversationalChat() {
   const lockedIntentRef = useRef<string | null>(null);
   const pendingConfirmationIdRef = useRef<string | null>(null);
   const [completedWorkflowSteps, setCompletedWorkflowSteps] = useState<string[]>([]);
+  const routedAgentRef = useRef<string | null>(null);
+  const completedWorkflowStepsRef = useRef<string[]>([]);
+  const workflowVoiceSyncRef = useRef<WorkflowVoiceSyncFn | null>(null);
+  useEffect(() => {
+    routedAgentRef.current = routedAgent;
+  }, [routedAgent]);
+  useEffect(() => {
+    completedWorkflowStepsRef.current = completedWorkflowSteps;
+  }, [completedWorkflowSteps]);
+  const registerWorkflowVoiceSync = useCallback((sync: WorkflowVoiceSyncFn | null) => {
+    workflowVoiceSyncRef.current = sync;
+  }, []);
+  const syncWorkflowToVoice = useCallback(async (state: WorkflowVoiceState) => {
+    try {
+      await workflowVoiceSyncRef.current?.(state);
+    } catch (err) {
+      console.warn("[ConversationalChat] workflow voice sync failed", err);
+    }
+  }, []);
   const [previousConversations, setPreviousConversations] = useState<
     Record<string, string | null>[]
   >([]);
@@ -284,8 +308,8 @@ export function ConversationalChat() {
             lockedIntentRef.current,
             null,
             null,
-            completedWorkflowSteps,
-            routedAgent,
+            completedWorkflowStepsRef.current,
+            routedAgentRef.current,
             manualTransfer ?? null,
           );
 
@@ -306,14 +330,14 @@ export function ConversationalChat() {
 
               if (!manualTransfer && event.selected_agent) {
                 setRoutedAgent(event.selected_agent);
-                if (event.selected_agent !== agent.agent_id && !manualRoutingLockRef.current) {
-                  const entries = await fetchUserAgents(controller.signal);
-                  const match = findUserAgentEntry(entries, event.selected_agent);
-                  if (match) {
-                    const next = backendToFrontendAgent(match);
-                    setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
-                  }
-                }
+              }
+
+              if (call.status !== "idle" && call.status !== "ended") {
+                void syncWorkflowToVoice({
+                  selected_agent: event.selected_agent ?? routedAgentRef.current,
+                  completed_workflow_steps: event.completed_workflow_steps ?? [],
+                  clear_pending_confirmation: !isConfirmation,
+                });
               }
 
               if (isConfirmation) {
@@ -443,7 +467,7 @@ export function ConversationalChat() {
         }
       });
     },
-    [agent, call, setActiveAgent],
+    [agent, call, syncWorkflowToVoice],
   );
 
   const handleRoomError = useCallback(
@@ -515,8 +539,8 @@ export function ConversationalChat() {
             lockedIntentRef.current,
             confirmationId,
             decision,
-            completedWorkflowSteps,
-            routedAgent,
+            completedWorkflowStepsRef.current,
+            routedAgentRef.current,
           );
           call.updateConversationId(response.conversation_id);
           lockedIntentRef.current = response.locked_intent_name ?? null;
@@ -524,14 +548,20 @@ export function ConversationalChat() {
 
           if (response.selected_agent) {
             setRoutedAgent(response.selected_agent);
-            if (response.selected_agent !== agent.agent_id && !manualRoutingLockRef.current) {
-              const entries = await fetchUserAgents(controller.signal);
-              const match = findUserAgentEntry(entries, response.selected_agent);
-              if (match) {
-                const next = backendToFrontendAgent(match);
-                setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
-              }
-            }
+          }
+
+          if (confirmationId.startsWith("workflow_")) {
+            await syncWorkflowToVoice({
+              selected_agent: response.selected_agent,
+              completed_workflow_steps: response.completed_workflow_steps ?? [],
+              clear_pending_confirmation: true,
+            });
+          } else if (call.status !== "idle" && call.status !== "ended") {
+            await syncWorkflowToVoice({
+              selected_agent: response.selected_agent ?? routedAgentRef.current,
+              completed_workflow_steps: response.completed_workflow_steps ?? [],
+              clear_pending_confirmation: true,
+            });
           }
 
           if (
@@ -575,7 +605,7 @@ export function ConversationalChat() {
         }
       });
     },
-    [agent, call, completedWorkflowSteps, routedAgent, setActiveAgent],
+    [agent, call, syncWorkflowToVoice],
   );
 
   const handleApprove = useCallback(() => {
@@ -773,6 +803,7 @@ export function ConversationalChat() {
             onAgentRouted={handleVoiceAgentRouted}
             onSessionEnded={call.end}
           />
+          <WorkflowVoiceSyncBridge onRegister={registerWorkflowVoiceSync} />
           {body}
         </LiveKitRoom>
       ) : (

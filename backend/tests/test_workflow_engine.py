@@ -285,6 +285,101 @@ async def test_workflow_rules_branch_sales_intent_skips_prereq(orchestrator):
 
 
 @pytest.mark.asyncio
+async def test_transitive_workflow_c_before_b_full_flow(orchestrator):
+    """Demo 2: A→B only in config, B→C — engine prompts C first, then B, then entry."""
+    config_c = AgentConfig(
+        id="agent-c",
+        name="Step C",
+        persona="STEP-C: leaf prerequisite.",
+        greeting="g",
+    )
+    config_b = AgentConfig(
+        id="agent-b",
+        name="Step B",
+        persona="STEP-B: middle prerequisite.",
+        greeting="g",
+        workflow_dependencies=["agent-c"],
+    )
+    config_a = AgentConfig(
+        id="agent-a",
+        name="Step A Entry",
+        persona="STEP-A: entry agent.",
+        greeting="g",
+        workflow_dependencies=["agent-b"],
+    )
+    deps = {"agent-b": config_b, "agent-c": config_c}
+    mock_intent = IntentResult(
+        name="book_service_appointment",
+        description="d",
+        agent_name="sales",
+        confidence=1.0,
+    )
+
+    with mock.patch.object(orchestrator._intent_router, "detect", return_value=mock_intent):
+        first = await orchestrator.process_message(
+            ConversationRequest(
+                conversation_id="conv-transitive",
+                agent_config=config_a,
+                messages=[Message(role=MessageRole.USER, content="I want to buy something")],
+                dependency_configs=deps,
+            )
+        )
+
+    assert first.status == ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED
+    assert first.confirmation is not None
+    assert first.confirmation.confirmation_id == "workflow_agent-c"
+
+    with mock.patch.object(orchestrator._intent_router, "detect", return_value=mock_intent):
+        confirmed_c = await orchestrator.process_message(
+            ConversationRequest(
+                conversation_id="conv-transitive",
+                agent_config=config_a,
+                messages=[Message(role=MessageRole.USER, content="proceed")],
+                dependency_configs=deps,
+                confirmation_id="workflow_agent-c",
+                decision="confirm",
+            )
+        )
+
+    assert confirmed_c.status == ConversationStatus.SUCCESS
+    assert confirmed_c.selected_agent == "agent-c"
+
+    with mock.patch.object(orchestrator._intent_router, "detect", return_value=mock_intent):
+        with mock.patch.object(
+            orchestrator, "_call_llm", return_value="STEP-C: checking inventory."
+        ):
+            executed_c = await orchestrator.process_message(
+                ConversationRequest(
+                    conversation_id="conv-transitive",
+                    agent_config=config_a,
+                    messages=[Message(role=MessageRole.USER, content="continue")],
+                    dependency_configs=deps,
+                    selected_agent="agent-c",
+                )
+            )
+
+    assert executed_c.status == ConversationStatus.SUCCESS
+    assert "STEP-C" in executed_c.reply.content
+    assert "agent-c" in executed_c.completed_workflow_steps
+
+    with mock.patch.object(orchestrator._intent_router, "detect", return_value=mock_intent):
+        prompt_b = await orchestrator.process_message(
+            ConversationRequest(
+                conversation_id="conv-transitive",
+                agent_config=config_a,
+                messages=[Message(role=MessageRole.USER, content="next")],
+                dependency_configs=deps,
+                selected_agent="agent-c",
+                completed_workflow_steps=["agent-c"],
+            )
+        )
+
+    assert prompt_b.status == ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED
+    assert prompt_b.confirmation is not None
+    assert prompt_b.confirmation.confirmation_id == "workflow_agent-b"
+
+
+@pytest.mark.asyncio
 async def test_handoff_allowed_via_mapping(orchestrator):
     config = AgentConfig(
         id="agent-a",
