@@ -114,10 +114,17 @@ async def entrypoint(ctx: JobContext) -> None:
     # #135: forward the parsed config so the session constructs the STT/TTS
     # providers the user selected, instead of always using the env defaults.
     session = build_agent_session(settings=cfg, agent_config=agent_config)
+
+    # Auth stub: default to the seeded dev user (id=1) so the voice path can
+    # resolve custom agent dependencies from the database. In a real multi-user
+    # setup, the user_id should be extracted from the token's participant identity.
+    dev_user_id = 1
+
     agent = build_default_agent(
         settings=cfg,
         agent_config=agent_config,
         conversation_id=ctx.room.name,
+        user_id=dev_user_id,
     )
 
     @session.on("metrics_collected")

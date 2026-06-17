@@ -282,6 +282,15 @@ class ConversationOrchestrator:
                 dep for dep in effective_dependencies if dep not in request.completed_workflow_steps
             ]
 
+            logger.debug(
+                "workflow_dependency_check",
+                direct=direct_dependencies,
+                effective=effective_dependencies,
+                completed=request.completed_workflow_steps,
+                missing=missing_dependencies,
+                selected=request.selected_agent,
+            )
+
             executing_prereq_id: str | None = None
             if missing_dependencies:
                 next_dep = missing_dependencies[0]
@@ -779,6 +788,15 @@ class ConversationOrchestrator:
             missing_dependencies = [
                 dep for dep in effective_dependencies if dep not in request.completed_workflow_steps
             ]
+
+            logger.debug(
+                "workflow_dependency_check",
+                direct=direct_dependencies,
+                effective=effective_dependencies,
+                completed=request.completed_workflow_steps,
+                missing=missing_dependencies,
+                selected=request.selected_agent,
+            )
 
             executing_prereq_id: str | None = None
             if missing_dependencies:

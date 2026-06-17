@@ -677,36 +677,53 @@ async def enrich_request_dependency_configs(
     # Use a worklist to find all transitive dependencies
     all_dep_ids: set[str] = set()
     new_dep_configs: dict[str, AgentConfig] = {}
-    
+
     # Start with the entry agent's dependencies
     to_check = collect_workflow_dependency_ids(request.agent_config)
-    
+
+    logger.debug(
+        "enrich_dependencies_start",
+        entry_agent=request.agent_config.id,
+        initial_to_check=to_check,
+        user_id=user_id,
+    )
+
     while to_check:
         dep_id = to_check.pop(0)
         if dep_id in all_dep_ids:
             continue
         all_dep_ids.add(dep_id)
-        
+
         # Check if already in request or new_dep_configs
         resolved = request.dependency_configs.get(dep_id) or new_dep_configs.get(dep_id)
         if not resolved:
             resolved = await resolve_dependency_agent_config(db, dep_id, user_id)
             if resolved:
                 new_dep_configs[dep_id] = resolved
+                logger.debug("enrich_dependency_resolved", id=dep_id, name=resolved.name)
             else:
                 logger.warning(
                     "workflow_dependency_config_unresolved",
                     dependency=dep_id,
                     conversation_id=request.conversation_id,
                 )
-        
+
         # If we have a config, add its dependencies to the worklist
         if resolved:
-            to_check.extend(collect_workflow_dependency_ids(resolved))
+            nested_deps = collect_workflow_dependency_ids(resolved)
+            if nested_deps:
+                logger.debug("enrich_dependency_nested_found", parent=dep_id, nested=nested_deps)
+                to_check.extend(nested_deps)
 
     if not new_dep_configs:
         return request
-        
+
+    logger.info(
+        "enrich_dependencies_complete",
+        conversation_id=request.conversation_id,
+        resolved_ids=list(new_dep_configs.keys()),
+    )
+
     return request.model_copy(
         update={"dependency_configs": {**request.dependency_configs, **new_dep_configs}}
     )
