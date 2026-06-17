@@ -175,7 +175,7 @@ async def _sse_generator(
 
     meta: ConversationResponse | None = None
 
-    async for event in orchestrator.process_message_stream(request):
+    async for event in orchestrator.process_message_stream(request, db=db, user_id=user_id):
         if await http_request.is_disconnected():
             logger.info("sse_client_disconnected", conversation_id=request.conversation_id)
             return

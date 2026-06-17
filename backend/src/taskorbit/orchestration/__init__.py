@@ -745,11 +745,23 @@ class ConversationOrchestrator:
                         for cfg_id in request.agent_config.allowed_handoffs
                     ]
 
-            # Resolve workflow dependencies.
+            # Resolve workflow dependencies BEFORE enforcing handoff rules.
+            from taskorbit.types import ConversationStatus
+            from taskorbit.workflow_rules import (
+                expand_workflow_dependencies,
+                resolve_workflow_dependencies,
+            )
+
+            direct_dependencies = resolve_workflow_dependencies(
+                request.agent_config,
+                intent_name=intent.name,
+                intent_agent_name=intent.agent_name,
+            )
+            effective_dependencies = expand_workflow_dependencies(
+                direct_dependencies, request.dependency_configs
+            )
             missing_dependencies = [
-                dep
-                for dep in request.agent_config.workflow_dependencies
-                if dep not in request.completed_workflow_steps
+                dep for dep in effective_dependencies if dep not in request.completed_workflow_steps
             ]
 
             executing_prereq_id: str | None = None
