@@ -5,12 +5,20 @@ import type { LlmProvider, SttProvider, TtsProvider } from "@/types/agentConfig"
 export const LLM_MODELS: Record<LlmProvider, string[]> = {
   openai: ["gpt-4o-mini", "gpt-4o"],
   gemini: ["gemini-2.5-flash", "gemini-2.5-pro"],
+  openrouter: [
+    "meta-llama/llama-3.1-8b-instruct:free",
+    "qwen/qwen-2.5-7b-instruct:free",
+    "google/gemma-3-12b-it:free",
+    "deepseek/deepseek-r1:free",
+    "mistralai/mistral-7b-instruct:free",
+  ],
 };
 
 // Index 0 of each provider's list is the default applied on provider switch — reordering changes this.
 export const LLM_MODEL_DEFAULTS: Record<LlmProvider, string> = {
   openai: LLM_MODELS.openai[0],
   gemini: LLM_MODELS.gemini[0],
+  openrouter: LLM_MODELS.openrouter[0],
 };
 
 export const STT_MODELS: Record<SttProvider, string[]> = {
