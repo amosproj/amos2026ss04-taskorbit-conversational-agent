@@ -638,6 +638,8 @@ class ConversationOrchestrator:
                 raise ValueError("No user message content found in request.")
 
             # 0. User-initiated end-call.
+            from taskorbit.types import ConversationStatus, ToolType
+
             end_call_tool = next(
                 (t for t in request.agent_config.tools if t.type == ToolType.END_CALL),
                 None,

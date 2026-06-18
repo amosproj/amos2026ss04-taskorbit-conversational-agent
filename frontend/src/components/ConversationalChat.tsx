@@ -23,17 +23,8 @@ import { useActiveAgent } from "@/components/active-agent-provider";
 import { buildLiveKitWorkerMetadata } from "@/lib/livekitAgentMetadata";
 import { sendMessage, sendMessageStream, getConversations } from "@/lib/conversationApi";
 import { playSynthesizedSpeech } from "@/lib/ttsApi";
-import { backendToFrontendAgent, fetchUserAgents, type UserAgentEntry } from "@/lib/userAgentsApi";
+import { backendToFrontendAgent, fetchUserAgents } from "@/lib/userAgentsApi";
 import type { LiveTranscriptTurn } from "@/types/callState";
-
-function findUserAgentEntry(
-  entries: UserAgentEntry[],
-  agentKey: string,
-): UserAgentEntry | undefined {
-  return entries.find(
-    (e) => e.template_id === agentKey || e.id === agentKey || e.config.id === agentKey,
-  );
-}
 
 // Tidy up common Deepgram artefacts in user transcription before display.
 // Runs at render time only — does not mutate stored state.
