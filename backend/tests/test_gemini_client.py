@@ -24,7 +24,7 @@ from taskorbit.types import LLMConfig, LLMProvider, Message, MessageRole
 def _make_client() -> GeminiClient:
     """Construct a client with fake credentials for testing."""
     settings = Settings(openai_api_key="", google_api_key="AIza-test-key")
-    llm_config = LLMConfig(provider=LLMProvider.GOOGLE, model="gemini-2.0-flash")
+    llm_config = LLMConfig(provider=LLMProvider.GOOGLE, model="gemini-2.5-flash")
     return GeminiClient(llm_config=llm_config, settings=settings)
 
 
@@ -45,7 +45,7 @@ def client() -> GeminiClient:
 
 @pytest.fixture
 def llm_config() -> LLMConfig:
-    return LLMConfig(provider=LLMProvider.GOOGLE, model="gemini-2.0-flash")
+    return LLMConfig(provider=LLMProvider.GOOGLE, model="gemini-2.5-flash")
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +70,7 @@ async def test_generate_returns_assistant_text(client: GeminiClient, llm_config:
 
     assert result == "4"
     call_kwargs = mock_create.call_args.kwargs
-    assert call_kwargs["model"] == "gemini-2.0-flash"
+    assert call_kwargs["model"] == "gemini-2.5-flash"
     # System prompt goes into config.system_instruction, not into contents
     assert call_kwargs["config"].system_instruction == "You are a helpful assistant."
     # User message lands in contents as role=user with parts
@@ -195,9 +195,9 @@ async def test_generate_records_token_metrics(client: GeminiClient, llm_config: 
             await client.generate("sys", [Message(role=MessageRole.USER, content="hi")], llm_config)
 
     labels_calls = mock_metrics.tokens_used_total.labels.call_args_list
-    assert call(provider="google", model="gemini-2.0-flash", token_type="prompt") in labels_calls
+    assert call(provider="google", model="gemini-2.5-flash", token_type="prompt") in labels_calls
     assert (
-        call(provider="google", model="gemini-2.0-flash", token_type="completion") in labels_calls
+        call(provider="google", model="gemini-2.5-flash", token_type="completion") in labels_calls
     )
     inc_calls = mock_metrics.tokens_used_total.labels().inc.call_args_list
     assert call(10) in inc_calls
@@ -343,7 +343,7 @@ async def test_generate_stream_records_metrics_on_completion(
             ]
 
     mock_metrics.llm_requests_total.labels.assert_called_with(
-        provider="google", model="gemini-2.0-flash", status="success"
+        provider="google", model="gemini-2.5-flash", status="success"
     )
 
 
@@ -365,9 +365,9 @@ async def test_generate_records_zero_tokens_when_usage_metadata_is_none(
 
     assert result == "ok"
     labels_calls = mock_metrics.tokens_used_total.labels.call_args_list
-    assert call(provider="google", model="gemini-2.0-flash", token_type="prompt") in labels_calls
+    assert call(provider="google", model="gemini-2.5-flash", token_type="prompt") in labels_calls
     assert (
-        call(provider="google", model="gemini-2.0-flash", token_type="completion") in labels_calls
+        call(provider="google", model="gemini-2.5-flash", token_type="completion") in labels_calls
     )
     inc_calls = mock_metrics.tokens_used_total.labels().inc.call_args_list
     assert call(0) in inc_calls

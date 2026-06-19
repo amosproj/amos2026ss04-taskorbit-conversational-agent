@@ -73,7 +73,7 @@ def configure_default_metrics() -> None:
     # Pre-initialize known label combinations so counters appear as 0 in /metrics
     # from startup rather than being absent until the first LLM call completes.
     m = get_metrics()
-    _providers = [("openai", "gpt-4o-mini"), ("google", "gemini-2.0-flash")]
+    _providers = [("openai", "gpt-4o-mini"), ("google", "gemini-2.5-flash")]
     _llm_statuses = ["success", "auth", "rate_limit", "timeout", "api", "empty_response", "client"]
     for provider, model in _providers:
         for token_type in ("prompt", "completion"):
