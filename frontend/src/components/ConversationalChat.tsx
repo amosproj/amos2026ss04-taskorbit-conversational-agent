@@ -316,7 +316,9 @@ export function ConversationalChat() {
                 event.confirmation;
 
               if (event.conversation_id) call.updateConversationId(event.conversation_id);
-              lockedIntentRef.current = event.locked_intent_name ?? null;
+              if (event.locked_intent_name) {
+                lockedIntentRef.current = event.locked_intent_name;
+              }
               setCompletedWorkflowSteps(event.completed_workflow_steps ?? []);
 
               if (!manualTransfer && event.selected_agent) {
@@ -534,7 +536,9 @@ export function ConversationalChat() {
             routedAgentRef.current,
           );
           call.updateConversationId(response.conversation_id);
-          lockedIntentRef.current = response.locked_intent_name ?? null;
+          if (response.locked_intent_name) {
+            lockedIntentRef.current = response.locked_intent_name;
+          }
           setCompletedWorkflowSteps(response.completed_workflow_steps ?? []);
 
           if (response.selected_agent) {
@@ -680,7 +684,13 @@ export function ConversationalChat() {
         <Card>
           <CardHeader className="flex flex-row items-start justify-between gap-3 border-b">
             <div className="space-y-1">
-              <CardTitle>{agent.name}</CardTitle>
+              <CardTitle>
+                {routedAgent
+                  ? routedAgent
+                      .replace(/_/g, " ")
+                      .replace(/\b\w/g, (c) => c.toUpperCase())
+                  : agent.name}
+              </CardTitle>
               <CardDescription>
                 {call.status === "connecting"
                   ? "Connecting to your agent…"

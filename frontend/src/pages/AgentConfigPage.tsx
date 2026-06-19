@@ -293,6 +293,7 @@ export function AgentConfigPage() {
 
         <WorkflowSection
           currentAgentId={agent.agent_id}
+          userAgentEntries={userAgents}
           workflowDependencies={agent.workflow_dependencies}
           workflowRules={agent.workflow_rules}
           allowedHandoffs={agent.allowed_handoffs}

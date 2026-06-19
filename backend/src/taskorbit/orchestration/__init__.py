@@ -71,6 +71,56 @@ def _selected_agent_matches_dep(selected_agent: str | None, dep_id: str) -> bool
     return selected_agent == dep_id or selected_agent == dep_registry
 
 
+def _is_executing_workflow_prerequisite(request: ConversationRequest) -> bool:
+    """True after Proceed when the next missing prerequisite is already selected."""
+    if not request.selected_agent or not request.dependency_configs:
+        return False
+
+    from taskorbit.intent import _KNOWN_INTENTS
+    from taskorbit.workflow_rules import (
+        collect_workflow_dependency_ids,
+        expand_workflow_dependencies,
+        resolve_workflow_dependencies,
+    )
+
+    if request.agent_config.workflow_rules and request.current_intent_name:
+        if request.current_intent_name in _KNOWN_INTENTS:
+            locked = _KNOWN_INTENTS[request.current_intent_name]
+            direct = resolve_workflow_dependencies(
+                request.agent_config,
+                intent_name=request.current_intent_name,
+                intent_agent_name=locked.agent_name,
+            )
+        else:
+            direct = list(request.agent_config.workflow_dependencies or [])
+    else:
+        direct = collect_workflow_dependency_ids(request.agent_config)
+        if not direct:
+            direct = list(request.agent_config.workflow_dependencies or [])
+
+    effective = expand_workflow_dependencies(direct, request.dependency_configs)
+    missing = [dep for dep in effective if dep not in request.completed_workflow_steps]
+    return bool(missing) and _selected_agent_matches_dep(request.selected_agent, missing[0])
+
+
+def _resolve_intent_after_clarification_gate(
+    request: ConversationRequest,
+    intent: "IntentResult",
+) -> "IntentResult":
+    """Keep workflow turns moving when follow-ups like ``continue`` fail intent gating."""
+    from dataclasses import replace as _replace
+
+    from taskorbit.intent import _KNOWN_INTENTS
+
+    if not intent.requires_clarification:
+        return intent
+    if not _is_executing_workflow_prerequisite(request):
+        return intent
+    if request.current_intent_name and request.current_intent_name in _KNOWN_INTENTS:
+        return _replace(_KNOWN_INTENTS[request.current_intent_name], confidence=1.0)
+    return _replace(intent, requires_clarification=False, confidence=1.0)
+
+
 @dataclass
 class _DispatchResult:
     """Result of _run_dispatch_step; non-None early_response means short-circuit."""
@@ -216,6 +266,8 @@ class ConversationOrchestrator:
                     conversation_id=request.conversation_id,
                 )
 
+            intent = _resolve_intent_after_clarification_gate(request, intent)
+
             # Short-circuit: ask for clarification instead of guessing
             if intent.requires_clarification:
                 from taskorbit.intent import _CLARIFICATION_REPLY
@@ -357,6 +409,7 @@ class ConversationOrchestrator:
                             selected_intent=intent.name,
                             selected_agent=agent.agent_name,
                             intent_confidence=intent.confidence,
+                            locked_intent_name=intent.name,
                             completed_workflow_steps=request.completed_workflow_steps,
                         )
 
@@ -374,6 +427,7 @@ class ConversationOrchestrator:
                             status=ConversationStatus.REJECTED,
                             selected_intent=intent.name,
                             selected_agent=agent.agent_name,
+                            locked_intent_name=intent.name,
                             completed_workflow_steps=request.completed_workflow_steps,
                         )
 
@@ -391,6 +445,7 @@ class ConversationOrchestrator:
                         selected_agent=next_dep,
                         selected_intent=intent.name,
                         intent_confidence=1.0,
+                        locked_intent_name=intent.name,
                         completed_workflow_steps=request.completed_workflow_steps,
                     )
 
@@ -439,6 +494,10 @@ class ConversationOrchestrator:
                 conversation_id=request.conversation_id,
             )
 
+            # Use the routed agent's saved config for LLM context (prerequisite steps
+            # must not inherit the entry agent's persona).
+            active_config = agent.config
+
             # 3. Select active tool
             active_tool = self._select_active_tool(
                 request.messages, agent, active_tool_id=request.active_tool_id
@@ -446,7 +505,7 @@ class ConversationOrchestrator:
 
             # 3b. Extract slots from conversation history
             slot_result = await self._extract_slots(
-                request.messages, intent.required_inputs, request.agent_config.llm
+                request.messages, intent.required_inputs, active_config.llm
             )
             logger.info(
                 "slots_extracted",
@@ -457,18 +516,18 @@ class ConversationOrchestrator:
 
             # 4. Build system prompt using the routed agent's role
             system_prompt = self._build_system_prompt(
-                request.agent_config, active_tool, slot_result, routed_agent=agent
+                active_config, active_tool, slot_result, routed_agent=agent
             )
 
             # 4b. Truncate conversation history if context limit is configured
             truncated_messages = self._truncate_messages(
-                request.messages, request.agent_config.context_limit
+                request.messages, active_config.context_limit
             )
 
             # 5. Call LLM with a timeout from settings — measure latency
             _llm_start = time.perf_counter()
             llm_text = await asyncio.wait_for(
-                self._call_llm(system_prompt, truncated_messages, request.agent_config.llm),
+                self._call_llm(system_prompt, truncated_messages, active_config.llm),
                 timeout=self._settings.llm_timeout_seconds,
             )
             _llm_elapsed = time.perf_counter() - _llm_start
@@ -733,6 +792,8 @@ class ConversationOrchestrator:
                     conversation_id=request.conversation_id,
                 )
 
+            intent = _resolve_intent_after_clarification_gate(request, intent)
+
             if intent.requires_clarification:
                 from taskorbit.intent import _CLARIFICATION_REPLY
 
@@ -856,6 +917,7 @@ class ConversationOrchestrator:
                             selected_intent=intent.name,
                             selected_agent=agent.agent_name,
                             intent_confidence=intent.confidence,
+                            locked_intent_name=intent.name,
                             completed_workflow_steps=request.completed_workflow_steps,
                         )
                         return
@@ -874,6 +936,7 @@ class ConversationOrchestrator:
                             status=ConversationStatus.REJECTED,
                             selected_intent=intent.name,
                             selected_agent=agent.agent_name,
+                            locked_intent_name=intent.name,
                             completed_workflow_steps=request.completed_workflow_steps,
                         )
                         return
@@ -892,6 +955,7 @@ class ConversationOrchestrator:
                         selected_agent=next_dep,
                         selected_intent=intent.name,
                         intent_confidence=1.0,
+                        locked_intent_name=intent.name,
                         completed_workflow_steps=request.completed_workflow_steps,
                     )
                     return
@@ -943,6 +1007,8 @@ class ConversationOrchestrator:
                 conversation_id=request.conversation_id,
             )
 
+            active_config = agent.config
+
             # 3. Select active tool.
             active_tool = self._select_active_tool(
                 request.messages, agent, active_tool_id=request.active_tool_id
@@ -950,7 +1016,7 @@ class ConversationOrchestrator:
 
             # 3b. Extract slots.
             slot_result = await self._extract_slots(
-                request.messages, intent.required_inputs, request.agent_config.llm
+                request.messages, intent.required_inputs, active_config.llm
             )
             logger.info(
                 "slots_extracted",
@@ -961,12 +1027,12 @@ class ConversationOrchestrator:
 
             # 4. Build system prompt.
             system_prompt = self._build_system_prompt(
-                request.agent_config, active_tool, slot_result, routed_agent=agent
+                active_config, active_tool, slot_result, routed_agent=agent
             )
 
             # 4b. Truncate messages.
             truncated_messages = self._truncate_messages(
-                request.messages, request.agent_config.context_limit
+                request.messages, active_config.context_limit
             )
 
             # 5b. Run dispatch logic before streaming so confirmation short-circuits
@@ -985,7 +1051,7 @@ class ConversationOrchestrator:
                 full_text_parts = [dispatch.llm_text_override]
             else:
                 async for chunk in self._call_llm_stream(
-                    system_prompt, truncated_messages, request.agent_config.llm
+                    system_prompt, truncated_messages, active_config.llm
                 ):
                     full_text_parts.append(chunk)
                     yield chunk

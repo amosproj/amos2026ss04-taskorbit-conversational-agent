@@ -17,6 +17,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 
 import { listAgentConfigs, loadAgentConfig } from "@/lib/agentConfigApi";
+import { fetchUserAgents, type UserAgentEntry } from "@/lib/userAgentsApi";
 import {
   buildSimpleWorkflowRules,
   isSimpleWorkflowRules,
@@ -38,6 +39,8 @@ type Props = {
   onAllowedHandoffsChange: (next: string[]) => void;
   /** Logical agent_id of the config currently being edited — used to detect cycles. */
   currentAgentId?: string;
+  /** User agents from Agent Config (refreshed after Save as new). */
+  userAgentEntries?: UserAgentEntry[];
   onValidationChange?: (state: WorkflowValidationState) => void;
 };
 
@@ -48,6 +51,31 @@ export type WorkflowValidationState = {
   valid: boolean;
   error: string | null;
 };
+
+type ConfigBlob = {
+  agent_id?: string;
+  id?: string;
+  name?: string;
+  workflow_dependencies?: string[];
+};
+
+function logicalAgentId(c: ConfigBlob): string | undefined {
+  const id = (c.agent_id ?? c.id ?? "").trim();
+  return id || undefined;
+}
+
+function mergeIntoAgentMaps(
+  optionsMap: Map<string, string>,
+  graph: Map<string, string[]>,
+  agentId: string,
+  displayName: string,
+  deps: string[] | undefined,
+) {
+  if (!optionsMap.has(agentId)) {
+    optionsMap.set(agentId, displayName);
+  }
+  graph.set(agentId, deps ?? []);
+}
 
 // ── Shared sub-components ────────────────────────────────────────────────────
 
@@ -205,6 +233,7 @@ export function WorkflowSection({
   onWorkflowRulesChange,
   onAllowedHandoffsChange,
   currentAgentId,
+  userAgentEntries,
   onValidationChange,
 }: Props) {
   const deps = workflowDependencies ?? [];
@@ -231,54 +260,63 @@ export function WorkflowSection({
 
     setLoading(true);
 
-    listAgentConfigs(signal)
-      .then(async (summaries) => {
-        // Load every agent's full config blob in parallel so we have both
-        // their logical agent_id (the value the backend uses in dependencies)
-        // and their own workflow_dependencies (needed to build the dep graph).
+    async function loadWorkflowAgents() {
+      const optionsMap = new Map<string, string>();
+      const graph = new Map<string, string[]>();
+
+      // Primary: /v1/user-agents (where "Save as new" writes since #71 fix).
+      const userEntries =
+        userAgentEntries ?? (await fetchUserAgents(signal).catch(() => [] as UserAgentEntry[]));
+      for (const entry of userEntries) {
+        const c = entry.config as ConfigBlob;
+        const agentId = logicalAgentId(c);
+        if (!agentId) continue;
+        mergeIntoAgentMaps(optionsMap, graph, agentId, c.name ?? entry.name, c.workflow_dependencies);
+      }
+
+      // Legacy: /v1/agent-configs presets (older saves before user-agents POST path).
+      try {
+        const summaries = await listAgentConfigs(signal);
         const fullConfigs = await Promise.all(summaries.map((s) => loadAgentConfig(s.id, signal)));
-
-        const optionsMap = new Map<string, string>();
-        const graph = new Map<string, string[]>();
-
         for (const saved of fullConfigs) {
-          const c = saved.config as {
-            agent_id?: string;
-            name?: string;
-            workflow_dependencies?: string[];
-          };
-          const agentId = c.agent_id;
-          if (!agentId) continue; // skip malformed entries
-
-          // Deduplicate: if we already saw this agentId, skip adding to options
-          // but still update the graph (though they should have the same deps).
-          if (!optionsMap.has(agentId)) {
-            optionsMap.set(agentId, c.name ?? saved.name);
-          }
-          graph.set(agentId, c.workflow_dependencies ?? []);
+          const c = saved.config as ConfigBlob;
+          const agentId = logicalAgentId(c);
+          if (!agentId) continue;
+          mergeIntoAgentMaps(
+            optionsMap,
+            graph,
+            agentId,
+            c.name ?? saved.name,
+            c.workflow_dependencies,
+          );
         }
+      } catch (err: unknown) {
+        if (!(err instanceof Error && err.name === "AbortError")) {
+          console.error("Failed to load legacy agent-config list:", err);
+        }
+      }
 
-        const options: AgentOption[] = Array.from(optionsMap.entries()).map(([agentId, name]) => ({
-          agentId,
-          name,
-        }));
+      const options: AgentOption[] = Array.from(optionsMap.entries()).map(([agentId, name]) => ({
+        agentId,
+        name,
+      }));
 
-        setAgents(options);
-        setDepGraph(graph);
-      })
+      setAgents(options);
+      setDepGraph(graph);
+    }
+
+    void loadWorkflowAgents()
       .catch((err: unknown) => {
         if (err instanceof Error && err.name !== "AbortError") {
           console.error("Failed to load agent list:", err);
         }
       })
       .finally(() => {
-        // Only clear the loading state when the fetch was NOT aborted — if it
-        // was aborted the component is unmounting and the state update is moot.
         if (!signal.aborted) setLoading(false);
       });
 
     return () => controller.abort();
-  }, []);
+  }, [userAgentEntries]);
 
   return (
     <Card>
