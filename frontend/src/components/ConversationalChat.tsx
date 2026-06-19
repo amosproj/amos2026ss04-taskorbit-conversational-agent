@@ -357,8 +357,7 @@ export function ConversationalChat() {
                 pendingConfirmationIdRef.current = event.confirmation!.confirmation_id;
                 call.triggerConfirmation({
                   ...event.confirmation!,
-                  type:
-                    event.status === "workflow_confirmation_required" ? "workflow" : "tool",
+                  type: event.status === "workflow_confirmation_required" ? "workflow" : "tool",
                 });
                 call.setPhase("idle_in_call");
                 return;

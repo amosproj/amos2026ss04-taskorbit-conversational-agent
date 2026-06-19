@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
 from taskorbit.config import Settings, get_settings
 from taskorbit.integrations.llm.errors import LLMConfigError
-from taskorbit.intent import IntentRouter
+from taskorbit.intent import IntentResult, IntentRouter
 from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import get_metrics
 from taskorbit.types import (
@@ -105,8 +105,8 @@ def _is_executing_workflow_prerequisite(request: ConversationRequest) -> bool:
 
 def _resolve_intent_after_clarification_gate(
     request: ConversationRequest,
-    intent: "IntentResult",
-) -> "IntentResult":
+    intent: IntentResult,
+) -> IntentResult:
     """Keep workflow turns moving when follow-ups like ``continue`` fail intent gating."""
     from dataclasses import replace as _replace
 

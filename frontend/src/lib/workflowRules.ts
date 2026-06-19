@@ -35,7 +35,9 @@ export function isSimpleWorkflowRules(rules: WorkflowRule[] | undefined): boolea
   );
 }
 
-export function parseSimpleWorkflowRules(rules: WorkflowRule[] | undefined): SimpleWorkflowRulesState {
+export function parseSimpleWorkflowRules(
+  rules: WorkflowRule[] | undefined,
+): SimpleWorkflowRulesState {
   if (!rules?.length) {
     return { enabled: false, whenAgentName: DEFAULT_WHEN_AGENT, whenDependencies: [] };
   }

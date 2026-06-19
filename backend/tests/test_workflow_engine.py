@@ -597,9 +597,7 @@ async def test_transitive_continue_after_proceed_without_locked_intent(orchestra
             return replace(_FALLBACK_RESULT, confidence=0.2, requires_clarification=True)
         return mock_intent
 
-    with mock.patch.object(
-        orchestrator._intent_router, "detect", side_effect=detect_side_effect
-    ):
+    with mock.patch.object(orchestrator._intent_router, "detect", side_effect=detect_side_effect):
         first = await orchestrator.process_message(
             ConversationRequest(
                 conversation_id="conv-transitive-continue",
@@ -612,9 +610,7 @@ async def test_transitive_continue_after_proceed_without_locked_intent(orchestra
     assert first.status == ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED
     assert first.locked_intent_name == mock_intent.name
 
-    with mock.patch.object(
-        orchestrator._intent_router, "detect", side_effect=detect_side_effect
-    ):
+    with mock.patch.object(orchestrator._intent_router, "detect", side_effect=detect_side_effect):
         confirmed_c = await orchestrator.process_message(
             ConversationRequest(
                 conversation_id="conv-transitive-continue",
@@ -630,9 +626,7 @@ async def test_transitive_continue_after_proceed_without_locked_intent(orchestra
     assert confirmed_c.selected_agent == "agent-c"
     assert confirmed_c.locked_intent_name == mock_intent.name
 
-    with mock.patch.object(
-        orchestrator._intent_router, "detect", side_effect=detect_side_effect
-    ):
+    with mock.patch.object(orchestrator._intent_router, "detect", side_effect=detect_side_effect):
         with mock.patch.object(
             orchestrator, "_call_llm", return_value="STEP-C: checking inventory."
         ):

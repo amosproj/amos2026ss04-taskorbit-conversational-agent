@@ -4,6 +4,8 @@ This guide explains how TaskOrbit resolves **transitive** prerequisite agents: w
 
 For a minimal test setup using `agent-a` / `agent-b` / `agent-c`, see [demo-2-transitive-chain.md](./demo-2-transitive-chain.md).
 
+> **Platform note:** TaskOrbit is **voice-first**. The typed text input is legacy and will be **removed in upcoming sprints**. All walkthroughs below use **mic + Send** and the **Proceed** card. Automated backend tests still use text requests.
+
 ---
 
 ## Concepts
@@ -24,6 +26,28 @@ Configuration (what you save):          Runtime order (what the engine runs):
 ```
 
 The entry agent does **not** need to list every upstream step. Transitive expansion walks the graph (e.g. entry lists sales; sales lists identity → identity runs first).
+
+---
+
+## Prerequisites (voice)
+
+From the repo root (or separate terminals):
+
+```bash
+docker compose up --build
+# or: postgres + poetry run taskorbit-api + poetry run taskorbit-worker dev + npm run dev
+```
+
+The **LiveKit worker** must be running for voice:
+
+```bash
+cd backend
+poetry run taskorbit-worker dev
+```
+
+Set in `backend/.env`: `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `DEEPGRAM_API_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`.
+
+Allow the **microphone** when the browser prompts. Each test run needs a **new session**.
 
 ---
 
@@ -99,43 +123,37 @@ Use **Save as new** in Agent Config so each agent is stored under **My agents** 
 
 ---
 
-## Manual walkthrough
+## Manual walkthrough (voice)
 
 1. Agent Config → load **`customer-entry`** → **Update** if needed  
-2. Chat → **Start session** (new session per run)  
+2. Chat → **Start session** — confirm **Voice session active**  
 3. Session title should show **Customer Entry**  
-4. Prefer the text input (**Ask from Orbit**) for predictable workflow steps; voice is supported with UI **Proceed** sync — see [demo-3-voice-ui-proceed-sync.md](./demo-3-voice-ui-proceed-sync.md)
+4. Use the **mic**: tap to record, then **Send** to commit each turn (do not rely on the typed text box — it is being removed)
 
-### Message sequence
+### Voice interaction pattern
 
-```text
-i want to buy something
-[Proceed — Prerequisite: Identity Verification]
-continue
-continue
-[Proceed — Prerequisite: Sales Qualification]
-continue
-continue
-```
+| Action | How |
+|--------|-----|
+| User message | Mic → speak → **Send** |
+| Confirm prerequisite | Click **Proceed** on the card **or** say **"proceed"**, **"yes"**, or **"ok"** into the mic |
+| Run a workflow step | After Proceed, mic → **"continue"** → **Send** |
 
-Use plain `continue` (avoid trailing punctuation that can affect intent routing).
+### Turn sequence
 
-### Expected behavior
-
-| Step | Action | Expected |
+| Turn | You do | Expected |
 |------|--------|----------|
 | 1 | Start session | Greeting; title **Customer Entry** |
-| 2 | `i want to buy something` | **Proceed** card for **Identity Verification** first (not Sales) |
-| 3 | **Proceed** | Acknowledgment to start identity step |
-| 4 | `continue` | Reply starts with **`VERIFY:`** |
-| 5 | `continue` | **Proceed** card for **Sales Qualification** |
-| 6 | **Proceed** | Acknowledgment to start sales step |
-| 7 | `continue` | Reply starts with **`SALES:`** (not `ENTRY:`) |
-| 8 | `continue` | Reply starts with **`ENTRY:`**; no further Proceed cards |
+| 2 | Say: *I want to buy something* → **Send** | **Proceed** card for **Identity Verification** first (not Sales) |
+| 3 | Click **Proceed** (or say *proceed*) | Acknowledgment to start identity step |
+| 4 | Say: *continue* → **Send** | Reply starts with **`VERIFY:`** |
+| 5 | Say: *continue* → **Send** | **Proceed** card for **Sales Qualification** |
+| 6 | Click **Proceed** (or say *proceed*) | Acknowledgment to start sales step |
+| 7 | Say: *continue* → **Send** | Reply starts with **`SALES:`** (not `ENTRY:`) |
+| 8 | Say: *continue* → **Send** | Reply starts with **`ENTRY:`**; no further Proceed cards |
 
 The persona prefixes (`VERIFY:`, `SALES:`, `ENTRY:`) are for verification in this example. In production, use normal business instructions; the engine behavior is the same.
 
-The workflow confirmation card shows a **colored left border** (primary color for workflow steps) — that is intentional UI styling in `ConfirmationPrompt`.
+The workflow confirmation card shows a **colored left border** (primary color for workflow steps) — that is intentional UI styling in `ConfirmationPrompt`. Clicking **Proceed** syncs workflow state to the LiveKit worker via the `workflow_state` data channel.
 
 ---
 
@@ -155,11 +173,13 @@ The same graph can be tested with short IDs for QA:
 
 | Symptom | What to check |
 |---------|----------------|
+| No voice / agent silent | LiveKit worker running; `.env` keys; mic permission |
 | Prerequisite missing from dropdown | Save prerequisite agents first; hard refresh; recreate agents if created before the `agent_id` config fix |
 | First Proceed is Sales, not Identity | `sales-qualification` must list `identity-verification`; backend should log dependency enrichment |
-| After Proceed, `continue` returns wrong persona | Restart backend; ensure orchestration uses the routed agent’s config for the LLM prompt |
+| After Proceed, *continue* returns wrong persona | Restart backend + worker; ensure orchestration uses the routed agent’s config for the LLM prompt |
 | Title shows intent name (e.g. General Inquiry) | Use latest frontend/backend; entry display name should remain in the session title |
 | No Proceed card | Entry agent has prerequisites configured; STT/LLM/TTS models are set |
+| UI Proceed but voice step wrong | Hard refresh; `workflow_state` sync (see [demo-3-voice-ui-proceed-sync.md](./demo-3-voice-ui-proceed-sync.md)) |
 
 More detail: [demo-2-transitive-chain.md](./demo-2-transitive-chain.md#if-something-fails).
 
@@ -167,22 +187,11 @@ More detail: [demo-2-transitive-chain.md](./demo-2-transitive-chain.md#if-someth
 
 ## Automated tests
 
+Backend tests use text HTTP requests (independent of the UI text box):
+
 ```bash
 cd backend
 poetry run pytest tests/test_workflow_engine.py -q
 ```
 
 Tests use `agent-a` / `agent-b` / `agent-c` IDs; behavior matches this example.
-
----
-
-## Voice
-
-Start the LiveKit worker for voice sessions:
-
-```bash
-cd backend
-poetry run taskorbit-worker dev
-```
-
-Requires LiveKit, Deepgram, and ElevenLabs credentials in `backend/.env`. Mixed mode (voice session + text **Proceed** / **continue**) is the most reliable way to exercise workflow steps over voice.

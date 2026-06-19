@@ -5,7 +5,14 @@ import type { LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "@/components/ui/field";
 import {
   Select,
   SelectContent,
@@ -240,7 +247,9 @@ export function WorkflowSection({
   const handoffs = allowedHandoffs ?? [];
   const simpleRules = parseSimpleWorkflowRules(workflowRules);
   const conditionalAdvanced =
-    workflowRules !== undefined && workflowRules.length > 0 && !isSimpleWorkflowRules(workflowRules);
+    workflowRules !== undefined &&
+    workflowRules.length > 0 &&
+    !isSimpleWorkflowRules(workflowRules);
 
   const [agents, setAgents] = useState<AgentOption[]>([]);
   const [depGraph, setDepGraph] = useState<Map<string, string[]>>(new Map());
@@ -271,7 +280,13 @@ export function WorkflowSection({
         const c = entry.config as ConfigBlob;
         const agentId = logicalAgentId(c);
         if (!agentId) continue;
-        mergeIntoAgentMaps(optionsMap, graph, agentId, c.name ?? entry.name, c.workflow_dependencies);
+        mergeIntoAgentMaps(
+          optionsMap,
+          graph,
+          agentId,
+          c.name ?? entry.name,
+          c.workflow_dependencies,
+        );
       }
 
       // Legacy: /v1/agent-configs presets (older saves before user-agents POST path).
