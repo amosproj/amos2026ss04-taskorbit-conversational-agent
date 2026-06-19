@@ -592,6 +592,38 @@ async def create_user_agents_from_templates(
         return []
 
 
+async def create_user_agent(
+    db: AsyncSession,
+    user_id: int,
+    name: str,
+    config: dict,
+) -> AgentConfiguration | None:
+    """Create a brand-new user agent row, independent of any template.
+
+    Used by the "Save as new" path so a fresh INSERT always happens — the
+    caller's currently-loaded agent is never touched.
+    """
+    try:
+        agent = AgentConfiguration(
+            id=uuid4().hex,
+            user_id=user_id,
+            template_id=None,
+            name=name,
+            config=config,
+            is_default=False,
+            is_customized=True,
+        )
+        db.add(agent)
+        await db.commit()
+        await db.refresh(agent)
+        logger.info("user_agent_created", agent_id=agent.id, user_id=user_id)
+        return agent
+    except SQLAlchemyError as e:
+        logger.error("create_user_agent_failed", user_id=user_id, error=str(e))
+        await db.rollback()
+        return None
+
+
 async def list_user_agents(db: AsyncSession, user_id: int) -> list[AgentConfiguration]:
     try:
         result = await db.execute(

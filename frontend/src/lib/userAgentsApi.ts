@@ -26,7 +26,8 @@ type BackendToolWithParams = ToolDefinition & {
 };
 
 type BackendAgentConfig = {
-  id: string;
+  agent_id: string;
+  id?: string; // present on old rows and templates (backend shape); read via agent_id ?? id
   name: string;
   persona: string;
   greeting: string;
@@ -70,7 +71,7 @@ export function backendToFrontendAgent(entry: UserAgentEntry): AgentConfig {
   );
 
   const agent: AgentConfig = {
-    agent_id: c.id,
+    agent_id: c.agent_id ?? c.id ?? "",
     name: c.name,
     instructions: c.persona ?? "",
     first_message: { type: "text", message: c.greeting ?? "", prompt: "" },
@@ -109,7 +110,7 @@ function frontendToBackendConfig(agent: AgentConfig): BackendAgentConfig {
   });
 
   const config: BackendAgentConfig = {
-    id: agent.agent_id,
+    agent_id: agent.agent_id,
     name: agent.name,
     persona: agent.instructions,
     greeting: agent.first_message.message,
@@ -133,6 +134,23 @@ function frontendToBackendConfig(agent: AgentConfig): BackendAgentConfig {
 // ---------------------------------------------------------------------------
 // API calls
 // ---------------------------------------------------------------------------
+
+export async function createUserAgent(agent: AgentConfig): Promise<UserAgentEntry> {
+  const body = {
+    name: agent.name,
+    config: frontendToBackendConfig(agent),
+  };
+  const res = await fetch("/api/v1/user-agents", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(String(err.detail ?? `HTTP ${res.status}`));
+  }
+  return res.json() as Promise<UserAgentEntry>;
+}
 
 export async function fetchUserAgents(signal?: AbortSignal): Promise<UserAgentEntry[]> {
   const res = await fetch("/api/v1/user-agents", { signal });
