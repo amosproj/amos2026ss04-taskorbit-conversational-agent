@@ -69,6 +69,7 @@ def test_worker_metadata_openrouter_does_not_fallback_to_openai() -> None:
     # Guard should NOT catch this (prefix guard only blocks gpt-/gemini- mismatches)
     # which is why the fix had to be in the frontend metadata builder.
     from taskorbit.integrations.llm.factory import _guard_provider_model_match
+
     _guard_provider_model_match(config.llm)  # must not raise — confirms the guard gap
 
 
@@ -129,19 +130,22 @@ async def test_llm_node_logs_llm_active_with_correct_provider_and_model() -> Non
     mock_chat_ctx = MagicMock(spec=llm.ChatContext)
     mock_chat_ctx.items = []
 
-    with patch("taskorbit.livekit_agent.llm.log") as mock_log, \
-         patch("taskorbit.livekit_agent.llm.AsyncSessionLocal") as mock_session:
+    with (
+        patch("taskorbit.livekit_agent.llm.log") as mock_log,
+        patch("taskorbit.livekit_agent.llm.AsyncSessionLocal") as mock_session,
+    ):
         mock_db = AsyncMock()
         mock_session.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_session.return_value.__aexit__ = AsyncMock(return_value=False)
-        mock_db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None)))
+        mock_db.execute = AsyncMock(
+            return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None))
+        )
 
         async for _ in agent.llm_node(mock_chat_ctx, [], MagicMock()):
             pass
 
     llm_active_calls = [
-        call for call in mock_log.info.call_args_list
-        if call.args and call.args[0] == "llm_active"
+        call for call in mock_log.info.call_args_list if call.args and call.args[0] == "llm_active"
     ]
     assert len(llm_active_calls) == 1
     kwargs = llm_active_calls[0].kwargs
