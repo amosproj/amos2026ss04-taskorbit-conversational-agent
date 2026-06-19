@@ -147,6 +147,73 @@ async def test_openrouter_client_generate_raises_llm_rate_limit_error(
             await client.generate("You are helpful.", [], llm_config)
 
 
+@pytest.mark.asyncio
+async def test_openrouter_client_generate_raises_llm_timeout_error(
+    openrouter_settings: None,
+) -> None:
+    import openai as _openai
+
+    settings = get_settings()
+    llm_config = _make_llm_config()
+
+    with patch("taskorbit.integrations.llm.openrouter_client.openai.AsyncOpenAI") as mock_cls:
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            side_effect=_openai.APITimeoutError(request=MagicMock())
+        )
+        mock_cls.return_value = mock_client
+
+        from taskorbit.integrations.llm.errors import LLMTimeoutError
+
+        client = OpenRouterClient(llm_config=llm_config, settings=settings)
+        with pytest.raises(LLMTimeoutError):
+            await client.generate("You are helpful.", [], llm_config)
+
+
+@pytest.mark.asyncio
+async def test_openrouter_client_generate_raises_llm_api_error(
+    openrouter_settings: None,
+) -> None:
+    import openai as _openai
+
+    settings = get_settings()
+    llm_config = _make_llm_config()
+
+    with patch("taskorbit.integrations.llm.openrouter_client.openai.AsyncOpenAI") as mock_cls:
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            side_effect=_openai.APIError("server error", request=MagicMock(), body={})
+        )
+        mock_cls.return_value = mock_client
+
+        from taskorbit.integrations.llm.errors import LLMAPIError
+
+        client = OpenRouterClient(llm_config=llm_config, settings=settings)
+        with pytest.raises(LLMAPIError):
+            await client.generate("You are helpful.", [], llm_config)
+
+
+@pytest.mark.asyncio
+async def test_openrouter_client_generate_raises_on_empty_response(
+    openrouter_settings: None,
+) -> None:
+    settings = get_settings()
+    llm_config = _make_llm_config()
+    empty_response = MagicMock()
+    empty_response.choices = []
+
+    with patch("taskorbit.integrations.llm.openrouter_client.openai.AsyncOpenAI") as mock_cls:
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=empty_response)
+        mock_cls.return_value = mock_client
+
+        from taskorbit.integrations.llm.errors import LLMAPIError
+
+        client = OpenRouterClient(llm_config=llm_config, settings=settings)
+        with pytest.raises(LLMAPIError):
+            await client.generate("You are helpful.", [], llm_config)
+
+
 # ---------------------------------------------------------------------------
 # generate_stream()
 # ---------------------------------------------------------------------------
@@ -183,6 +250,50 @@ async def test_openrouter_client_generate_stream_yields_tokens(openrouter_settin
             tokens.append(token)
 
     assert tokens == ["Hello", " from", " Gemma"]
+
+
+@pytest.mark.asyncio
+async def test_openrouter_client_generate_stream_raises_auth_error(
+    openrouter_settings: None,
+) -> None:
+    import openai as _openai
+
+    settings = get_settings()
+    llm_config = _make_llm_config()
+
+    with patch("taskorbit.integrations.llm.openrouter_client.openai.AsyncOpenAI") as mock_cls:
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            side_effect=_openai.AuthenticationError("bad key", response=MagicMock(), body={})
+        )
+        mock_cls.return_value = mock_client
+
+        client = OpenRouterClient(llm_config=llm_config, settings=settings)
+        with pytest.raises(LLMAuthError):
+            async for _ in client.generate_stream("You are helpful.", [], llm_config):
+                pass
+
+
+@pytest.mark.asyncio
+async def test_openrouter_client_generate_stream_raises_rate_limit_error(
+    openrouter_settings: None,
+) -> None:
+    import openai as _openai
+
+    settings = get_settings()
+    llm_config = _make_llm_config()
+
+    with patch("taskorbit.integrations.llm.openrouter_client.openai.AsyncOpenAI") as mock_cls:
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            side_effect=_openai.RateLimitError("rate limited", response=MagicMock(), body={})
+        )
+        mock_cls.return_value = mock_client
+
+        client = OpenRouterClient(llm_config=llm_config, settings=settings)
+        with pytest.raises(LLMRateLimitError):
+            async for _ in client.generate_stream("You are helpful.", [], llm_config):
+                pass
 
 
 # ---------------------------------------------------------------------------

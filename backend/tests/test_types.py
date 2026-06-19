@@ -269,6 +269,50 @@ def test_provider_matrix_round_trips() -> None:
         assert restored.tts.provider == config.tts.provider
 
 
+# ---------------------------------------------------------------------------
+# LLMProvider.OPENROUTER (open-source inference via OpenRouter)
+# ---------------------------------------------------------------------------
+
+
+def test_llm_provider_openrouter_value() -> None:
+    from taskorbit.types import LLMProvider
+
+    assert LLMProvider.OPENROUTER.value == "openrouter"
+
+
+def test_llm_config_accepts_openrouter_provider() -> None:
+    from taskorbit.types import LLMConfig, LLMProvider
+
+    cfg = LLMConfig(provider=LLMProvider.OPENROUTER, model="qwen/qwen3-next-80b-a3b-instruct:free")
+    assert cfg.provider == LLMProvider.OPENROUTER
+    assert cfg.model == "qwen/qwen3-next-80b-a3b-instruct:free"
+
+
+def test_agent_config_validates_openrouter_from_raw_dict() -> None:
+    """Worker metadata parsed via model_validate must accept provider='openrouter'."""
+    raw = {
+        "id": "agent-1",
+        "name": "Bot",
+        "persona": "p",
+        "greeting": "hi",
+        "llm": {"provider": "openrouter", "model": "google/gemma-4-31b-it:free"},
+    }
+    config = AgentConfig.model_validate(raw)
+    from taskorbit.types import LLMProvider
+
+    assert config.llm.provider == LLMProvider.OPENROUTER
+    assert config.llm.model == "google/gemma-4-31b-it:free"
+
+
+def test_llm_config_openrouter_round_trips() -> None:
+    from taskorbit.types import LLMConfig, LLMProvider
+
+    original = LLMConfig(provider=LLMProvider.OPENROUTER, model="openai/gpt-oss-120b:free")
+    restored = LLMConfig.model_validate(original.model_dump())
+    assert restored.provider == LLMProvider.OPENROUTER
+    assert restored.model == original.model
+
+
 def test_provider_defaults_unchanged() -> None:
     """Configs that omit providers keep the historical defaults, so existing
     saved agents keep working exactly as before (#135 AC4 backward-compat)."""

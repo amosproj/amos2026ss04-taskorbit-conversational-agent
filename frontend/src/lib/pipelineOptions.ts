@@ -1,4 +1,13 @@
 // Single source of truth for pipeline models and voices (ticket #87). Lists are curated, not exhaustive; withCurrent keeps legacy values selectable (AC5).
+//
+// ─── HOW TO ADD OR REMOVE OPENROUTER MODELS ──────────────────────────────────
+// 1. Find free models at https://openrouter.ai/models (filter by "Free")
+// 2. Add the slug (e.g. "org/model-name:free") to the `openrouter` array below
+// 3. Run the validation test to confirm the model is actually free and reachable:
+//      cd backend && poetry run pytest tests/test_openrouter_model_availability.py -v
+// 4. Also add the slug to OPENROUTER_FREE_MODELS in that test file so it stays validated
+// 5. Remove any model that fails with 404 from both this file and the test file
+// ─────────────────────────────────────────────────────────────────────────────
 
 import type { LlmProvider, SttProvider, TtsProvider } from "@/types/agentConfig";
 
