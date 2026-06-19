@@ -6,11 +6,12 @@ export const LLM_MODELS: Record<LlmProvider, string[]> = {
   openai: ["gpt-4o-mini", "gpt-4o"],
   gemini: ["gemini-2.5-flash", "gemini-2.5-pro"],
   openrouter: [
-    "meta-llama/llama-3.1-8b-instruct:free",
-    "qwen/qwen-2.5-7b-instruct:free",
-    "google/gemma-3-12b-it:free",
-    "deepseek/deepseek-r1:free",
-    "mistralai/mistral-7b-instruct:free",
+    "qwen/qwen3-next-80b-a3b-instruct:free",
+    "google/gemma-4-31b-it:free",
+    "google/gemma-4-26b-a4b-it:free",
+    "openai/gpt-oss-120b:free",
+    "openai/gpt-oss-20b:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
   ],
 };
 
