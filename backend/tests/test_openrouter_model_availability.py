@@ -10,8 +10,8 @@ to confirm the model accepts free-tier calls without a 404.
 
 from __future__ import annotations
 
-import pytest
 import httpx
+import pytest
 
 from taskorbit.config import get_settings
 
@@ -69,6 +69,7 @@ def test_model_is_free_and_reachable(model: str, api_key: str) -> None:
         )
 
     # 429 means the model exists and is free but is temporarily rate-limited — treat as pass.
-    assert response.status_code in (200, 429), (
-        f"Model '{model}' returned unexpected status {response.status_code}:\n{response.text}"
-    )
+    assert response.status_code in (
+        200,
+        429,
+    ), f"Model '{model}' returned unexpected status {response.status_code}:\n{response.text}"
