@@ -67,6 +67,8 @@ async def process_conversation(
         "conversation_request_received",
         conversation_id=conversation_id,
         message_count=len(request.messages),
+        llm_provider=request.agent_config.llm.provider,
+        llm_model=request.agent_config.llm.model,
     )
     try:
         request = await enrich_request_dependency_configs(request, db, user_id)
@@ -241,6 +243,8 @@ async def stream_conversation(
         "sse_stream_request_received",
         conversation_id=request.conversation_id,
         message_count=len(request.messages),
+        llm_provider=request.agent_config.llm.provider,
+        llm_model=request.agent_config.llm.model,
     )
     return StreamingResponse(
         _sse_generator(http_request, request, orchestrator, db, user_id),

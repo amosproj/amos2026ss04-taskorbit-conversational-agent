@@ -161,7 +161,7 @@ export function PipelineSection({ value, onChange }: Props) {
                   <SelectGroup>
                     <SelectItem value="openai">OpenAI</SelectItem>
                     <SelectItem value="gemini">Gemini</SelectItem>
-                    <SelectItem value="openrouter">OpenRouter (open-source)</SelectItem>
+                    <SelectItem value="openrouter">OpenRouter</SelectItem>
                   </SelectGroup>
                 </SelectContent>
               </Select>
