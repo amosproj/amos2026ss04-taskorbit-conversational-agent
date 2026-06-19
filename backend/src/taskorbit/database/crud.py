@@ -704,6 +704,8 @@ async def enrich_request_dependency_configs(
     user_id: int,
 ) -> ConversationRequest:
     """Attach resolved prerequisite AgentConfigs to a conversation request (transitive)."""
+    from collections import deque
+
     from taskorbit.workflow_rules import collect_workflow_dependency_ids
 
     # Use a worklist to find all transitive dependencies
@@ -711,7 +713,7 @@ async def enrich_request_dependency_configs(
     new_dep_configs: dict[str, AgentConfig] = {}
 
     # Start with the entry agent's dependencies
-    to_check = collect_workflow_dependency_ids(request.agent_config)
+    to_check: deque[str] = deque(collect_workflow_dependency_ids(request.agent_config))
 
     logger.debug(
         "enrich_dependencies_start",
@@ -721,7 +723,7 @@ async def enrich_request_dependency_configs(
     )
 
     while to_check:
-        dep_id = to_check.pop(0)
+        dep_id = to_check.popleft()
         if dep_id in all_dep_ids:
             continue
         all_dep_ids.add(dep_id)

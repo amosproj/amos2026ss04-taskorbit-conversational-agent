@@ -24,7 +24,10 @@ from livekit.agents.metrics import STTMetrics, TTSMetrics
 from livekit.agents.voice.events import AgentEvent
 from pydantic import ValidationError
 
+from taskorbit.api.deps import _DEV_USER_EMAIL
 from taskorbit.config import get_settings
+from taskorbit.database import AsyncSessionLocal
+from taskorbit.database.crud import get_user_by_email
 from taskorbit.livekit_agent import build_agent_session, build_default_agent
 from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import configure_default_metrics, get_metrics
@@ -115,10 +118,19 @@ async def entrypoint(ctx: JobContext) -> None:
     # providers the user selected, instead of always using the env defaults.
     session = build_agent_session(settings=cfg, agent_config=agent_config)
 
-    # Auth stub: default to the seeded dev user (id=1) so the voice path can
-    # resolve custom agent dependencies from the database. In a real multi-user
-    # setup, the user_id should be extracted from the token's participant identity.
-    dev_user_id = 1
+    # Auth stub: resolve the seeded dev user by email (same as get_current_user_id)
+    # so the voice path can load custom agent dependencies from the database.
+    dev_user_id: int | None = None
+    async with AsyncSessionLocal() as db:
+        user = await get_user_by_email(db, _DEV_USER_EMAIL)
+        if user and user.is_active:
+            dev_user_id = user.id
+        else:
+            logger.warning(
+                "worker_dev_user_not_found",
+                email=_DEV_USER_EMAIL,
+                effect="custom agent dependencies may not resolve in voice path",
+            )
 
     agent = build_default_agent(
         settings=cfg,
