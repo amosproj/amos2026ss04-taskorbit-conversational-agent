@@ -483,6 +483,7 @@ async def test_transitive_workflow_full_chain_c_before_b_before_a(orchestrator):
     assert prompt_b.status == ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED
     assert prompt_b.confirmation is not None
     assert prompt_b.confirmation.confirmation_id == "workflow_agent-b"
+    assert prompt_b.selected_agent == "agent-c"
 
     # --- Step 5: Proceed B → selected_agent=agent-b ---
     with mock.patch.object(orchestrator._intent_router, "detect", return_value=mock_intent):
@@ -545,6 +546,8 @@ async def test_transitive_workflow_full_chain_c_before_b_before_a(orchestrator):
 
     assert executed_a.status == ConversationStatus.SUCCESS
     assert "STEP-A" in executed_a.reply.content
+    assert executed_a.selected_agent == "agent-a"
+    assert executed_a.selected_agent != "general_inquiry"
     system_prompt = llm_mock.call_args[0][0]
     assert "STEP-A:" in system_prompt
 

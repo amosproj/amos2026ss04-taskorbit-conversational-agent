@@ -26,8 +26,6 @@ import { playSynthesizedSpeech } from "@/lib/ttsApi";
 import { backendToFrontendAgent, fetchUserAgents } from "@/lib/userAgentsApi";
 import type { LiveTranscriptTurn } from "@/types/callState";
 
-// Tidy up common Deepgram artefacts in user transcription before display.
-// Runs at render time only — does not mutate stored state.
 function normaliseUserText(text: string): string {
   // Lowercase email domains: Bob@Gmail.com → Bob@gmail.com
   let out = text.replace(
@@ -43,6 +41,26 @@ function normaliseUserText(text: string): string {
   // "2678 plus 1" → "2678+1"
   out = out.replace(/(\d+)\s+plus\s+(\d)/gi, "$1+$2");
   return out;
+}
+
+const BUILTIN_INTENT_AGENT_NAMES = new Set([
+  "sales",
+  "general_inquiry",
+  "technical_support",
+  "customer_dissatisfaction",
+  "appointment_management",
+  "general inquiry",
+]);
+
+function formatRoutedAgentBadgeLabel(
+  routedAgent: string | null,
+  entryAgentId: string,
+): string | null {
+  if (!routedAgent) return null;
+  const normalised = routedAgent.replace(/_/g, " ").toLowerCase();
+  if (BUILTIN_INTENT_AGENT_NAMES.has(normalised)) return null;
+  if (routedAgent === entryAgentId) return null;
+  return `${routedAgent.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} Agent`;
 }
 
 function SessionEndedBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
@@ -647,6 +665,10 @@ export function ConversationalChat() {
   const isPreCall = call.status === "idle";
   const isPostCall = call.status === "ended";
   const isInCall = !isPreCall && !isPostCall;
+  const routedAgentBadgeLabel = useMemo(
+    () => formatRoutedAgentBadgeLabel(routedAgent, agent.agent_id),
+    [routedAgent, agent.agent_id],
+  );
 
   const body: ReactNode = (
     <div className="mx-auto flex min-h-svh max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
@@ -684,13 +706,7 @@ export function ConversationalChat() {
         <Card>
           <CardHeader className="flex flex-row items-start justify-between gap-3 border-b">
             <div className="space-y-1">
-              <CardTitle>
-                {routedAgent
-                  ? routedAgent
-                      .replace(/_/g, " ")
-                      .replace(/\b\w/g, (c) => c.toUpperCase())
-                  : agent.name}
-              </CardTitle>
+              <CardTitle>{agent.name}</CardTitle>
               <CardDescription>
                 {call.status === "connecting"
                   ? "Connecting to your agent…"
@@ -699,10 +715,10 @@ export function ConversationalChat() {
             </div>
             <div className="flex flex-col items-end gap-2">
               <CallStatusIndicator status={call.status} />
-              {routedAgent && (
+              {routedAgentBadgeLabel && (
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
                   <span className="size-1.5 rounded-full bg-primary" />
-                  {routedAgent.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} Agent
+                  {routedAgentBadgeLabel}
                 </span>
               )}
             </div>

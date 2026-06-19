@@ -121,6 +121,13 @@ def _resolve_intent_after_clarification_gate(
     return _replace(intent, requires_clarification=False, confidence=1.0)
 
 
+def _workflow_ui_selected_agent(request: ConversationRequest) -> str:
+    """Stable workflow routing id for the UI — never intent registry names like general_inquiry."""
+    if request.selected_agent:
+        return request.selected_agent
+    return request.agent_config.id
+
+
 @dataclass
 class _DispatchResult:
     """Result of _run_dispatch_step; non-None early_response means short-circuit."""
@@ -407,7 +414,7 @@ class ConversationOrchestrator:
                                 description=f"Prerequisite: {dep_name}",
                             ),
                             selected_intent=intent.name,
-                            selected_agent=agent.agent_name,
+                            selected_agent=_workflow_ui_selected_agent(request),
                             intent_confidence=intent.confidence,
                             locked_intent_name=intent.name,
                             completed_workflow_steps=request.completed_workflow_steps,
@@ -426,7 +433,7 @@ class ConversationOrchestrator:
                             ),
                             status=ConversationStatus.REJECTED,
                             selected_intent=intent.name,
-                            selected_agent=agent.agent_name,
+                            selected_agent=_workflow_ui_selected_agent(request),
                             locked_intent_name=intent.name,
                             completed_workflow_steps=request.completed_workflow_steps,
                         )
@@ -448,6 +455,15 @@ class ConversationOrchestrator:
                         locked_intent_name=intent.name,
                         completed_workflow_steps=request.completed_workflow_steps,
                     )
+
+            elif effective_dependencies and not missing_dependencies:
+                # All prerequisites satisfied — entry agent owns this turn (not intent router).
+                agent = AgentRegistry.create(request.agent_config, self)
+                logger.info(
+                    "workflow_entry_agent_resumed",
+                    agent=agent.agent_name,
+                    conversation_id=request.conversation_id,
+                )
 
             # Now enforce handoff rules (if any)
             if (
@@ -915,7 +931,7 @@ class ConversationOrchestrator:
                                 description=f"Prerequisite: {dep_name}",
                             ),
                             selected_intent=intent.name,
-                            selected_agent=agent.agent_name,
+                            selected_agent=_workflow_ui_selected_agent(request),
                             intent_confidence=intent.confidence,
                             locked_intent_name=intent.name,
                             completed_workflow_steps=request.completed_workflow_steps,
@@ -935,7 +951,7 @@ class ConversationOrchestrator:
                             ),
                             status=ConversationStatus.REJECTED,
                             selected_intent=intent.name,
-                            selected_agent=agent.agent_name,
+                            selected_agent=_workflow_ui_selected_agent(request),
                             locked_intent_name=intent.name,
                             completed_workflow_steps=request.completed_workflow_steps,
                         )
@@ -959,6 +975,14 @@ class ConversationOrchestrator:
                         completed_workflow_steps=request.completed_workflow_steps,
                     )
                     return
+
+            elif effective_dependencies and not missing_dependencies:
+                agent = AgentRegistry.create(request.agent_config, self)
+                logger.info(
+                    "workflow_entry_agent_resumed",
+                    agent=agent.agent_name,
+                    conversation_id=request.conversation_id,
+                )
 
             # Enforce handoff rules.
             if (
