@@ -93,7 +93,7 @@ def test_openrouter_provider_returns_openrouter_client():
 
     llm_config = LLMConfig(provider=LLMProvider.OPENROUTER, model="google/gemma-4-31b-it:free")
     settings = Settings(openrouter_api_key="sk-or-test")
-    with patch("taskorbit.integrations.llm.openrouter_client.openai.AsyncOpenAI"):
+    with patch("taskorbit.integrations.llm.openrouter_client.OpenRouter"):
         client = get_llm_client(llm_config, settings=settings)
     assert isinstance(client, OpenRouterClient)
 
