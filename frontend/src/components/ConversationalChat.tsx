@@ -364,6 +364,8 @@ export function ConversationalChat() {
                   await playSynthesizedSpeech(replyText, {
                     signal: controller.signal,
                     volumeRef: agentVolumeRef,
+                    voiceId: agent.tts.voice_id,
+                    modelId: agent.tts.model,
                   }).catch(() => {});
                 }
                 call.end();
@@ -410,6 +412,8 @@ export function ConversationalChat() {
               await playSynthesizedSpeech(replyText, {
                 signal: controller.signal,
                 volumeRef: agentVolumeRef,
+                voiceId: agent.tts.voice_id,
+                modelId: agent.tts.model,
               });
             } catch (audioErr) {
               if ((audioErr as Error).name !== "AbortError") {
@@ -477,7 +481,10 @@ export function ConversationalChat() {
       setRoutedAgent(badgeName);
       const transferMsg = `Transferring you to ${target.name} upon your request.`;
       call.appendAssistantTurn(transferMsg);
-      playSynthesizedSpeech(transferMsg).catch(() => {});
+      playSynthesizedSpeech(transferMsg, {
+        voiceId: agent.tts.voice_id,
+        modelId: agent.tts.model,
+      }).catch(() => {});
     },
     [call],
   );
@@ -544,6 +551,8 @@ export function ConversationalChat() {
               await playSynthesizedSpeech(replyText, {
                 signal: controller.signal,
                 volumeRef: agentVolumeRef,
+                voiceId: agent.tts.voice_id,
+                modelId: agent.tts.model,
               });
             } catch (audioErr) {
               if ((audioErr as Error).name !== "AbortError") {
