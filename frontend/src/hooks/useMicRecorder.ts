@@ -210,8 +210,15 @@ export function useMicRecorder(): MicRecorderApi {
     const payload = new TextEncoder().encode(JSON.stringify({ type: "commit_turn" }));
     try {
       await localParticipant.publishData(payload, { reliable: true });
-    } catch {
-      // If data publish fails, muting still nudges endpointing on the wire.
+    } catch (err) {
+      // First attempt failed — retry once to handle a transient data-channel glitch.
+      console.error("[useMicRecorder] publishData commit_turn failed, retrying:", err);
+      try {
+        await localParticipant.publishData(payload, { reliable: true });
+      } catch (retryErr) {
+        // Both attempts failed; the agent will rely on VAD endpointing instead.
+        console.error("[useMicRecorder] publishData commit_turn retry also failed:", retryErr);
+      }
     }
     await disable();
   }, [disable, localParticipant]);
