@@ -99,13 +99,14 @@ async def process_conversation(
             if saved is None:
                 logger.error("failed_to_save_assistant_message", conversation_id=conversation_id)
 
-        # Persist slot extractions with tool attribution for history transparency
-        if response.extracted_slots:
-            tool_id = response.tool_invoked.id if response.tool_invoked else "orchestrator"
+        # Persist slot extractions only when the tool actually fired (is_complete).
+        # Partial fills are returned in the response for UI progress but not saved
+        # to avoid duplicate rows across turns.
+        if response.extracted_slots and response.tool_invoked:
             await create_slot_extractions(
                 db=db,
                 conversation_id=conversation_id,
-                tool_id=tool_id,
+                tool_id=response.tool_invoked.id,
                 slots=response.extracted_slots,
                 user_id=user_id,
             )
@@ -174,7 +175,7 @@ async def _sse_generator(
 
     meta: ConversationResponse | None = None
 
-    async for event in orchestrator.process_message_stream(request):
+    async for event in orchestrator.process_message_stream(request, db=db, user_id=user_id):
         if await http_request.is_disconnected():
             logger.info("sse_client_disconnected", conversation_id=request.conversation_id)
             return
@@ -204,6 +205,26 @@ async def _sse_generator(
                 "sse_failed_to_save_assistant_message",
                 conversation_id=request.conversation_id,
             )
+
+    # Persist slot extractions only when the tool actually fired (is_complete).
+    # Partial fills are returned to the frontend but not saved to avoid duplicate rows.
+    if meta.extracted_slots and meta.tool_invoked:
+        await create_slot_extractions(
+            db=db,
+            conversation_id=request.conversation_id,
+            tool_id=meta.tool_invoked.id,
+            slots=meta.extracted_slots,
+            user_id=user_id,
+        )
+
+    if meta.tool_invoked:
+        await create_tool_execution(
+            db=db,
+            conversation_id=request.conversation_id,
+            tool_id=meta.tool_invoked.id,
+            tool_type=meta.tool_invoked.type.value,
+            result={"extracted_slots": meta.extracted_slots} if meta.extracted_slots else None,
+        )
 
     yield f"data: {json.dumps({'type': 'done', 'intent': meta.selected_intent, 'status': meta.status, 'selected_agent': meta.selected_agent, 'slots': meta.extracted_slots, 'missing_slots': meta.missing_slots, 'conversation_id': meta.conversation_id, 'locked_intent_name': meta.locked_intent_name, 'next_active_tool_id': meta.next_active_tool_id, 'tool_invoked': meta.tool_invoked.model_dump() if meta.tool_invoked else None, 'completed_workflow_steps': meta.completed_workflow_steps, 'confirmation': meta.confirmation.model_dump() if meta.confirmation else None})}\n\n"
 

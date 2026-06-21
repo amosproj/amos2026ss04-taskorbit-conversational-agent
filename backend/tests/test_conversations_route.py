@@ -358,3 +358,128 @@ def test_process_conversation_records_tool_execution() -> None:
     assert call_kwargs["tool_id"] == "agent_transfer"
     assert call_kwargs["tool_type"] == ToolType.AGENT_TRANSFER.value
     app.dependency_overrides = {}
+
+
+def test_stream_conversation_persists_slot_extractions() -> None:
+    """SSE /stream endpoint must write slot extractions to the DB after the full stream."""
+    tool = ToolDefinition(
+        id="data_extraction",
+        name="collect_info",
+        type=ToolType.DATA_EXTRACTION,
+        description="Collects user info",
+    )
+    mock_response = ConversationResponse(
+        conversation_id="conv-1",
+        reply=Message(role=MessageRole.ASSISTANT, content="Got it!"),
+        status="success",
+        tool_invoked=tool,
+        extracted_slots={"name": "Alice", "email": "alice@example.com"},
+    )
+
+    async def _fake_stream(*args, **kwargs):
+        _ = args, kwargs
+        yield "Got "
+        yield "it!"
+        yield mock_response
+
+    mock_orchestrator = MagicMock()
+    mock_orchestrator.process_message_stream = _fake_stream
+
+    app = create_app()
+    app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
+    app.dependency_overrides[get_session] = _mock_db
+    app.dependency_overrides[get_current_user_id] = lambda: 1
+
+    with (
+        patch(
+            "taskorbit.api.routes.conversations.get_conversation",
+            new_callable=AsyncMock,
+            return_value=MagicMock(),
+        ),
+        patch(
+            "taskorbit.api.routes.conversations.create_conversation_message",
+            new_callable=AsyncMock,
+            return_value=MagicMock(),
+        ),
+        patch(
+            "taskorbit.api.routes.conversations.create_slot_extractions",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as mock_extractions,
+        patch(
+            "taskorbit.api.routes.conversations.create_tool_execution",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+    ):
+        with TestClient(app) as client:
+            response = client.post("/v1/conversations/stream", json=_VALID_PAYLOAD)
+
+    assert response.status_code == 200
+    mock_extractions.assert_called_once()
+    call_kwargs = mock_extractions.call_args.kwargs
+    assert call_kwargs["tool_id"] == "data_extraction"
+    assert call_kwargs["slots"] == {"name": "Alice", "email": "alice@example.com"}
+    app.dependency_overrides = {}
+
+
+def test_stream_conversation_records_tool_execution() -> None:
+    """SSE /stream endpoint must write tool executions to the DB after the full stream."""
+    tool = ToolDefinition(
+        id="agent_transfer",
+        name="transfer",
+        type=ToolType.AGENT_TRANSFER,
+        description="Transfers the call",
+    )
+    mock_response = ConversationResponse(
+        conversation_id="conv-1",
+        reply=Message(role=MessageRole.ASSISTANT, content="Transferring now."),
+        status="success",
+        tool_invoked=tool,
+    )
+
+    async def _fake_stream(*args, **kwargs):
+        _ = args, kwargs
+        yield "Transferring "
+        yield "now."
+        yield mock_response
+
+    mock_orchestrator = MagicMock()
+    mock_orchestrator.process_message_stream = _fake_stream
+
+    app = create_app()
+    app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
+    app.dependency_overrides[get_session] = _mock_db
+    app.dependency_overrides[get_current_user_id] = lambda: 1
+
+    with (
+        patch(
+            "taskorbit.api.routes.conversations.get_conversation",
+            new_callable=AsyncMock,
+            return_value=MagicMock(),
+        ),
+        patch(
+            "taskorbit.api.routes.conversations.create_conversation_message",
+            new_callable=AsyncMock,
+            return_value=MagicMock(),
+        ),
+        patch(
+            "taskorbit.api.routes.conversations.create_slot_extractions",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        patch(
+            "taskorbit.api.routes.conversations.create_tool_execution",
+            new_callable=AsyncMock,
+            return_value=None,
+        ) as mock_execution,
+    ):
+        with TestClient(app) as client:
+            response = client.post("/v1/conversations/stream", json=_VALID_PAYLOAD)
+
+    assert response.status_code == 200
+    mock_execution.assert_called_once()
+    call_kwargs = mock_execution.call_args.kwargs
+    assert call_kwargs["tool_id"] == "agent_transfer"
+    assert call_kwargs["tool_type"] == ToolType.AGENT_TRANSFER.value
+    app.dependency_overrides = {}
