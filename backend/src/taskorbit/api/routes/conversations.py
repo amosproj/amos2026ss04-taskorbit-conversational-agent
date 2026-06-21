@@ -62,6 +62,13 @@ async def process_conversation(
         conversation_id = conv.id
         request = request.model_copy(update={"conversation_id": conversation_id})
         logger.info("conversation_auto_created", conversation_id=conversation_id)
+        if request.agent_config.greeting:
+            await create_conversation_message(
+                db=db,
+                conversation_id=conversation_id,
+                role="assistant",
+                content=request.agent_config.greeting,
+            )
 
     logger.info(
         "conversation_request_received",
@@ -257,6 +264,13 @@ async def stream_conversation(
         conversation_id = conv.id
         request = request.model_copy(update={"conversation_id": conversation_id})
         logger.info("conversation_auto_created", conversation_id=conversation_id)
+        if request.agent_config.greeting:
+            await create_conversation_message(
+                db=db,
+                conversation_id=conversation_id,
+                role="assistant",
+                content=request.agent_config.greeting,
+            )
 
     logger.info(
         "sse_stream_request_received",

@@ -25,6 +25,12 @@ from livekit.agents.voice.events import AgentEvent
 from pydantic import ValidationError
 
 from taskorbit.config import get_settings
+from taskorbit.database import AsyncSessionLocal
+from taskorbit.database.crud import (
+    create_conversation,
+    create_conversation_message,
+    get_conversation,
+)
 from taskorbit.livekit_agent import build_agent_session, build_default_agent
 from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import configure_default_metrics, get_metrics
@@ -262,6 +268,23 @@ async def entrypoint(ctx: JobContext) -> None:
     if greeting:
         session.say(greeting)
         logger.info("worker_greeting_spoken", length=len(greeting))
+        try:
+            async with AsyncSessionLocal() as db:
+                if not await get_conversation(db, ctx.room.name):
+                    await create_conversation(
+                        db,
+                        agent_id=agent_config.id if agent_config else "livekit-default",
+                        agent_name=agent_config.name if agent_config else "Voice Agent",
+                        id=ctx.room.name,
+                    )
+                await create_conversation_message(
+                    db,
+                    conversation_id=ctx.room.name,
+                    role="assistant",
+                    content=greeting,
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("worker_greeting_persist_failed", error=str(exc))
 
 
 def run_worker() -> None:

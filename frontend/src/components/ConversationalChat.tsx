@@ -259,7 +259,10 @@ export function ConversationalChat() {
         setRoutedAgent(null);
         setCompletedWorkflowSteps([]);
         pendingConfirmationIdRef.current = null;
-        convId = call.start({ tokenMetadata: buildLiveKitWorkerMetadata(agent) });
+        convId = call.start({
+          tokenMetadata: buildLiveKitWorkerMetadata(agent),
+          greeting: agent.first_message.message || undefined,
+        });
       }
 
       call.appendUserTurn(text);
