@@ -1,0 +1,39 @@
+# Baseline cloud config — OpenAI GPT-4o-mini
+# Represents the current production default: a paid cloud LLM.
+# Used as the reference point when comparing against open-source models.
+#
+# Requirements:
+#   OPENAI_API_KEY must be set in the environment.
+#
+# Run:
+#   python runner/run_benchmark.py --config configs/baseline-cloud.yaml
+
+name: baseline-cloud
+description: "Cloud provider baseline — OpenAI GPT-4o-mini latency benchmark"
+
+# LLM provider and model (maps to LLMProvider.OPENAI in types.py)
+provider: openai
+model: gpt-4o-mini
+
+# Input dataset: short task-management prompts for fast, repeatable runs
+input_set: benchmarks/inputs/short_prompts.jsonl
+
+# 3 repetitions gives a stable average; concurrency=1 keeps trials sequential
+# so latency numbers are not distorted by resource contention.
+repetitions: 3
+concurrency: 1
+
+# Metrics to collect on every trial
+metrics:
+  - latency_e2e          # End-to-end wall-clock time (input → response)
+  - latency_components   # Per-stage breakdown: STT, LLM, TTS
+  - token_usage          # Prompt + completion tokens (cost proxy)
+  - errors               # Any failures captured in TrialMetrics
+
+# Cloud APIs respond within 30 s for short prompts; 60 s is a safe ceiling.
+timeout_seconds: 60
+
+tags:
+  tier: cloud
+  provider: openai
+  version: v1
