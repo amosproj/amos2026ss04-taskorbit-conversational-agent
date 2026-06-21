@@ -5,7 +5,14 @@ import type { LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "@/components/ui/field";
 import {
   Select,
   SelectContent,
@@ -14,19 +21,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 
 import { listAgentConfigs, loadAgentConfig } from "@/lib/agentConfigApi";
+import { fetchUserAgents, type UserAgentEntry } from "@/lib/userAgentsApi";
+import {
+  buildSimpleWorkflowRules,
+  isSimpleWorkflowRules,
+  parseSimpleWorkflowRules,
+  ROUTED_AGENT_OPTIONS,
+} from "@/lib/workflowRules";
 import { getWorkflowValidationError, wouldCreateCycle } from "@/lib/workflowValidation";
+
+import type { WorkflowRule } from "@/types/agentConfig";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
 type Props = {
   workflowDependencies?: string[];
+  workflowRules?: WorkflowRule[];
   allowedHandoffs?: string[];
   onWorkflowDependenciesChange: (next: string[]) => void;
+  onWorkflowRulesChange: (next: WorkflowRule[] | undefined) => void;
   onAllowedHandoffsChange: (next: string[]) => void;
   /** Logical agent_id of the config currently being edited — used to detect cycles. */
   currentAgentId?: string;
+  /** User agents from Agent Config (refreshed after Save as new). */
+  userAgentEntries?: UserAgentEntry[];
   onValidationChange?: (state: WorkflowValidationState) => void;
 };
 
@@ -37,6 +58,31 @@ export type WorkflowValidationState = {
   valid: boolean;
   error: string | null;
 };
+
+type ConfigBlob = {
+  agent_id?: string;
+  id?: string;
+  name?: string;
+  workflow_dependencies?: string[];
+};
+
+function logicalAgentId(c: ConfigBlob): string | undefined {
+  const id = (c.agent_id ?? c.id ?? "").trim();
+  return id || undefined;
+}
+
+function mergeIntoAgentMaps(
+  optionsMap: Map<string, string>,
+  graph: Map<string, string[]>,
+  agentId: string,
+  displayName: string,
+  deps: string[] | undefined,
+) {
+  if (!optionsMap.has(agentId)) {
+    optionsMap.set(agentId, displayName);
+  }
+  graph.set(agentId, deps ?? []);
+}
 
 // ── Shared sub-components ────────────────────────────────────────────────────
 
@@ -188,14 +234,22 @@ function AgentListEditor({
 
 export function WorkflowSection({
   workflowDependencies,
+  workflowRules,
   allowedHandoffs,
   onWorkflowDependenciesChange,
+  onWorkflowRulesChange,
   onAllowedHandoffsChange,
   currentAgentId,
+  userAgentEntries,
   onValidationChange,
 }: Props) {
   const deps = workflowDependencies ?? [];
   const handoffs = allowedHandoffs ?? [];
+  const simpleRules = parseSimpleWorkflowRules(workflowRules);
+  const conditionalAdvanced =
+    workflowRules !== undefined &&
+    workflowRules.length > 0 &&
+    !isSimpleWorkflowRules(workflowRules);
 
   const [agents, setAgents] = useState<AgentOption[]>([]);
   const [depGraph, setDepGraph] = useState<Map<string, string[]>>(new Map());
@@ -215,54 +269,69 @@ export function WorkflowSection({
 
     setLoading(true);
 
-    listAgentConfigs(signal)
-      .then(async (summaries) => {
-        // Load every agent's full config blob in parallel so we have both
-        // their logical agent_id (the value the backend uses in dependencies)
-        // and their own workflow_dependencies (needed to build the dep graph).
-        const fullConfigs = await Promise.all(summaries.map((s) => loadAgentConfig(s.id, signal)));
+    async function loadWorkflowAgents() {
+      const optionsMap = new Map<string, string>();
+      const graph = new Map<string, string[]>();
 
-        const optionsMap = new Map<string, string>();
-        const graph = new Map<string, string[]>();
-
-        for (const saved of fullConfigs) {
-          const c = saved.config as {
-            agent_id?: string;
-            name?: string;
-            workflow_dependencies?: string[];
-          };
-          const agentId = c.agent_id;
-          if (!agentId) continue; // skip malformed entries
-
-          // Deduplicate: if we already saw this agentId, skip adding to options
-          // but still update the graph (though they should have the same deps).
-          if (!optionsMap.has(agentId)) {
-            optionsMap.set(agentId, c.name ?? saved.name);
-          }
-          graph.set(agentId, c.workflow_dependencies ?? []);
-        }
-
-        const options: AgentOption[] = Array.from(optionsMap.entries()).map(([agentId, name]) => ({
+      // Primary: /v1/user-agents (where "Save as new" writes since #71 fix).
+      const userEntries =
+        userAgentEntries ?? (await fetchUserAgents(signal).catch(() => [] as UserAgentEntry[]));
+      for (const entry of userEntries) {
+        const c = entry.config as ConfigBlob;
+        const agentId = logicalAgentId(c);
+        if (!agentId) continue;
+        mergeIntoAgentMaps(
+          optionsMap,
+          graph,
           agentId,
-          name,
-        }));
+          c.name ?? entry.name,
+          c.workflow_dependencies,
+        );
+      }
 
-        setAgents(options);
-        setDepGraph(graph);
-      })
+      // Legacy: /v1/agent-configs presets (older saves before user-agents POST path).
+      try {
+        const summaries = await listAgentConfigs(signal);
+        const fullConfigs = await Promise.all(summaries.map((s) => loadAgentConfig(s.id, signal)));
+        for (const saved of fullConfigs) {
+          const c = saved.config as ConfigBlob;
+          const agentId = logicalAgentId(c);
+          if (!agentId) continue;
+          mergeIntoAgentMaps(
+            optionsMap,
+            graph,
+            agentId,
+            c.name ?? saved.name,
+            c.workflow_dependencies,
+          );
+        }
+      } catch (err: unknown) {
+        if (!(err instanceof Error && err.name === "AbortError")) {
+          console.error("Failed to load legacy agent-config list:", err);
+        }
+      }
+
+      const options: AgentOption[] = Array.from(optionsMap.entries()).map(([agentId, name]) => ({
+        agentId,
+        name,
+      }));
+
+      setAgents(options);
+      setDepGraph(graph);
+    }
+
+    void loadWorkflowAgents()
       .catch((err: unknown) => {
         if (err instanceof Error && err.name !== "AbortError") {
           console.error("Failed to load agent list:", err);
         }
       })
       .finally(() => {
-        // Only clear the loading state when the fetch was NOT aborted — if it
-        // was aborted the component is unmounting and the state update is moot.
         if (!signal.aborted) setLoading(false);
       });
 
     return () => controller.abort();
-  }, []);
+  }, [userAgentEntries]);
 
   return (
     <Card>
@@ -272,8 +341,7 @@ export function WorkflowSection({
           Workflow
         </CardTitle>
         <CardDescription>
-          Define which agents must finish before this one starts and where this agent may hand off
-          the conversation.
+          Define prerequisite steps, conditional branches by routed intent, and allowed handoffs.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-6 sm:grid-cols-2">
@@ -300,6 +368,105 @@ export function WorkflowSection({
           icon={ArrowRightLeft}
           label="Allowed Handoffs"
         />
+
+        <div className="col-span-full space-y-4 border-t pt-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-1">
+              <FieldLegend variant="label" className="flex items-center gap-2">
+                <GitFork className="size-4 text-muted-foreground" aria-hidden />
+                Conditional prerequisites
+              </FieldLegend>
+              <FieldDescription>
+                When enabled, the engine picks prerequisites from these rules after intent routing.
+                Static prerequisite steps above are ignored while rules are set.
+              </FieldDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="conditional-workflow-rules"
+                checked={simpleRules.enabled}
+                disabled={conditionalAdvanced}
+                onCheckedChange={(on) => {
+                  if (on) {
+                    onWorkflowRulesChange(
+                      buildSimpleWorkflowRules(
+                        simpleRules.whenAgentName,
+                        simpleRules.whenDependencies,
+                      ),
+                    );
+                  } else {
+                    onWorkflowRulesChange(undefined);
+                  }
+                }}
+              />
+              <FieldLabel htmlFor="conditional-workflow-rules" className="font-normal">
+                Use conditional prerequisites
+              </FieldLabel>
+            </div>
+          </div>
+
+          {conditionalAdvanced && (
+            <p className="text-sm text-muted-foreground">
+              This agent has custom workflow rules that are not editable in the form. Use Copy JSON
+              to view them, or turn off conditional rules to replace with the simple editor.
+            </p>
+          )}
+
+          {simpleRules.enabled && !conditionalAdvanced && (
+            <div className="grid gap-6 sm:grid-cols-2">
+              <FieldSet>
+                <Field>
+                  <FieldLabel>When routed to</FieldLabel>
+                  <Select
+                    value={simpleRules.whenAgentName}
+                    onValueChange={(whenAgentName) =>
+                      onWorkflowRulesChange(
+                        buildSimpleWorkflowRules(whenAgentName, simpleRules.whenDependencies),
+                      )
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select routed agent…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {ROUTED_AGENT_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <FieldDescription>
+                    Matches the agent name after intent routing (e.g. technical support requests).
+                  </FieldDescription>
+                </Field>
+              </FieldSet>
+              <AgentListEditor
+                ids={simpleRules.whenDependencies}
+                agents={agents}
+                loading={loading}
+                onChange={(whenDependencies) =>
+                  onWorkflowRulesChange(
+                    buildSimpleWorkflowRules(simpleRules.whenAgentName, whenDependencies),
+                  )
+                }
+                icon={GitFork}
+                label="Then run prerequisite steps"
+                currentAgentId={currentAgentId}
+                depGraph={depGraph}
+                onAddBlocked={setPendingAddError}
+              />
+            </div>
+          )}
+
+          {simpleRules.enabled && !conditionalAdvanced && (
+            <p className="text-sm text-muted-foreground">
+              Otherwise (all other routed intents): no prerequisite steps.
+            </p>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

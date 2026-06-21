@@ -13,25 +13,19 @@ import { TranscriptBubble } from "@/components/history/TranscriptBubble";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useVoiceCall } from "@/hooks/useVoiceCall";
+import {
+  WorkflowVoiceSyncBridge,
+  type WorkflowVoiceSyncFn,
+  type WorkflowVoiceState,
+} from "@/hooks/useWorkflowVoiceSync";
 import type { TranscriptionSegment } from "@/hooks/useAgentTranscription";
 import { useActiveAgent } from "@/components/active-agent-provider";
 import { buildLiveKitWorkerMetadata } from "@/lib/livekitAgentMetadata";
 import { sendMessage, sendMessageStream, getConversations } from "@/lib/conversationApi";
 import { playSynthesizedSpeech } from "@/lib/ttsApi";
-import { backendToFrontendAgent, fetchUserAgents, type UserAgentEntry } from "@/lib/userAgentsApi";
+import { backendToFrontendAgent, fetchUserAgents } from "@/lib/userAgentsApi";
 import type { LiveTranscriptTurn } from "@/types/callState";
 
-function findUserAgentEntry(
-  entries: UserAgentEntry[],
-  agentKey: string,
-): UserAgentEntry | undefined {
-  return entries.find(
-    (e) => e.template_id === agentKey || e.id === agentKey || e.config.id === agentKey,
-  );
-}
-
-// Tidy up common Deepgram artefacts in user transcription before display.
-// Runs at render time only — does not mutate stored state.
 function normaliseUserText(text: string): string {
   // Lowercase email domains: Bob@Gmail.com → Bob@gmail.com
   let out = text.replace(
@@ -47,6 +41,26 @@ function normaliseUserText(text: string): string {
   // "2678 plus 1" → "2678+1"
   out = out.replace(/(\d+)\s+plus\s+(\d)/gi, "$1+$2");
   return out;
+}
+
+const BUILTIN_INTENT_AGENT_NAMES = new Set([
+  "sales",
+  "general_inquiry",
+  "technical_support",
+  "customer_dissatisfaction",
+  "appointment_management",
+  "general inquiry",
+]);
+
+function formatRoutedAgentBadgeLabel(
+  routedAgent: string | null,
+  entryAgentId: string,
+): string | null {
+  if (!routedAgent) return null;
+  const normalised = routedAgent.replace(/_/g, " ").toLowerCase();
+  if (BUILTIN_INTENT_AGENT_NAMES.has(normalised)) return null;
+  if (routedAgent === entryAgentId) return null;
+  return `${routedAgent.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} Agent`;
 }
 
 function SessionEndedBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
@@ -111,6 +125,25 @@ export function ConversationalChat() {
   const lockedIntentRef = useRef<string | null>(null);
   const pendingConfirmationIdRef = useRef<string | null>(null);
   const [completedWorkflowSteps, setCompletedWorkflowSteps] = useState<string[]>([]);
+  const routedAgentRef = useRef<string | null>(null);
+  const completedWorkflowStepsRef = useRef<string[]>([]);
+  const workflowVoiceSyncRef = useRef<WorkflowVoiceSyncFn | null>(null);
+  useEffect(() => {
+    routedAgentRef.current = routedAgent;
+  }, [routedAgent]);
+  useEffect(() => {
+    completedWorkflowStepsRef.current = completedWorkflowSteps;
+  }, [completedWorkflowSteps]);
+  const registerWorkflowVoiceSync = useCallback((sync: WorkflowVoiceSyncFn | null) => {
+    workflowVoiceSyncRef.current = sync;
+  }, []);
+  const syncWorkflowToVoice = useCallback(async (state: WorkflowVoiceState) => {
+    try {
+      await workflowVoiceSyncRef.current?.(state);
+    } catch (err) {
+      console.warn("[ConversationalChat] workflow voice sync failed", err);
+    }
+  }, []);
   const [previousConversations, setPreviousConversations] = useState<
     Record<string, string | null>[]
   >([]);
@@ -232,12 +265,14 @@ export function ConversationalChat() {
       // Merged text = all previously finalized chunks + live text of the current chunk.
       const prefix = agentCommittedRef.current;
       const mergedText = prefix ? `${prefix} ${segment.text}` : segment.text;
+      const trimmed = mergedText.trim();
+      if (!trimmed) return;
 
-      call.upsertTurnById(agentTurnIdRef.current, "assistant", mergedText.trim(), segment.isFinal);
+      call.upsertTurnById(agentTurnIdRef.current, "assistant", trimmed, segment.isFinal);
 
       // Once this chunk is final, grow the committed base for the next chunk.
       if (segment.isFinal) {
-        agentCommittedRef.current = mergedText.trim();
+        agentCommittedRef.current = trimmed;
       }
     },
     [call],
@@ -282,8 +317,8 @@ export function ConversationalChat() {
             lockedIntentRef.current,
             null,
             null,
-            completedWorkflowSteps,
-            routedAgent,
+            completedWorkflowStepsRef.current,
+            routedAgentRef.current,
             manualTransfer ?? null,
           );
 
@@ -292,35 +327,47 @@ export function ConversationalChat() {
               replyText += event.text;
               call.upsertTurnById(assistantTurnId, "assistant", replyText, false);
             } else if (event.type === "done") {
-              call.upsertTurnById(assistantTurnId, "assistant", replyText, true);
+              const finalText = (replyText.trim() || event.reply?.trim() || "").trim();
+              const isConfirmation =
+                (event.status === "confirmation_required" ||
+                  event.status === "workflow_confirmation_required") &&
+                event.confirmation;
 
               if (event.conversation_id) call.updateConversationId(event.conversation_id);
-              lockedIntentRef.current = event.locked_intent_name ?? null;
+              if (event.locked_intent_name) {
+                lockedIntentRef.current = event.locked_intent_name;
+              }
               setCompletedWorkflowSteps(event.completed_workflow_steps ?? []);
 
               if (!manualTransfer && event.selected_agent) {
                 setRoutedAgent(event.selected_agent);
-                if (event.selected_agent !== agent.agent_id && !manualRoutingLockRef.current) {
-                  const entries = await fetchUserAgents(controller.signal);
-                  const match = findUserAgentEntry(entries, event.selected_agent);
-                  if (match) {
-                    const next = backendToFrontendAgent(match);
-                    setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
-                  }
-                }
               }
 
-              if (
-                (event.status === "confirmation_required" ||
-                  event.status === "workflow_confirmation_required") &&
-                event.confirmation
-              ) {
-                pendingConfirmationIdRef.current = event.confirmation.confirmation_id;
+              if (call.status !== "idle" && call.status !== "ended") {
+                void syncWorkflowToVoice({
+                  selected_agent: event.selected_agent ?? routedAgentRef.current,
+                  completed_workflow_steps: event.completed_workflow_steps ?? [],
+                  clear_pending_confirmation: !isConfirmation,
+                });
+              }
+
+              if (isConfirmation) {
+                // Proceed/Cancel card carries the prompt — no duplicate bubble in transcript.
+                call.removeTurnById(assistantTurnId);
+                pendingConfirmationIdRef.current = event.confirmation!.confirmation_id;
                 call.triggerConfirmation({
-                  ...event.confirmation,
+                  ...event.confirmation!,
                   type: event.status === "workflow_confirmation_required" ? "workflow" : "tool",
                 });
+                call.setPhase("idle_in_call");
                 return;
+              }
+
+              replyText = finalText;
+              if (finalText) {
+                call.upsertTurnById(assistantTurnId, "assistant", finalText, true);
+              } else {
+                call.removeTurnById(assistantTurnId);
               }
 
               // Manual transfer: swap active agent config after backend confirmation.
@@ -430,7 +477,7 @@ export function ConversationalChat() {
         }
       });
     },
-    [agent, call, setActiveAgent],
+    [agent, call, syncWorkflowToVoice],
   );
 
   const handleRoomError = useCallback(
@@ -502,23 +549,31 @@ export function ConversationalChat() {
             lockedIntentRef.current,
             confirmationId,
             decision,
-            completedWorkflowSteps,
-            routedAgent,
+            completedWorkflowStepsRef.current,
+            routedAgentRef.current,
           );
           call.updateConversationId(response.conversation_id);
-          lockedIntentRef.current = response.locked_intent_name ?? null;
+          if (response.locked_intent_name) {
+            lockedIntentRef.current = response.locked_intent_name;
+          }
           setCompletedWorkflowSteps(response.completed_workflow_steps ?? []);
 
           if (response.selected_agent) {
             setRoutedAgent(response.selected_agent);
-            if (response.selected_agent !== agent.agent_id && !manualRoutingLockRef.current) {
-              const entries = await fetchUserAgents(controller.signal);
-              const match = findUserAgentEntry(entries, response.selected_agent);
-              if (match) {
-                const next = backendToFrontendAgent(match);
-                setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
-              }
-            }
+          }
+
+          if (confirmationId.startsWith("workflow_")) {
+            await syncWorkflowToVoice({
+              selected_agent: response.selected_agent,
+              completed_workflow_steps: response.completed_workflow_steps ?? [],
+              clear_pending_confirmation: true,
+            });
+          } else if (call.status !== "idle" && call.status !== "ended") {
+            await syncWorkflowToVoice({
+              selected_agent: response.selected_agent ?? routedAgentRef.current,
+              completed_workflow_steps: response.completed_workflow_steps ?? [],
+              clear_pending_confirmation: true,
+            });
           }
 
           if (
@@ -562,7 +617,7 @@ export function ConversationalChat() {
         }
       });
     },
-    [agent, call, completedWorkflowSteps, routedAgent, setActiveAgent],
+    [agent, call, syncWorkflowToVoice],
   );
 
   const handleApprove = useCallback(() => {
@@ -609,6 +664,10 @@ export function ConversationalChat() {
   const isPreCall = call.status === "idle";
   const isPostCall = call.status === "ended";
   const isInCall = !isPreCall && !isPostCall;
+  const routedAgentBadgeLabel = useMemo(
+    () => formatRoutedAgentBadgeLabel(routedAgent, agent.agent_id),
+    [routedAgent, agent.agent_id],
+  );
 
   const body: ReactNode = (
     <div className="mx-auto flex min-h-svh max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
@@ -655,10 +714,10 @@ export function ConversationalChat() {
             </div>
             <div className="flex flex-col items-end gap-2">
               <CallStatusIndicator status={call.status} />
-              {routedAgent && (
+              {routedAgentBadgeLabel && (
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
                   <span className="size-1.5 rounded-full bg-primary" />
-                  {routedAgent.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} Agent
+                  {routedAgentBadgeLabel}
                 </span>
               )}
             </div>
@@ -760,6 +819,7 @@ export function ConversationalChat() {
             onAgentRouted={handleVoiceAgentRouted}
             onSessionEnded={call.end}
           />
+          <WorkflowVoiceSyncBridge onRegister={registerWorkflowVoiceSync} />
           {body}
         </LiveKitRoom>
       ) : (

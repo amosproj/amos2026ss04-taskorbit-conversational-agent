@@ -126,6 +126,47 @@
           "type": "array",
           "items": { "type": "string" },
           "description": "List of agent IDs that this agent is allowed to hand off the conversation to."
+        },
+        "workflow_rules": {
+          "type": "array",
+          "description": "Conditional workflow branches evaluated after intent routing (Issue #71).",
+          "items": {
+            "$ref": "#/$defs/workflowRule"
+          }
+        }
+      }
+    },
+    "workflowRuleWhen": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "intent": {
+          "type": "string",
+          "description": "Match when detected intent name equals this value."
+        },
+        "agent_name": {
+          "type": "string",
+          "description": "Match when routed agent_name equals this value."
+        },
+        "else": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, matches if no prior rule matched in this config."
+        }
+      }
+    },
+    "workflowRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["when", "dependencies"],
+      "properties": {
+        "when": {
+          "$ref": "#/$defs/workflowRuleWhen"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Agent ids (workflow blocks) that must complete for this branch."
         }
       }
     },

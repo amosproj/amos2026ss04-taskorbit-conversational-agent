@@ -123,6 +123,36 @@ class PersonaConstraints(BaseModel):
     refusal_template: str | None = None
 
 
+class WorkflowRuleWhen(BaseModel):
+    """Condition for selecting a workflow branch (evaluated after intent routing)."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    intent: str | None = Field(
+        default=None,
+        description="Match when detected intent name equals this value (e.g. technical_support_request).",
+    )
+    agent_name: str | None = Field(
+        default=None,
+        description="Match when routed agent_name equals this value (e.g. technical_support).",
+    )
+    else_branch: bool = Field(
+        default=False,
+        alias="else",
+        description="When true, matches if no prior rule matched in this config.",
+    )
+
+
+class WorkflowRule(BaseModel):
+    """One conditional branch: when matched, run these workflow dependency blocks."""
+
+    when: WorkflowRuleWhen
+    dependencies: list[str] = Field(
+        default_factory=list,
+        description="Agent ids (workflow blocks) that must complete for this branch.",
+    )
+
+
 class ContextLimitConfig(BaseModel):
     """Configuration for conversation history limits and truncation.
 
@@ -163,6 +193,13 @@ class AgentConfig(BaseModel):
     persona_constraints: PersonaConstraints | None = None
     context_limit: ContextLimitConfig | None = None
     workflow_dependencies: list[str] = Field(default_factory=list)
+    workflow_rules: list[WorkflowRule] = Field(
+        default_factory=list,
+        description=(
+            "Conditional branches evaluated after intent routing. "
+            "When non-empty, overrides workflow_dependencies for the matched turn."
+        ),
+    )
     allowed_handoffs: list[str] = Field(default_factory=list)
 
 
