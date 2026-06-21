@@ -26,7 +26,11 @@ from pydantic import ValidationError
 
 from taskorbit.config import get_settings
 from taskorbit.database import AsyncSessionLocal
-from taskorbit.database.crud import create_conversation, create_conversation_message, get_conversation
+from taskorbit.database.crud import (
+    create_conversation,
+    create_conversation_message,
+    get_conversation,
+)
 from taskorbit.livekit_agent import build_agent_session, build_default_agent
 from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import configure_default_metrics, get_metrics
