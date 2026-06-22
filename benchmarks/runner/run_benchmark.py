@@ -2,9 +2,9 @@
 """Benchmark runner CLI — main entry point.
 
 Usage:
-    python run_benchmark.py --config benchmarks/configs/experiment-1.yaml
-    python run_benchmark.py --config benchmarks/configs/experiment-1.yaml --dry-run
-    python run_benchmark.py --config benchmarks/configs/experiment-1.yaml --upload-metrics
+    python run_benchmark.py --config benchmarks/configs/baseline-cloud.yaml
+    python run_benchmark.py --config benchmarks/configs/baseline-cloud.yaml --dry-run
+    python run_benchmark.py --config benchmarks/configs/baseline-cloud.yaml --upload-metrics
 """
 
 from __future__ import annotations
