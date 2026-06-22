@@ -182,9 +182,12 @@ class OrchestratorAgent(Agent):
     ``ChatChunk``. Streaming is left for a real LLM integration; the
     pipeline can stream this single chunk into the TTS without issue.
 
-    Push-to-talk guard: ``llm_node`` only processes when ``request_reply()``
-    has been called first. Preemptive generation calls from AgentSession
-    are silently dropped, preventing double responses.
+    Reply dedup (#153): server-side VAD turn detection drives the reply, and
+    an explicit ``commit_turn`` from the frontend is a fast path for the same
+    turn. ``llm_node`` produces exactly one reply per user turn and drops any
+    further calls until ``begin_user_turn()`` resets the flag on the next
+    utterance. This lets the noise-robust server VAD commit a turn even when
+    the browser's amplitude-based silence detection misses.
     """
 
     def __init__(
@@ -203,7 +206,7 @@ class OrchestratorAgent(Agent):
         self._agent_config = agent_config or _default_agent_config()
         self._conversation_id = conversation_id
         self._user_id = user_id
-        self._reply_requested: bool = False
+        self._turn_replied: bool = False
         self._t_commit: float | None = None
         self._locked_intent_name: str | None = None
         self._current_routed_agent: str = ""
@@ -218,18 +221,29 @@ class OrchestratorAgent(Agent):
         self._pending_confirmation_id: str | None = None
 
     def request_reply(self, t_commit: float | None = None) -> None:
-        """Signal that the next ``llm_node`` call should actually produce a reply.
+        """Record the commit timestamp for voice-turn latency measurement.
 
-        Call this immediately before ``session.generate_reply()`` from the
-        data channel handler. Without it, ``llm_node`` returns empty so that
-        AgentSession's preemptive generation does not produce a spurious response.
-
-        ``t_commit`` should be ``time.perf_counter()`` captured at the moment
-        the commit_turn data channel message was received — used to measure
-        end-to-end voice turn latency.
+        Called from the worker's ``commit_turn`` handler right before
+        ``session.generate_reply()``. ``t_commit`` is the
+        ``time.perf_counter()`` captured when the commit_turn message arrived;
+        ``llm_node`` uses it to report end-to-end voice-turn latency. It no
+        longer gates the reply: server-side VAD turn detection drives the reply
+        now (#153) and the per-turn dedup in ``llm_node`` prevents double
+        responses.
         """
-        self._reply_requested = True
         self._t_commit = t_commit if t_commit is not None else time.perf_counter()
+
+    def begin_user_turn(self) -> None:
+        """Reset per-turn reply state when the user starts a new utterance.
+
+        Clears the dedup flag so the next end-of-turn (server VAD or an
+        explicit commit_turn) produces exactly one reply, and clears the commit
+        timestamp so a turn with no commit_turn does not report a stale
+        latency. Called from the worker on the ``user_state_changed`` ->
+        ``speaking`` transition.
+        """
+        self._turn_replied = False
+        self._t_commit = None
 
     async def llm_node(  # type: ignore[override]
         self,
@@ -244,10 +258,13 @@ class OrchestratorAgent(Agent):
         real LLM is wired in later, this method should change to delegate
         back to ``Agent.default.llm_node`` instead.
         """
-        if not self._reply_requested:
-            # Preemptive generation call — not triggered by Send. Drop it.
+        if self._turn_replied:
+            # Already replied for this user turn. Drop the duplicate so the
+            # server-VAD end-of-turn and an explicit commit_turn cannot both
+            # produce a reply for the same turn (#153). begin_user_turn()
+            # clears this on the next utterance.
             return
-        self._reply_requested = False
+        self._turn_replied = True
 
         log.info(
             "llm_active",

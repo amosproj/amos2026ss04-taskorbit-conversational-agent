@@ -227,8 +227,8 @@ async def test_llm_node_skips_latency_when_no_commit_time() -> None:
     chat_ctx = _make_chat_ctx([("user", "hello")])
     mock_metrics = MagicMock()
 
-    # Manually set _t_commit to None to simulate no commit time
-    agent._reply_requested = True
+    # No commit_turn this turn, so _t_commit stays None; llm_node still runs
+    # (server-VAD-driven reply) but must skip the latency metric.
     agent._t_commit = None
 
     with patch("taskorbit.livekit_agent.llm.get_metrics", return_value=mock_metrics):

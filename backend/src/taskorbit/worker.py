@@ -145,6 +145,15 @@ async def entrypoint(ctx: JobContext) -> None:
                 audio_duration_ms=round(m.audio_duration * 1000, 1),
             )
 
+    @session.on("user_state_changed")
+    def _on_user_state(ev: AgentEvent) -> None:
+        # A new user utterance begins a turn: reset the per-turn reply dedup so
+        # the next end-of-turn (server VAD or an explicit commit_turn) produces
+        # exactly one reply (#153). user_state_changed fires on the Silero
+        # speaking/listening transitions independently of turn_detection.
+        if getattr(ev, "new_state", None) == "speaking":
+            agent.begin_user_turn()
+
     # Holds the most-recent pending reply task so it can be cancelled on
     # interruption before the orchestrator finishes processing.
     reply_task: asyncio.Task[None] | None = None
