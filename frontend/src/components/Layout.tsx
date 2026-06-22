@@ -82,13 +82,6 @@ export function Layout() {
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
-            <span
-              className="hidden items-center gap-1.5 rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground md:inline-flex"
-              aria-label="Sprint 5, in progress"
-            >
-              <span className="size-1.5 rounded-full bg-primary" aria-hidden />
-              Sprint 5 · In Progress
-            </span>
             <ModeToggle />
           </div>
         </div>
