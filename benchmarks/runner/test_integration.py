@@ -317,6 +317,44 @@ class TestComponentLatencies:
 # ---------------------------------------------------------------------------
 
 
+class TestInvalidConfig:
+    """Validate run_experiment rejects invalid configurations."""
+
+    def test_run_experiment_raises_on_invalid_config(self) -> None:
+        """An ExperimentConfig failing validate() must raise ValueError."""
+        invalid_cfg = ExperimentConfig(
+            name="bad",
+            description="",
+            provider="local",
+            model="test",
+            input_set="test.jsonl",
+            repetitions=0,
+            concurrency=0,
+            metrics=[],
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = BenchmarkRunner(results_dir=tmpdir, dry_run=True)
+            with pytest.raises(ValueError, match="Invalid config"):
+                _run(runner.run_experiment(invalid_cfg))
+
+    def test_run_experiment_raises_on_empty_metrics(self) -> None:
+        """Config with empty metrics list must raise ValueError."""
+        cfg = ExperimentConfig(
+            name="no-metrics",
+            description="",
+            provider="openai",
+            model="gpt-4o",
+            input_set="test.jsonl",
+            repetitions=1,
+            concurrency=1,
+            metrics=[],
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = BenchmarkRunner(results_dir=tmpdir, dry_run=True)
+            with pytest.raises(ValueError, match="Invalid config"):
+                _run(runner.run_experiment(cfg))
+
+
 class TestOtelExport:
     """Validate export_to_otel() behaviour without a real OTel endpoint."""
 

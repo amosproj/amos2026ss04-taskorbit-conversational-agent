@@ -78,6 +78,9 @@ Thumbs.db
 # Local-only files
 LOCAL_NOTES.md
 
+# Benchmark run artifacts (generated locally / in CI)
+benchmarks/results/
+
 # TypeScript build cache (regenerated on every build, never commit)
 frontend/tsconfig.*.tsbuildinfo
 
