@@ -53,6 +53,7 @@ class STTProvider(str, Enum):
 class LLMProvider(str, Enum):
     OPENAI = "openai"
     GOOGLE = "google"
+    OPENROUTER = "openrouter"
 
 
 class TTSProvider(str, Enum):

@@ -249,6 +249,13 @@ class OrchestratorAgent(Agent):
             return
         self._reply_requested = False
 
+        log.info(
+            "llm_active",
+            provider=self._agent_config.llm.provider,
+            model=self._agent_config.llm.model,
+            conversation_id=self._conversation_id,
+        )
+
         # STT latency: time from commit_turn received to transcript available in llm_node.
         # llm_node is only invoked after AgentSession has a final Deepgram transcript,
         # so this measures how long STT processing took after the user committed their turn.
