@@ -66,7 +66,12 @@ function adaptTool(
 }
 
 export function buildLiveKitWorkerMetadata(agent: AgentConfig): Record<string, unknown> {
-  const llmProvider = agent.llm.provider === "gemini" ? "google" : "openai";
+  const llmProvider =
+    agent.llm.provider === "gemini"
+      ? "google"
+      : agent.llm.provider === "openrouter"
+        ? "openrouter"
+        : "openai";
   const out: Record<string, unknown> = {
     id: agent.agent_id,
     name: agent.name,

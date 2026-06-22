@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     google_api_key: str = ""
     google_model: str = "gemini-2.5-flash"
 
+    # --- OpenRouter (open-source models via cloud proxy, free tier available) ---
+    openrouter_api_key: str = ""
+    openrouter_model: str = "meta-llama/llama-3.1-8b-instruct:free"
+
     # --- Observability ---
     metrics_enabled: bool = True
     otel_enabled: bool = False
