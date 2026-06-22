@@ -3,6 +3,7 @@
 # Core dependencies
 pyyaml>=6.0
 pydantic>=2.0
+httpx>=0.28.0
 
 # Optional: metrics export (for --upload-metrics)
 # opentelemetry-exporter-prometheus>=0.40b0

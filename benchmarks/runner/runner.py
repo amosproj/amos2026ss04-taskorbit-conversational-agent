@@ -5,12 +5,37 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from config import ExperimentConfig
+from metrics import capture_system_metrics
 from storage import ResultWriter, RunMetadata, TrialMetrics
+
+# Default prompt used when the input JSONL is missing or exhausted.
+_DEFAULT_PROMPT = "What tasks do I have due today?"
+
+# Maps config provider names to the value the backend LLMProvider enum expects.
+# "local" is kept as an alias for openai for backwards-compat with older configs.
+_PROVIDER_MAP: dict[str, str] = {
+    "openai": "openai",
+    "google": "google",
+    "openrouter": "openrouter",
+    "local": "openai",
+}
+
+# Minimal AgentConfig sent with every benchmark request.
+# Persona is intentionally short so it doesn't inflate prompt token counts.
+_BENCH_AGENT: dict[str, Any] = {
+    "id": "benchmark-agent",
+    "name": "Benchmark Agent",
+    "persona": "You are a helpful task management assistant. Be concise.",
+    "greeting": "Hello!",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -85,33 +110,106 @@ class BenchmarkRunner:
         trial_idx: int,
         input_data: list[dict[str, Any]] | None = None,
     ) -> TrialMetrics:
-        """
-        Execute a single trial with the given configuration.
+        """Call the TaskOrbit /v1/conversations/process endpoint and record latency.
 
-        Placeholder: Will be extended to invoke agent/LLM with metrics collection.
+        Environment variables:
+            BENCHMARK_API_URL   Base URL of the running backend (default: http://localhost:8000).
+            BENCHMARK_API_TOKEN Bearer token for authentication. Obtain by logging in through
+                                the frontend and copying the token from the browser's dev tools
+                                (Application → Local Storage → token).
         """
+        api_url = os.environ.get("BENCHMARK_API_URL", "http://localhost:8000").rstrip("/")
+        api_token = os.environ.get("BENCHMARK_API_TOKEN", "")
+
+        # Cycle through input prompts so each trial uses a different one.
+        prompt = _DEFAULT_PROMPT
+        if input_data:
+            entry = input_data[trial_idx % len(input_data)]
+            prompt = entry.get("input", _DEFAULT_PROMPT)
+
+        backend_provider = _PROVIDER_MAP.get(config.provider, config.provider)
+
+        payload: dict[str, Any] = {
+            "agent_config": {
+                **_BENCH_AGENT,
+                "llm": {"provider": backend_provider, "model": config.model},
+            },
+            "messages": [{"role": "user", "content": prompt}],
+        }
+
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if api_token:
+            headers["Authorization"] = f"Bearer {api_token}"
+
+        logger.debug(
+            f"Trial {trial_idx}: POST {api_url}/v1/conversations/process "
+            f"provider={backend_provider} model={config.model} prompt={prompt[:60]!r}"
+        )
+
         try:
-            start_time = time.time()
+            t_start = time.perf_counter()
 
-            await asyncio.sleep(0.1)
+            async with httpx.AsyncClient(timeout=config.timeout_seconds) as client:
+                response = await client.post(
+                    f"{api_url}/v1/conversations/process",
+                    json=payload,
+                    headers=headers,
+                )
 
-            elapsed_ms = (time.time() - start_time) * 1000
+            elapsed_ms = (time.perf_counter() - t_start) * 1000
 
-            metrics = TrialMetrics(
+            if response.status_code != 200:
+                error_body = response.text[:300]
+                logger.error(f"Trial {trial_idx} HTTP {response.status_code}: {error_body}")
+                return TrialMetrics(
+                    latency_ms=elapsed_ms,
+                    success=False,
+                    error_message=f"HTTP {response.status_code}: {error_body}",
+                )
+
+            data: dict[str, Any] = response.json()
+            reply_text: str = data.get("reply", {}).get("content", "")
+
+            sys_metrics = capture_system_metrics()
+
+            logger.debug(
+                f"Trial {trial_idx} completed in {elapsed_ms:.1f}ms "
+                f"reply_len={len(reply_text)}"
+            )
+
+            return TrialMetrics(
                 latency_ms=elapsed_ms,
+                # Component breakdown is not exposed by the REST endpoint; LLM-stage
+                # latency is available in Prometheus (taskorbit_pipeline_latency_seconds).
                 component_latencies={},
+                # The /process response does not include token counts; leave as zeros
+                # until the backend exposes usage in the response body.
                 token_usage={"prompt": 0, "completion": 0},
                 success=True,
-                throughput=1.0 / (elapsed_ms / 1000),
+                throughput=1000.0 / elapsed_ms if elapsed_ms > 0 else 0.0,
+                system_metrics=sys_metrics,
             )
-            return metrics
 
-        except Exception as e:
-            logger.error(f"Trial {trial_idx} failed: {e}")
+        except httpx.TimeoutException:
+            logger.error(f"Trial {trial_idx} timed out after {config.timeout_seconds}s")
+            return TrialMetrics(
+                latency_ms=config.timeout_seconds * 1000.0,
+                success=False,
+                error_message=f"Request timed out after {config.timeout_seconds}s",
+            )
+        except httpx.ConnectError as exc:
+            logger.error(f"Trial {trial_idx} connection error: {exc}")
             return TrialMetrics(
                 latency_ms=0.0,
                 success=False,
-                error_message=str(e),
+                error_message=f"Could not connect to {api_url} — is the backend running?",
+            )
+        except Exception as exc:
+            logger.error(f"Trial {trial_idx} unexpected error: {exc}")
+            return TrialMetrics(
+                latency_ms=0.0,
+                success=False,
+                error_message=str(exc),
             )
 
     async def _dry_run_mock_results(self, config: ExperimentConfig) -> tuple[str, Path, dict]:

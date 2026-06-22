@@ -351,3 +351,171 @@ class TestOtelExport:
                 endpoint="http://localhost:4318",
             )
             assert result is False
+
+
+# ---------------------------------------------------------------------------
+# Test 9 — Real _execute_trial with mocked HTTP (no live backend needed)
+# ---------------------------------------------------------------------------
+
+
+class TestExecuteTrial:
+    """Validate _execute_trial() sends the right payload and records real latency."""
+
+    def _make_config(self, provider: str = "openai", model: str = "gpt-4o-mini") -> ExperimentConfig:
+        return ExperimentConfig(
+            name="trial-test",
+            description="",
+            provider=provider,
+            model=model,
+            input_set="benchmarks/inputs/short_prompts.jsonl",
+            repetitions=1,
+            concurrency=1,
+            metrics=["latency_e2e"],
+            timeout_seconds=10,
+        )
+
+    def test_execute_trial_success(self) -> None:
+        """A 200 response must produce a successful TrialMetrics with real latency."""
+        import unittest.mock as mock
+        import httpx
+
+        mock_response = mock.MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "conversation_id": "conv-abc",
+            "reply": {"role": "assistant", "content": "You have 3 tasks due today."},
+            "status": "success",
+        }
+
+        config = self._make_config()
+        input_data = [{"input": "What tasks do I have today?", "expected_type": "task_query"}]
+
+        with mock.patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = mock.AsyncMock()
+            mock_client.post = mock.AsyncMock(return_value=mock_response)
+            mock_client_cls.return_value.__aenter__ = mock.AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = mock.AsyncMock(return_value=False)
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                runner = BenchmarkRunner(results_dir=tmpdir, dry_run=False)
+                metrics = _run(runner._execute_trial(config, trial_idx=0, input_data=input_data))
+
+        assert metrics.success is True
+        assert metrics.latency_ms >= 0.0
+        assert metrics.throughput > 0.0
+
+        # Verify the payload sent to the backend
+        call_kwargs = mock_client.post.call_args
+        payload = call_kwargs.kwargs.get("json") or call_kwargs.args[1]
+        assert payload["agent_config"]["llm"]["provider"] == "openai"
+        assert payload["agent_config"]["llm"]["model"] == "gpt-4o-mini"
+        assert payload["messages"][0]["content"] == "What tasks do I have today?"
+
+    def test_execute_trial_http_error_captured(self) -> None:
+        """A non-200 response must produce a failed TrialMetrics with the error body."""
+        import unittest.mock as mock
+        import httpx
+
+        mock_response = mock.MagicMock(spec=httpx.Response)
+        mock_response.status_code = 422
+        mock_response.text = '{"detail": "provider openrouter not supported"}'
+
+        config = self._make_config(provider="openrouter", model="qwen/qwen3-next-80b-a3b-instruct:free")
+
+        with mock.patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = mock.AsyncMock()
+            mock_client.post = mock.AsyncMock(return_value=mock_response)
+            mock_client_cls.return_value.__aenter__ = mock.AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = mock.AsyncMock(return_value=False)
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                runner = BenchmarkRunner(results_dir=tmpdir, dry_run=False)
+                metrics = _run(runner._execute_trial(config, trial_idx=0))
+
+        assert metrics.success is False
+        assert "422" in metrics.error_message
+
+    def test_execute_trial_connection_error_captured(self) -> None:
+        """A ConnectError (backend not running) must produce a failed TrialMetrics."""
+        import unittest.mock as mock
+        import httpx
+
+        config = self._make_config()
+
+        with mock.patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = mock.AsyncMock()
+            mock_client.post = mock.AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
+            mock_client_cls.return_value.__aenter__ = mock.AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = mock.AsyncMock(return_value=False)
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                runner = BenchmarkRunner(results_dir=tmpdir, dry_run=False)
+                metrics = _run(runner._execute_trial(config, trial_idx=0))
+
+        assert metrics.success is False
+        assert "connect" in metrics.error_message.lower()
+
+    def test_execute_trial_cycles_input_prompts(self) -> None:
+        """trial_idx should cycle through input_data so each trial gets a different prompt."""
+        import unittest.mock as mock
+        import httpx
+
+        captured_payloads: list[dict] = []
+
+        async def fake_post(url: str, **kwargs: Any) -> httpx.Response:
+            captured_payloads.append(kwargs.get("json", {}))
+            resp = mock.MagicMock(spec=httpx.Response)
+            resp.status_code = 200
+            resp.json.return_value = {"reply": {"content": "ok"}, "status": "success"}
+            return resp
+
+        input_data = [
+            {"input": "First prompt", "expected_type": "a"},
+            {"input": "Second prompt", "expected_type": "b"},
+        ]
+        config = self._make_config()
+
+        with mock.patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = mock.AsyncMock()
+            mock_client.post = fake_post
+            mock_client_cls.return_value.__aenter__ = mock.AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = mock.AsyncMock(return_value=False)
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                runner = BenchmarkRunner(results_dir=tmpdir, dry_run=False)
+                _run(runner._execute_trial(config, 0, input_data))
+                _run(runner._execute_trial(config, 1, input_data))
+                _run(runner._execute_trial(config, 2, input_data))  # wraps to index 0
+
+        assert captured_payloads[0]["messages"][0]["content"] == "First prompt"
+        assert captured_payloads[1]["messages"][0]["content"] == "Second prompt"
+        assert captured_payloads[2]["messages"][0]["content"] == "First prompt"  # cycled
+
+    def test_execute_trial_openrouter_provider_mapped_correctly(self) -> None:
+        """provider=openrouter in config must reach the backend as 'openrouter', not 'openai'."""
+        import unittest.mock as mock
+        import httpx
+
+        captured: list[dict] = []
+
+        async def fake_post(url: str, **kwargs: Any) -> httpx.Response:
+            captured.append(kwargs.get("json", {}))
+            resp = mock.MagicMock(spec=httpx.Response)
+            resp.status_code = 200
+            resp.json.return_value = {"reply": {"content": "ok"}, "status": "success"}
+            return resp
+
+        config = self._make_config(provider="openrouter", model="google/gemma-4-31b-it:free")
+
+        with mock.patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = mock.AsyncMock()
+            mock_client.post = fake_post
+            mock_client_cls.return_value.__aenter__ = mock.AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = mock.AsyncMock(return_value=False)
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                runner = BenchmarkRunner(results_dir=tmpdir, dry_run=False)
+                _run(runner._execute_trial(config, 0))
+
+        assert captured[0]["agent_config"]["llm"]["provider"] == "openrouter"
+        assert captured[0]["agent_config"]["llm"]["model"] == "google/gemma-4-31b-it:free"
