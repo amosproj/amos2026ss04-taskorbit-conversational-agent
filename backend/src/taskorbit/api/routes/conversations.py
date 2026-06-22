@@ -210,13 +210,13 @@ async def _sse_generator(
                 conversation_id=request.conversation_id,
             )
 
-        # Short-circuit paths (clarification, workflow confirmation, handoff-blocked,
-        # manual transfer) put the reply only in meta.reply without yielding chunks.
-        # Emit the text now so the frontend can render it.
-        if chunks_sent == 0 and meta.reply.content:
-            yield f"data: {json.dumps({'type': 'chunk', 'text': meta.reply.content})}\n\n"
+    # Short-circuit paths (clarification, workflow confirmation, handoff-blocked,
+    # manual transfer) put the reply only in meta.reply without yielding chunks.
+    # Emit the text now so the frontend can render it.
+    if chunks_sent == 0 and meta.reply and meta.reply.content:
+        yield f"data: {json.dumps({'type': 'chunk', 'text': meta.reply.content})}\n\n"
 
-    yield f"data: {json.dumps({'type': 'done', 'intent': meta.selected_intent, 'status': meta.status, 'selected_agent': meta.selected_agent, 'slots': meta.extracted_slots, 'missing_slots': meta.missing_slots, 'conversation_id': meta.conversation_id, 'locked_intent_name': meta.locked_intent_name, 'next_active_tool_id': meta.next_active_tool_id, 'tool_invoked': meta.tool_invoked.model_dump() if meta.tool_invoked else None, 'completed_workflow_steps': meta.completed_workflow_steps, 'confirmation': meta.confirmation.model_dump() if meta.confirmation else None})}\n\n"
+    yield f"data: {json.dumps({'type': 'done', 'intent': meta.selected_intent, 'status': meta.status, 'selected_agent': meta.selected_agent, 'slots': meta.extracted_slots, 'missing_slots': meta.missing_slots, 'conversation_id': meta.conversation_id, 'locked_intent_name': meta.locked_intent_name, 'next_active_tool_id': meta.next_active_tool_id, 'tool_invoked': meta.tool_invoked.model_dump() if meta.tool_invoked else None, 'completed_workflow_steps': meta.completed_workflow_steps, 'confirmation': meta.confirmation.model_dump() if meta.confirmation else None, 'reply': meta.reply.content if meta.reply else None})}\n\n"
 
 
 @router.post("/stream")

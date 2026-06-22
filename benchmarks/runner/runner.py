@@ -215,7 +215,7 @@ class BenchmarkRunner:
     async def _dry_run_mock_results(self, config: ExperimentConfig) -> tuple[str, Path, dict]:
         """Generate mock results for dry-run mode."""
         trials = []
-        for i in range(min(2, config.repetitions)):
+        for i in range(config.repetitions):
             metrics = TrialMetrics(
                 latency_ms=100.0 + (i * 10),
                 component_latencies={"stt": 10.0, "llm": 50.0, "tts": 40.0},

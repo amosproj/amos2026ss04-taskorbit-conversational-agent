@@ -14,7 +14,7 @@ pip install -r requirements.txt
 ### Run an Experiment
 
 ```bash
-python runner/run_benchmark.py --config configs/experiment-1.yaml
+python runner/run_benchmark.py --config configs/baseline-cloud.yaml
 ```
 
 ### View Results
@@ -26,8 +26,11 @@ python runner/compare.py
 # Export comparison as CSV
 python runner/compare.py --output-csv comparison.csv
 
-# Filter by config name
-python runner/compare.py --config experiment-1 --limit 10
+# Filter by config name (cloud model)
+python runner/compare.py --config baseline-cloud --limit 10
+
+# Filter by config name (local model)
+python runner/compare.py --config baseline-local --limit 10
 ```
 
 ## Directory Structure
@@ -35,8 +38,8 @@ python runner/compare.py --config experiment-1 --limit 10
 ```
 benchmarks/
 ├── configs/              # Experiment specifications (YAML)
-│   ├── experiment-1.yaml
-│   └── experiment-2.yaml
+│   ├── baseline-cloud.yaml
+│   └── baseline-local.yaml
 ├── runner/               # Runner and comparison tools
 │   ├── config.py         # Config schema + validation
 │   ├── storage.py        # Result serialization
@@ -132,7 +135,7 @@ a1b2c3d4,experiment-baseline,2026-06-18T11:00:00Z,150.5,148.0,152.1,1.0,3,6.67,b
 ### Run Benchmark
 
 ```bash
-python runner/run_benchmark.py --config configs/experiment-1.yaml [options]
+python runner/run_benchmark.py --config configs/baseline-cloud.yaml [options]
 ```
 
 **Options:**
@@ -146,13 +149,13 @@ python runner/run_benchmark.py --config configs/experiment-1.yaml [options]
 
 ```bash
 # Basic run
-python runner/run_benchmark.py --config configs/experiment-1.yaml
+python runner/run_benchmark.py --config configs/baseline-cloud.yaml
 
 # Dry run (mock results)
-python runner/run_benchmark.py --config configs/experiment-1.yaml --dry-run
+python runner/run_benchmark.py --config configs/baseline-cloud.yaml --dry-run
 
 # Verbose output
-python runner/run_benchmark.py --config configs/experiment-1.yaml --verbose
+python runner/run_benchmark.py --config configs/baseline-cloud.yaml --verbose
 ```
 
 ### Compare Runs
