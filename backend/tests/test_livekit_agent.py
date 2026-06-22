@@ -238,6 +238,71 @@ async def test_llm_node_skips_latency_when_no_commit_time() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Reply dedup + per-turn reset (#153)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_llm_node_replies_without_commit_turn() -> None:
+    """#153: the server-VAD end-of-turn drives a reply with no commit_turn.
+
+    Before the fix, llm_node returned empty unless request_reply() armed it,
+    so a turn the browser failed to commit (noise) never replied. Now a fresh
+    turn produces exactly one reply on its own.
+    """
+    agent, orchestrator = _make_agent("Server VAD reply")
+    chat_ctx = _make_chat_ctx([("user", "are you there")])
+
+    chunks = [c async for c in agent.llm_node(chat_ctx, [], MagicMock())]
+
+    assert chunks == ["Server VAD reply"]
+    assert len(orchestrator._captured) == 1
+
+
+@pytest.mark.asyncio
+async def test_llm_node_dedups_duplicate_calls_in_one_turn() -> None:
+    """#153: server-VAD end-of-turn and an explicit commit_turn must not both
+    reply. The second llm_node call within the same turn yields nothing."""
+    agent, orchestrator = _make_agent("Only once")
+    chat_ctx = _make_chat_ctx([("user", "hello")])
+
+    first = [c async for c in agent.llm_node(chat_ctx, [], MagicMock())]
+    second = [c async for c in agent.llm_node(chat_ctx, [], MagicMock())]
+
+    assert first == ["Only once"]
+    assert second == []
+    assert len(orchestrator._captured) == 1
+
+
+@pytest.mark.asyncio
+async def test_begin_user_turn_allows_next_reply() -> None:
+    """begin_user_turn() resets the dedup so the next utterance replies again."""
+    agent, orchestrator = _make_agent("reply")
+    chat_ctx = _make_chat_ctx([("user", "hi")])
+
+    [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
+    agent.begin_user_turn()
+    second = [c async for c in agent.llm_node(chat_ctx, [], MagicMock())]
+
+    assert second == ["reply"]
+    assert len(orchestrator._captured) == 2
+
+
+def test_begin_user_turn_clears_dedup_and_stale_commit_time() -> None:
+    """begin_user_turn() clears the dedup flag and a stale commit timestamp so a
+    later turn with no commit_turn does not report a bogus latency."""
+    agent, _ = _make_agent("reply")
+    agent._turn_replied = True
+    agent.request_reply(t_commit=123.0)
+    assert agent._t_commit == 123.0
+
+    agent.begin_user_turn()
+
+    assert agent._turn_replied is False
+    assert agent._t_commit is None
+
+
+# ---------------------------------------------------------------------------
 # Voice-path persona guardrails
 # ---------------------------------------------------------------------------
 

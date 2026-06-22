@@ -424,6 +424,44 @@ async def test_on_metrics_stt_zero_duration_not_observed(configured_settings: No
 
 
 @pytest.mark.asyncio
+async def test_user_state_speaking_resets_turn(configured_settings: None) -> None:
+    """#153: a user_state_changed -> "speaking" transition resets the per-turn
+    reply dedup (begin_user_turn); "listening"/"away" transitions do not."""
+    ctx, _ = _make_ctx()
+    mock_agent = MagicMock()
+    handler_ref: list = []
+
+    mock_session = AsyncMock()
+
+    def capture_on(event: str):
+        def decorator(fn):
+            if event == "user_state_changed":
+                handler_ref.append(fn)
+            return fn
+
+        return decorator
+
+    mock_session.on = MagicMock(side_effect=capture_on)
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+    ):
+        await entrypoint(ctx)
+
+    assert handler_ref, "_on_user_state not registered"
+    handler = handler_ref[0]
+
+    handler(MagicMock(new_state="speaking"))
+    mock_agent.begin_user_turn.assert_called_once()
+
+    mock_agent.begin_user_turn.reset_mock()
+    handler(MagicMock(new_state="listening"))
+    handler(MagicMock(new_state="away"))
+    mock_agent.begin_user_turn.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_local_participant_packet_ignored(configured_settings: None) -> None:
     """A packet whose sender identity matches the local participant must be ignored."""
     ctx, registered = _make_ctx()
