@@ -47,6 +47,7 @@ opentelemetry-sdk = ">=1.27.0"
 httpx = ">=0.28.1,<1.0.0"
 jsonschema = "^4.26.0"
 greenlet = "^3.5.1"
+openrouter = ">=0.10.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"
