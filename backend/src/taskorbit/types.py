@@ -203,6 +203,16 @@ class AgentConfig(BaseModel):
     )
     allowed_handoffs: list[str] = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def _workflow_rules_else_must_be_last(self) -> AgentConfig:
+        rules = self.workflow_rules or []
+        for index, rule in enumerate(rules):
+            if rule.when.else_branch and index != len(rules) - 1:
+                raise ValueError(
+                    "workflow_rules: else_branch rule must be the last rule in the list"
+                )
+        return self
+
 
 # ---------------------------------------------------------------------------
 # API request / response shapes

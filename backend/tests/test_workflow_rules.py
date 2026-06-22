@@ -81,3 +81,22 @@ def test_resolve_falls_back_to_static_dependencies_without_rules() -> None:
         intent_agent_name="sales",
     )
     assert deps == ["technical-support-agent-demos"]
+
+
+def test_agent_config_rejects_else_branch_not_last() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="else_branch rule must be the last"):
+        AgentConfig(
+            id="router-agent",
+            name="Router",
+            persona="p",
+            greeting="g",
+            workflow_rules=[
+                WorkflowRule(when=WorkflowRuleWhen(else_branch=True), dependencies=[]),
+                WorkflowRule(
+                    when=WorkflowRuleWhen(intent="technical_support_request"),
+                    dependencies=["tech-dep"],
+                ),
+            ],
+        )

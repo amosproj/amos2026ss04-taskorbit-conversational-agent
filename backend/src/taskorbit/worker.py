@@ -283,7 +283,7 @@ async def entrypoint(ctx: JobContext) -> None:
             agent.sync_workflow_state(
                 selected_agent=selected if isinstance(selected, str) else None,
                 completed_workflow_steps=completed if isinstance(completed, list) else None,
-                clear_pending_confirmation=bool(msg.get("clear_pending_confirmation", True)),
+                clear_pending_confirmation=bool(msg.get("clear_pending_confirmation", False)),
             )
             logger.info(
                 "worker_workflow_state_synced",

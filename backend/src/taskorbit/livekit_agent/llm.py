@@ -222,7 +222,7 @@ class OrchestratorAgent(Agent):
         *,
         selected_agent: str | None = None,
         completed_workflow_steps: list[str] | None = None,
-        clear_pending_confirmation: bool = True,
+        clear_pending_confirmation: bool = False,
     ) -> None:
         """Apply workflow state from the text UI so voice turns stay in sync."""
         if selected_agent is not None:
