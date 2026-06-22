@@ -88,7 +88,10 @@ def test_build_agent_session_uses_deepgram_elevenlabs_silero(
     assert kwargs["vad"] is mock_vad.load.return_value
     assert kwargs["stt"] is mock_stt.return_value
     assert kwargs["tts"] is mock_tts.return_value
-    assert kwargs["turn_handling"]["endpointing"]["mode"] == "manual"
+    # Server-side VAD drives end-of-turn (#153); the prior endpointing.mode
+    # "manual" was a no-op typo (mode only accepts "fixed"/"dynamic").
+    assert kwargs["turn_handling"]["turn_detection"] == "vad"
+    assert kwargs["turn_handling"]["preemptive_generation"]["preemptive_tts"] is False
     # Barge-in is enabled; brief noises are ignored via the duration threshold.
     assert kwargs["allow_interruptions"] is True
     assert kwargs["min_interruption_duration"] == 0.8

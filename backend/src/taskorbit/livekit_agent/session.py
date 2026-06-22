@@ -262,12 +262,17 @@ def build_agent_session(
         # shorter than the threshold do not trigger an interruption.
         allow_interruptions=True,
         min_interruption_duration=0.8,
-        # Push-to-talk: only reply when generate_reply() is called explicitly.
-        # "manual" endpointing disables VAD/silence auto-trigger.
-        # preemptive_tts=False stops the session from calling llm_node early
-        # to pre-warm TTS — that would fire the orchestrator before Send.
+        # Server-side VAD turn detection (turn_detection="vad"): Silero detects
+        # when the user stops speaking and the framework commits the turn. This
+        # is more noise-robust than the browser's amplitude check (#153). The
+        # prior {"endpointing": {"mode": "manual"}} was a silent no-op:
+        # endpointing.mode only accepts "fixed"/"dynamic", so "manual" was
+        # ignored and turn detection defaulted to VAD anyway. Setting it
+        # explicitly here makes the intent real. Reply gating lives in
+        # OrchestratorAgent.llm_node. preemptive_tts=False keeps llm_node from
+        # being called early to pre-warm TTS before the turn is committed.
         turn_handling={
-            "endpointing": {"mode": "manual"},
+            "turn_detection": "vad",
             "preemptive_generation": {"preemptive_tts": False},
         },
     )
