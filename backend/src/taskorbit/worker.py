@@ -24,8 +24,8 @@ from livekit.agents.metrics import STTMetrics, TTSMetrics
 from livekit.agents.voice.events import AgentEvent
 from pydantic import ValidationError
 
-from taskorbit.api.deps import _DEV_USER_EMAIL
 from taskorbit.config import get_settings
+from taskorbit.constants import DEV_USER_EMAIL
 from taskorbit.database import AsyncSessionLocal
 from taskorbit.database.crud import get_user_by_email
 from taskorbit.livekit_agent import build_agent_session, build_default_agent
@@ -122,13 +122,13 @@ async def entrypoint(ctx: JobContext) -> None:
     # so the voice path can load custom agent dependencies from the database.
     dev_user_id: int | None = None
     async with AsyncSessionLocal() as db:
-        user = await get_user_by_email(db, _DEV_USER_EMAIL)
+        user = await get_user_by_email(db, DEV_USER_EMAIL)
         if user and user.is_active:
             dev_user_id = user.id
         else:
             logger.warning(
                 "worker_dev_user_not_found",
-                email=_DEV_USER_EMAIL,
+                email=DEV_USER_EMAIL,
                 effect="custom agent dependencies may not resolve in voice path",
             )
 
@@ -280,15 +280,15 @@ async def entrypoint(ctx: JobContext) -> None:
         elif msg_type == "workflow_state":
             selected = msg.get("selected_agent")
             completed = msg.get("completed_workflow_steps")
-            agent.sync_workflow_state(
+            synced = agent.sync_workflow_state(
                 selected_agent=selected if isinstance(selected, str) else None,
                 completed_workflow_steps=completed if isinstance(completed, list) else None,
                 clear_pending_confirmation=bool(msg.get("clear_pending_confirmation", False)),
             )
             logger.info(
                 "worker_workflow_state_synced",
-                selected_agent=agent._current_routed_agent,
-                completed_steps=len(agent._completed_workflow_steps),
+                selected_agent=synced.routed_agent,
+                completed_steps=len(synced.completed_steps),
             )
 
     await session.start(agent, room=ctx.room)
