@@ -127,11 +127,9 @@ def _resolve_intent_after_clarification_gate(
     return dataclass_replace(intent, requires_clarification=False, confidence=1.0)
 
 
-def _workflow_ui_selected_agent(request: ConversationRequest) -> str:
+def _workflow_ui_selected_agent(request: ConversationRequest) -> str | None:
     """Stable workflow routing id for the UI — never intent registry names like general_inquiry."""
-    if request.selected_agent:
-        return request.selected_agent
-    return request.agent_config.id
+    return request.selected_agent or request.agent_config.id or None
 
 
 @dataclass
@@ -325,6 +323,14 @@ class ConversationOrchestrator:
             # Resolve workflow dependencies BEFORE enforcing handoff rules.
             # This ensures DEMO-1 (prerequisite flow) is offered even when a
             # requested handoff would otherwise be blocked.
+            #
+            # Note: _resolve_missing_dependencies may also have been called inside
+            # _is_executing_workflow_prerequisite (via the clarification gate above)
+            # with the *pre-gate* intent. We cannot reuse that result here because
+            # _resolve_intent_after_clarification_gate can return a *different* intent
+            # (from _KNOWN_INTENTS[current_intent_name]) — making the two calls
+            # operate on different intents. Correctness requires recomputing here with
+            # the post-gate intent that the rest of this pipeline actually uses.
             direct_dependencies, effective_dependencies, missing_dependencies = (
                 _resolve_missing_dependencies(request, intent)
             )
@@ -404,7 +410,7 @@ class ConversationOrchestrator:
                                 description=f"Prerequisite: {dep_name}",
                             ),
                             selected_intent=intent.name,
-                            selected_agent=_workflow_ui_selected_agent(request),
+                            selected_agent=_workflow_ui_selected_agent(request) or "",
                             intent_confidence=intent.confidence,
                             locked_intent_name=intent.name,
                             completed_workflow_steps=request.completed_workflow_steps,
@@ -423,7 +429,7 @@ class ConversationOrchestrator:
                             ),
                             status=ConversationStatus.REJECTED,
                             selected_intent=intent.name,
-                            selected_agent=_workflow_ui_selected_agent(request),
+                            selected_agent=_workflow_ui_selected_agent(request) or "",
                             locked_intent_name=intent.name,
                             completed_workflow_steps=request.completed_workflow_steps,
                         )
@@ -834,6 +840,10 @@ class ConversationOrchestrator:
                     ]
 
             # Resolve workflow dependencies BEFORE enforcing handoff rules.
+            # See the equivalent block in process_message for why this cannot
+            # reuse the result computed inside the clarification gate: the gate
+            # may return a different intent (from _KNOWN_INTENTS), so the two
+            # calls can operate on different intents and must stay separate.
             direct_dependencies, effective_dependencies, missing_dependencies = (
                 _resolve_missing_dependencies(request, intent)
             )
@@ -903,7 +913,7 @@ class ConversationOrchestrator:
                                 description=f"Prerequisite: {dep_name}",
                             ),
                             selected_intent=intent.name,
-                            selected_agent=_workflow_ui_selected_agent(request),
+                            selected_agent=_workflow_ui_selected_agent(request) or "",
                             intent_confidence=intent.confidence,
                             locked_intent_name=intent.name,
                             completed_workflow_steps=request.completed_workflow_steps,
@@ -923,7 +933,7 @@ class ConversationOrchestrator:
                             ),
                             status=ConversationStatus.REJECTED,
                             selected_intent=intent.name,
-                            selected_agent=_workflow_ui_selected_agent(request),
+                            selected_agent=_workflow_ui_selected_agent(request) or "",
                             locked_intent_name=intent.name,
                             completed_workflow_steps=request.completed_workflow_steps,
                         )
