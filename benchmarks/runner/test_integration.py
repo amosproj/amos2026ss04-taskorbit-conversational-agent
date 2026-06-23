@@ -94,6 +94,7 @@ class TestDryRunBaselineLocal:
                 assert not missing, f"Missing fields in JSONL line: {missing}"
                 assert isinstance(obj["metrics"]["latency_ms"], float)
                 assert isinstance(obj["metrics"]["success"], bool)
+                assert isinstance(obj["metrics"]["system_metrics"], dict)
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +162,7 @@ class TestResultsJsonlSchema:
             assert obj["metrics"]["component_latencies"]["llm"] == 80.0
             assert obj["metrics"]["token_usage"]["prompt"] == 40
             assert obj["metrics"]["success"] is True
+            assert isinstance(obj["metrics"]["system_metrics"], dict)
 
 
 # ---------------------------------------------------------------------------
@@ -557,3 +559,41 @@ class TestExecuteTrial:
 
         assert captured[0]["agent_config"]["llm"]["provider"] == "openrouter"
         assert captured[0]["agent_config"]["llm"]["model"] == "google/gemma-4-31b-it:free"
+
+
+class TestBenchmarkConcurrency:
+    """Validate that benchmark execution respects the configured concurrency."""
+
+    def test_run_experiment_honors_concurrency_limit(self) -> None:
+        """run_experiment should not exceed the configured concurrency."""
+        import unittest.mock as mock
+
+        config = ExperimentConfig(
+            name="concurrency-test",
+            description="",
+            provider="openai",
+            model="gpt-4o-mini",
+            input_set="benchmarks/inputs/short_prompts.jsonl",
+            repetitions=3,
+            concurrency=2,
+            metrics=["latency_e2e"],
+            timeout_seconds=10,
+        )
+
+        active = 0
+        peak_active = 0
+
+        async def fake_execute_trial(*_args, **_kwargs):
+            nonlocal active, peak_active
+            active += 1
+            peak_active = max(peak_active, active)
+            await asyncio.sleep(0.01)
+            active -= 1
+            return TrialMetrics(latency_ms=100.0, success=True, throughput=10.0)
+
+        with mock.patch.object(BenchmarkRunner, "_execute_trial", side_effect=fake_execute_trial):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                runner = BenchmarkRunner(results_dir=tmpdir, dry_run=False)
+                _run(runner.run_experiment(config))
+
+        assert peak_active == 2

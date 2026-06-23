@@ -5,14 +5,17 @@ from __future__ import annotations
 import csv
 import json
 import logging
-import time
+import platform
 import uuid
+from importlib import metadata as importlib_metadata
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+_RUNTIME_DEPENDENCIES = ("httpx", "PyYAML", "psutil")
 
 
 @dataclass
@@ -106,6 +109,15 @@ class ResultWriter:
                 timestamp=timestamp,
             )
 
+        if not metadata.run_id:
+            metadata.run_id = run_id
+        if not metadata.timestamp:
+            metadata.timestamp = timestamp
+        if not metadata.python_version:
+            metadata.python_version = platform.python_version()
+        if not metadata.dependencies:
+            metadata.dependencies = _collect_dependency_versions()
+
         run_dir = self.results_dir / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -175,3 +187,14 @@ class ResultWriter:
             for row in reader:
                 results.append(row)
         return results
+
+
+def _collect_dependency_versions() -> dict[str, str]:
+    """Return versions of the benchmark runtime dependencies."""
+    versions: dict[str, str] = {}
+    for dist_name in _RUNTIME_DEPENDENCIES:
+        try:
+            versions[dist_name] = importlib_metadata.version(dist_name)
+        except importlib_metadata.PackageNotFoundError:
+            continue
+    return versions

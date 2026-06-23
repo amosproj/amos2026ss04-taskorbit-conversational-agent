@@ -13,7 +13,7 @@ from typing import Any
 import httpx
 
 from config import ExperimentConfig
-from metrics import capture_system_metrics
+from metrics import capture_component_latencies, capture_system_metrics
 from storage import ResultWriter, RunMetadata, TrialMetrics
 
 # Default prompt used when the input JSONL is missing or exhausted.
@@ -83,11 +83,7 @@ class BenchmarkRunner:
             # Return mock results for dry-run
             return await self._dry_run_mock_results(config)
 
-        trials = []
-        for trial_idx in range(config.repetitions):
-            logger.info(f"Running trial {trial_idx + 1}/{config.repetitions}")
-            metrics = await self._execute_trial(config, trial_idx, input_data)
-            trials.append((trial_idx, metrics))
+        trials = await self._execute_trials(config, input_data)
 
         metadata = RunMetadata(
             run_id="",
@@ -161,7 +157,7 @@ class BenchmarkRunner:
             if response.status_code != 200:
                 error_body = response.text[:300]
                 logger.error(f"Trial {trial_idx} HTTP {response.status_code}: {error_body}")
-                return TrialMetrics(
+                return self._build_trial_metrics(
                     latency_ms=elapsed_ms,
                     success=False,
                     error_message=f"HTTP {response.status_code}: {error_body}",
@@ -170,43 +166,35 @@ class BenchmarkRunner:
             data: dict[str, Any] = response.json()
             reply_text: str = data.get("reply", {}).get("content", "")
 
-            sys_metrics = capture_system_metrics()
-
             logger.debug(
                 f"Trial {trial_idx} completed in {elapsed_ms:.1f}ms "
                 f"reply_len={len(reply_text)}"
             )
 
-            return TrialMetrics(
+            return self._build_trial_metrics(
                 latency_ms=elapsed_ms,
-                # Component breakdown is not exposed by the REST endpoint; LLM-stage
-                # latency is available in Prometheus (taskorbit_pipeline_latency_seconds).
-                component_latencies={},
-                # The /process response does not include token counts; leave as zeros
-                # until the backend exposes usage in the response body.
-                token_usage={"prompt": 0, "completion": 0},
                 success=True,
-                throughput=1000.0 / elapsed_ms if elapsed_ms > 0 else 0.0,
-                system_metrics=sys_metrics,
+                component_latencies=capture_component_latencies(),
+                token_usage={"prompt": 0, "completion": 0},
             )
 
         except httpx.TimeoutException:
             logger.error(f"Trial {trial_idx} timed out after {config.timeout_seconds}s")
-            return TrialMetrics(
+            return self._build_trial_metrics(
                 latency_ms=config.timeout_seconds * 1000.0,
                 success=False,
                 error_message=f"Request timed out after {config.timeout_seconds}s",
             )
         except httpx.ConnectError as exc:
             logger.error(f"Trial {trial_idx} connection error: {exc}")
-            return TrialMetrics(
+            return self._build_trial_metrics(
                 latency_ms=0.0,
                 success=False,
                 error_message=f"Could not connect to {api_url} — is the backend running?",
             )
         except Exception as exc:
             logger.error(f"Trial {trial_idx} unexpected error: {exc}")
-            return TrialMetrics(
+            return self._build_trial_metrics(
                 latency_ms=0.0,
                 success=False,
                 error_message=str(exc),
@@ -216,11 +204,11 @@ class BenchmarkRunner:
         """Generate mock results for dry-run mode."""
         trials = []
         for i in range(config.repetitions):
-            metrics = TrialMetrics(
+            metrics = self._build_trial_metrics(
                 latency_ms=100.0 + (i * 10),
+                success=True,
                 component_latencies={"stt": 10.0, "llm": 50.0, "tts": 40.0},
                 token_usage={"prompt": 50, "completion": 25},
-                success=True,
                 throughput=10.0,
             )
             trials.append((i, metrics))
@@ -236,6 +224,44 @@ class BenchmarkRunner:
 
         return run_id, results_file, summary
 
+    async def _execute_trials(
+        self,
+        config: ExperimentConfig,
+        input_data: list[dict[str, Any]] | None = None,
+    ) -> list[tuple[int, TrialMetrics]]:
+        """Execute benchmark trials with the configured concurrency limit."""
+        semaphore = asyncio.Semaphore(config.concurrency)
+
+        async def _run_trial(trial_idx: int) -> tuple[int, TrialMetrics]:
+            async with semaphore:
+                logger.info(f"Running trial {trial_idx + 1}/{config.repetitions}")
+                metrics = await self._execute_trial(config, trial_idx, input_data)
+                return trial_idx, metrics
+
+        trials = await asyncio.gather(*(_run_trial(trial_idx) for trial_idx in range(config.repetitions)))
+        return sorted(trials, key=lambda item: item[0])
+
+    def _build_trial_metrics(
+        self,
+        latency_ms: float,
+        *,
+        success: bool,
+        component_latencies: dict[str, float] | None = None,
+        token_usage: dict[str, int] | None = None,
+        error_message: str | None = None,
+        throughput: float | None = None,
+    ) -> TrialMetrics:
+        """Create a TrialMetrics object with the standard benchmark shape."""
+        return TrialMetrics(
+            latency_ms=latency_ms,
+            component_latencies=component_latencies or capture_component_latencies(),
+            token_usage=token_usage or {"prompt": 0, "completion": 0},
+            success=success,
+            error_message=error_message,
+            throughput=throughput if throughput is not None else (1000.0 / latency_ms if success and latency_ms > 0 else 0.0),
+            system_metrics=capture_system_metrics(),
+        )
+
     def _compute_summary(self, trials: list[tuple[int, TrialMetrics]]) -> dict[str, Any]:
         """Compute summary statistics for trials."""
         if not trials:
@@ -244,15 +270,18 @@ class BenchmarkRunner:
         latencies = [m.latency_ms for _, m in trials]
         successes = sum(1 for _, m in trials if m.success)
         failures = len(trials) - successes
+        throughputs = [m.throughput for _, m in trials if m.throughput > 0]
 
         summary = {
             "total_trials": len(trials),
             "successes": successes,
             "failures": failures,
+            "failure_count": failures,
             "success_rate": successes / len(trials),
             "avg_latency_ms": sum(latencies) / len(latencies) if latencies else 0.0,
             "min_latency_ms": min(latencies) if latencies else 0.0,
             "max_latency_ms": max(latencies) if latencies else 0.0,
+            "throughput_avg": sum(throughputs) / len(throughputs) if throughputs else 0.0,
         }
 
         all_tokens = {}

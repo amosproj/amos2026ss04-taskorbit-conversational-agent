@@ -111,12 +111,24 @@ One JSON object per line:
       "completion": 25
     },
     "success": true,
-    "throughput": 6.67
+    "throughput": 6.67,
+    "system_metrics": {
+      "cpu_percent": 12.5,
+      "memory_rss_mb": 84.2,
+      "memory_percent": 31.4,
+      "gpu_percent": null,
+      "gpu_memory_percent": null
+    }
   },
   "environment": {
     "git_sha": "abc123def456...",
     "docker_image": "taskorbit:v1",
-    "python_version": "3.11.0"
+    "python_version": "3.11.0",
+    "dependencies": {
+      "httpx": "0.28.1",
+      "PyYAML": "6.0.2",
+      "psutil": "7.0.0"
+    }
   }
 }
 ```
@@ -203,7 +215,8 @@ pytest runner/test_runner.py -v
 2. **Results persisted** in structured JSONL + index.csv
 3. **Metrics collected** consistently: latency (E2E + components), tokens, errors
 4. **Failed runs** tracked: exit code non-zero if any trial fails
-5. **Environment captured**: git SHA, Python version, docker image
+5. **Environment captured**: git SHA, Python version, docker image, runtime dependency versions
+6. **System metrics captured**: CPU, memory, optional GPU snapshot per trial
 
 ## Future Features
 

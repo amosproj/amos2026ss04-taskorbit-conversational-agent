@@ -192,10 +192,25 @@ def export_to_otel(
             "benchmark_success_rate",
             description="Fraction of trials that succeeded",
         )
+        throughput_avg = meter.create_gauge(
+            "benchmark_throughput_avg",
+            description="Average throughput across all trials",
+        )
+        total_trials = meter.create_gauge(
+            "benchmark_total_trials",
+            description="Total number of trials in the benchmark run",
+        )
+        failure_count = meter.create_gauge(
+            "benchmark_failure_count",
+            description="Number of failed trials in the benchmark run",
+        )
 
         labels = {"run_id": run_id, "config_name": config_name}
         avg_latency.set(summary.get("avg_latency_ms", 0.0), labels)
         success_rate.set(summary.get("success_rate", 0.0), labels)
+        throughput_avg.set(summary.get("throughput_avg", 0.0), labels)
+        total_trials.set(summary.get("total_trials", 0), labels)
+        failure_count.set(summary.get("failure_count", summary.get("failures", 0)), labels)
 
         provider.force_flush()
         logger.info("export_to_otel: metrics pushed", extra={"run_id": run_id, "endpoint": resolved_endpoint})

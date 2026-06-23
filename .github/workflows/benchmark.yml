@@ -169,7 +169,7 @@ jobs:
           from pathlib import Path
 
           required_fields = {"run_id", "timestamp", "trial_index", "metrics", "environment"}
-          metric_fields   = {"latency_ms", "success"}
+          metric_fields   = {"latency_ms", "component_latencies", "token_usage", "success", "throughput", "system_metrics"}
           errors = []
 
           for jsonl in Path("results").rglob("results.jsonl"):
@@ -189,6 +189,10 @@ jobs:
                       metric_missing = metric_fields - obj.get("metrics", {}).keys()
                       if metric_missing:
                           errors.append(f"{jsonl}:{i+1}: metrics missing {metric_missing}")
+                      if not isinstance(obj.get("metrics", {}).get("system_metrics", {}), dict):
+                          errors.append(f"{jsonl}:{i+1}: system_metrics must be a dict")
+                      if not obj.get("environment", {}).get("python_version"):
+                          errors.append(f"{jsonl}:{i+1}: environment.python_version missing")
 
           if errors:
               for e in errors:

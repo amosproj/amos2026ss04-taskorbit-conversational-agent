@@ -222,6 +222,27 @@ class TestResultWriter:
             assert run_id
             assert results_file.exists()
 
+    def test_write_run_populates_runtime_metadata(self) -> None:
+        """ResultWriter should fill in environment metadata automatically."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            writer = ResultWriter(tmpdir)
+
+            trials = [
+                (0, TrialMetrics(latency_ms=100.0, success=True, throughput=10.0)),
+            ]
+
+            run_id, results_file = writer.write_run("metadata-test", trials)
+
+            with open(results_file) as f:
+                record = json.loads(f.readline())
+
+            environment = record["environment"]
+            assert record["run_id"] == run_id
+            assert environment["run_id"] == run_id
+            assert environment["config_name"] == "metadata-test"
+            assert environment["python_version"]
+            assert isinstance(environment["dependencies"], dict)
+
     def test_results_jsonl_format(self) -> None:
         """Test JSONL result format."""
         with tempfile.TemporaryDirectory() as tmpdir:

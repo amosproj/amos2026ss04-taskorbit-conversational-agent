@@ -32,6 +32,29 @@ class BenchmarkComparison:
                 rows.append(row)
         return rows
 
+    @staticmethod
+    def _coerce_int(value: Any, default: int = 0) -> int:
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _coerce_float(value: Any, default: float = 0.0) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _failure_count(self, run: dict[str, Any]) -> int:
+        """Derive the number of failed trials from an index row."""
+        if run.get("failure_count") not in (None, ""):
+            return self._coerce_int(run.get("failure_count"))
+
+        total_trials = self._coerce_int(run.get("total_trials"))
+        successes = int(round(total_trials * self._coerce_float(run.get("success_rate"))))
+        return max(total_trials - successes, 0)
+
     def filter_runs(
         self,
         config_name: str | None = None,
@@ -72,6 +95,7 @@ class BenchmarkComparison:
             "min_latency_ms",
             "max_latency_ms",
             "success_rate",
+            "failure_count",
             "total_trials",
             "throughput_avg",
         ]
@@ -81,6 +105,7 @@ class BenchmarkComparison:
             writer.writeheader()
             for run in runs:
                 filtered_run = {k: run.get(k, "") for k in comparison_fields}
+                filtered_run["failure_count"] = self._failure_count(run)
                 writer.writerow(filtered_run)
 
         logger.info(f"Wrote comparison to {output_file}")
@@ -108,18 +133,19 @@ class BenchmarkComparison:
         summary_lines.append("")
 
         summary_lines.append(
-            f"{'Run ID':<12} {'Avg Latency (ms)':<18} {'Success Rate':<15} {'Trials':<8}"
+            f"{'Run ID':<12} {'Avg Latency (ms)':<18} {'Success Rate':<15} {'Failures':<10} {'Trials':<8}"
         )
         summary_lines.append("-" * 60)
 
         for run in runs:
             run_id = run.get("run_id", "N/A")[:12]
-            avg_lat = float(run.get("avg_latency_ms", 0))
-            success = float(run.get("success_rate", 0)) * 100
+            avg_lat = self._coerce_float(run.get("avg_latency_ms", 0))
+            success = self._coerce_float(run.get("success_rate", 0)) * 100
             trials = run.get("total_trials", "N/A")
+            failures = self._failure_count(run)
 
             summary_lines.append(
-                f"{run_id:<12} {avg_lat:<18.2f} {success:<14.1f}% {trials:<8}"
+                f"{run_id:<12} {avg_lat:<18.2f} {success:<14.1f}% {failures:<10} {trials:<8}"
             )
 
         summary_lines.append("")
