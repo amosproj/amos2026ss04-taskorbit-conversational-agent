@@ -312,7 +312,10 @@ class TestOrchestratorSlotIntegration:
 
                 response = await orchestrator.process_message(request)
 
-                assert response.extracted_slots == {}
+                assert response.extracted_slots == {
+                    "caller_name": "John Doe",
+                    "email_address": "john@example.com",
+                }
                 assert len(response.missing_slots) == 2
                 assert "phone_number" in response.missing_slots
                 assert "preferred_date" in response.missing_slots

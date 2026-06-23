@@ -75,6 +75,7 @@ def _selected_agent_matches_dep(selected_agent: str | None, dep_id: str) -> bool
     return selected_agent == dep_id or selected_agent == dep_registry
 
 
+
 def _resolve_missing_dependencies(
     request: ConversationRequest,
     intent: IntentResult,
@@ -130,6 +131,16 @@ def _resolve_intent_after_clarification_gate(
 def _workflow_ui_selected_agent(request: ConversationRequest) -> str | None:
     """Stable workflow routing id for the UI — never intent registry names like general_inquiry."""
     return request.selected_agent or request.agent_config.id or None
+
+
+def _normalize_field_key(fields: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Ensure each field dict has a ``name`` key.
+
+    Frontend ``DataExtractionTool.params`` uses ``variable_name`` while the
+    backend ``SlotExtractor`` expects ``name``.  This helper bridges the two
+    schemas so tool-configured fields work end-to-end.
+    """
+    return [{**f, "name": f.get("name") or f.get("variable_name", "")} for f in fields]
 
 
 @dataclass
@@ -513,9 +524,22 @@ class ConversationOrchestrator:
                 request.messages, agent, active_tool_id=request.active_tool_id
             )
 
-            # 3b. Extract slots from conversation history
+            # 3b. Extract slots from conversation history.
+            # Prefer the user-configured fields on the active DataExtractionTool over
+            # the intent's hardcoded required_inputs so custom fields (email, phone,
+            # etc.) are actually extracted.
+            extraction_inputs = intent.required_inputs
+            if (
+                active_tool is not None
+                and active_tool.type == ToolType.DATA_EXTRACTION
+                and isinstance(active_tool.parameters.get("params"), list)
+                and active_tool.parameters["params"]
+            ):
+                extraction_inputs = _normalize_field_key(active_tool.parameters["params"])
+                intent = dataclass_replace(intent, required_inputs=extraction_inputs)
+
             slot_result = await self._extract_slots(
-                request.messages, intent.required_inputs, active_config.llm
+                request.messages, extraction_inputs, active_config.llm
             )
             logger.info(
                 "slots_extracted",
@@ -599,7 +623,7 @@ class ConversationOrchestrator:
                 selected_agent=agent.agent_name,
                 intent_confidence=intent.confidence,
                 status=response_status,
-                extracted_slots=slot_result.to_dict() if slot_result.is_complete else {},
+                extracted_slots=slot_result.to_dict(),
                 missing_slots=slot_result.missing,
                 tool_invoked=active_tool if tool_data else None,
                 locked_intent_name=intent.name,
@@ -1019,8 +1043,21 @@ class ConversationOrchestrator:
             )
 
             # 3b. Extract slots.
+            # Prefer the user-configured fields on the active DataExtractionTool over
+            # the intent's hardcoded required_inputs so custom fields (email, phone,
+            # etc.) are actually extracted.
+            extraction_inputs = intent.required_inputs
+            if (
+                active_tool is not None
+                and active_tool.type == ToolType.DATA_EXTRACTION
+                and isinstance(active_tool.parameters.get("params"), list)
+                and active_tool.parameters["params"]
+            ):
+                extraction_inputs = _normalize_field_key(active_tool.parameters["params"])
+                intent = dataclass_replace(intent, required_inputs=extraction_inputs)
+
             slot_result = await self._extract_slots(
-                request.messages, intent.required_inputs, active_config.llm
+                request.messages, extraction_inputs, active_config.llm
             )
             logger.info(
                 "slots_extracted",
@@ -1111,7 +1148,7 @@ class ConversationOrchestrator:
                 selected_agent=agent.agent_name,
                 intent_confidence=intent.confidence,
                 status=response_status,
-                extracted_slots=slot_result.to_dict() if slot_result.is_complete else {},
+                extracted_slots=slot_result.to_dict(),
                 missing_slots=slot_result.missing,
                 tool_invoked=active_tool if tool_data else None,
                 locked_intent_name=intent.name,
@@ -1386,7 +1423,11 @@ class ConversationOrchestrator:
                 "slot_extraction_error",
                 error=str(exc),
             )
-            missing = [f["name"] for f in required_inputs if f.get("required", True)]
+            missing = [
+                f.get("name") or f.get("variable_name", "unknown")
+                for f in required_inputs
+                if f.get("required", True)
+            ]
             return SlotExtractionResult(missing=missing)
 
     def _select_active_tool(
