@@ -62,6 +62,13 @@ async def process_conversation(
         conversation_id = conv.id
         request = request.model_copy(update={"conversation_id": conversation_id})
         logger.info("conversation_auto_created", conversation_id=conversation_id)
+        if request.agent_config.greeting:
+            await create_conversation_message(
+                db=db,
+                conversation_id=conversation_id,
+                role="assistant",
+                content=request.agent_config.greeting,
+            )
 
     logger.info(
         "conversation_request_received",
@@ -101,13 +108,14 @@ async def process_conversation(
             if saved is None:
                 logger.error("failed_to_save_assistant_message", conversation_id=conversation_id)
 
-        # Persist slot extractions with tool attribution for history transparency
-        if response.extracted_slots:
-            tool_id = response.tool_invoked.id if response.tool_invoked else "orchestrator"
+        # Persist slot extractions only when the tool actually fired (is_complete).
+        # Partial fills are returned in the response for UI progress but not saved
+        # to avoid duplicate rows across turns.
+        if response.extracted_slots and response.tool_invoked:
             await create_slot_extractions(
                 db=db,
                 conversation_id=conversation_id,
-                tool_id=tool_id,
+                tool_id=response.tool_invoked.id,
                 slots=response.extracted_slots,
                 user_id=user_id,
             )
@@ -216,6 +224,26 @@ async def _sse_generator(
     if chunks_sent == 0 and meta.reply and meta.reply.content:
         yield f"data: {json.dumps({'type': 'chunk', 'text': meta.reply.content})}\n\n"
 
+    # Persist slot extractions only when the tool actually fired (is_complete).
+    # Partial fills are returned to the frontend but not saved to avoid duplicate rows.
+    if meta.extracted_slots and meta.tool_invoked:
+        await create_slot_extractions(
+            db=db,
+            conversation_id=request.conversation_id,
+            tool_id=meta.tool_invoked.id,
+            slots=meta.extracted_slots,
+            user_id=user_id,
+        )
+
+    if meta.tool_invoked:
+        await create_tool_execution(
+            db=db,
+            conversation_id=request.conversation_id,
+            tool_id=meta.tool_invoked.id,
+            tool_type=meta.tool_invoked.type.value,
+            result={"extracted_slots": meta.extracted_slots} if meta.extracted_slots else None,
+        )
+
     yield f"data: {json.dumps({'type': 'done', 'intent': meta.selected_intent, 'status': meta.status, 'selected_agent': meta.selected_agent, 'slots': meta.extracted_slots, 'missing_slots': meta.missing_slots, 'conversation_id': meta.conversation_id, 'locked_intent_name': meta.locked_intent_name, 'next_active_tool_id': meta.next_active_tool_id, 'tool_invoked': meta.tool_invoked.model_dump() if meta.tool_invoked else None, 'completed_workflow_steps': meta.completed_workflow_steps, 'confirmation': meta.confirmation.model_dump() if meta.confirmation else None, 'reply': meta.reply.content if meta.reply else None})}\n\n"
 
 
@@ -247,6 +275,13 @@ async def stream_conversation(
         conversation_id = conv.id
         request = request.model_copy(update={"conversation_id": conversation_id})
         logger.info("conversation_auto_created", conversation_id=conversation_id)
+        if request.agent_config.greeting:
+            await create_conversation_message(
+                db=db,
+                conversation_id=conversation_id,
+                role="assistant",
+                content=request.agent_config.greeting,
+            )
 
     logger.info(
         "sse_stream_request_received",
