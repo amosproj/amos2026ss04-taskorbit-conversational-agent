@@ -49,6 +49,9 @@ log = get_logger(__name__)
 _CONFIRM_PATTERNS = (
     r"\byes\b",
     r"\bproceed\b",
+    r"\bcontinue\b",
+    r"\bcontinua\b",
+    r"\bcontinúa\b",
     r"\bsure\b",
     r"\bok\b",
     r"\bgo ahead\b",
@@ -327,7 +330,7 @@ class OrchestratorAgent(Agent):
 
         self._locked_intent_name = response.locked_intent_name
         self._completed_workflow_steps = response.completed_workflow_steps
-        if response.status == "workflow_confirmation_required" and response.confirmation:
+        if response.status in {"confirmation_required", "workflow_confirmation_required"} and response.confirmation:
             self._pending_confirmation_id = response.confirmation.confirmation_id
         else:
             self._pending_confirmation_id = None
