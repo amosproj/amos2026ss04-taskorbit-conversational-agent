@@ -74,6 +74,8 @@ async def process_conversation(
         "conversation_request_received",
         conversation_id=conversation_id,
         message_count=len(request.messages),
+        llm_provider=request.agent_config.llm.provider,
+        llm_model=request.agent_config.llm.model,
     )
     try:
         request = await enrich_request_dependency_configs(request, db, user_id)
@@ -181,6 +183,7 @@ async def _sse_generator(
             )
 
     meta: ConversationResponse | None = None
+    chunks_sent = 0
 
     async for event in orchestrator.process_message_stream(request, db=db, user_id=user_id):
         if await http_request.is_disconnected():
@@ -188,6 +191,7 @@ async def _sse_generator(
             return
 
         if isinstance(event, str):
+            chunks_sent += 1
             yield f"data: {json.dumps({'type': 'chunk', 'text': event})}\n\n"
         elif isinstance(event, ConversationResponse):
             meta = event
@@ -212,6 +216,12 @@ async def _sse_generator(
                 "sse_failed_to_save_assistant_message",
                 conversation_id=request.conversation_id,
             )
+
+        # Short-circuit paths (clarification, workflow confirmation, handoff-blocked,
+        # manual transfer) put the reply only in meta.reply without yielding chunks.
+        # Emit the text now so the frontend can render it.
+        if chunks_sent == 0 and meta.reply.content:
+            yield f"data: {json.dumps({'type': 'chunk', 'text': meta.reply.content})}\n\n"
 
     # Persist slot extractions only when the tool actually fired (is_complete).
     # Partial fills are returned to the frontend but not saved to avoid duplicate rows.
@@ -276,6 +286,8 @@ async def stream_conversation(
         "sse_stream_request_received",
         conversation_id=request.conversation_id,
         message_count=len(request.messages),
+        llm_provider=request.agent_config.llm.provider,
+        llm_model=request.agent_config.llm.model,
     )
     return StreamingResponse(
         _sse_generator(http_request, request, orchestrator, db, user_id),

@@ -18,6 +18,9 @@ from .errors import LLMConfigError
 # voice turn. Fail fast here with a clear error instead. Prefix-based on
 # purpose: it only rejects names that unambiguously belong elsewhere and
 # leaves anything it doesn't recognise to the provider to validate.
+# OPENROUTER is excluded: model names are free-form namespaced strings
+# (e.g. "qwen/qwen-2.5-7b-instruct:free") that don't share any prefix with
+# the cloud providers, so no cross-provider confusion is possible.
 _PROVIDER_MODEL_PREFIXES = {
     LLMProvider.OPENAI: "gpt-",
     LLMProvider.GOOGLE: "gemini-",
@@ -83,5 +86,17 @@ def get_llm_client(
         except ImportError as exc:
             raise LLMConfigError("GeminiClient is not yet implemented") from exc
         return GeminiClient(llm_config=llm_config, settings=settings)
+
+    if llm_config.provider == LLMProvider.OPENROUTER:
+        if not settings.openrouter_api_key:
+            raise LLMConfigError(
+                "OPENROUTER_API_KEY is not set; cannot instantiate OpenRouterClient. "
+                "Get a free key at https://openrouter.ai/keys"
+            )
+        try:
+            from .openrouter_client import OpenRouterClient  # type: ignore[import]
+        except ImportError as exc:
+            raise LLMConfigError("OpenRouterClient is not yet implemented") from exc
+        return OpenRouterClient(llm_config=llm_config, settings=settings)
 
     raise LLMConfigError(f"Unexpected LLM provider: {llm_config.provider!r}; no client registered")

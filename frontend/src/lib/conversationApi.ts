@@ -198,9 +198,14 @@ function adaptTool(
 }
 
 function adaptAgentConfig(agent: AgentConfig): BackendAgentConfig {
-  // Map FE provider id to backend LLMProvider enum, matching the voice
-  // path in livekitAgentMetadata.ts (backend accepts "openai"/"google").
-  const llmProvider = agent.llm.provider === "gemini" ? "google" : "openai";
+  // Map FE provider id to backend LLMProvider enum value.
+  // "gemini" → "google", "openrouter" → "openrouter", "openai" → "openai".
+  const llmProvider =
+    agent.llm.provider === "gemini"
+      ? "google"
+      : agent.llm.provider === "openrouter"
+        ? "openrouter"
+        : "openai";
   const out: BackendAgentConfig = {
     id: agent.agent_id,
     name: agent.name,
