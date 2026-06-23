@@ -244,8 +244,18 @@ def build_agent_session(
     return AgentSession(
         vad=silero.VAD.load(
             activation_threshold=0.7,
-            deactivation_threshold=0.45,
+            # Raised 0.45 -> 0.6 (#153): a steady fan parks Silero's speech
+            # probability in the 0.45-0.7 hysteresis band, holding the turn open
+            # so end-of-speech never fires. A higher deactivation threshold lets
+            # the turn end when the user stops even with background noise. Tune
+            # down if it clips quiet pauses in real speech.
+            deactivation_threshold=0.6,
             min_speech_duration=0.2,
+            # Held at 1.5s by the #102 regression guard: a shorter window lets a
+            # mid-sentence pause end the turn early and split one utterance into
+            # multiple transcript bubbles. This is also the trade-off behind the
+            # brief "still listening" lag after the user stops; shortening it
+            # safely needs a grammar-aware endpoint, not just a smaller timer.
             min_silence_duration=1.5,
             prefix_padding_duration=0.4,
         ),
@@ -257,18 +267,27 @@ def build_agent_session(
             api_key=cfg.openai_api_key or "sk-placeholder-not-used",
         ),
         tts=tts,
-        # Barge-in: stop agent TTS as soon as the user sustains speech for
-        # min_interruption_duration seconds. Brief noises (clicks, coughs)
-        # shorter than the threshold do not trigger an interruption.
-        allow_interruptions=True,
-        min_interruption_duration=0.8,
-        # Push-to-talk: only reply when generate_reply() is called explicitly.
-        # "manual" endpointing disables VAD/silence auto-trigger.
-        # preemptive_tts=False stops the session from calling llm_node early
-        # to pre-warm TTS — that would fire the orchestrator before Send.
+        # Server-side VAD turn detection (turn_detection="vad"): Silero detects
+        # when the user stops speaking and the framework commits the turn. This
+        # is more noise-robust than the browser's amplitude check (#153).
+        #
+        # preemptive_generation is DISABLED (enabled=False). Its default is
+        # enabled=True, and preemptive_tts=False only suppresses early TTS
+        # synthesis -- it does NOT stop the framework from invoking llm_node
+        # early on a partial / pre-flush transcript. Disabling it removes that
+        # extra concurrent llm_node call so the worker's commit-driven reply,
+        # which reads the live finalized transcript, is the single reply path
+        # and cannot be beaten to the gate by a pre-flush snapshot (#153).
+        #
+        # Interruption is left at the LiveKit 1.6.0 defaults (min_duration=0.5,
+        # resume_false_interruption=True). A more aggressive override
+        # (min_duration=0.2 + resume_false_interruption=False) was tried for
+        # snappier barge-in but it tripped on ambient noise / echo mid-reply and
+        # cancelled the agent's own answers, so it is reverted. Tuning barge-in
+        # safely needs the echo path sorted first (headphones / proper AEC).
         turn_handling={
-            "endpointing": {"mode": "manual"},
-            "preemptive_generation": {"preemptive_tts": False},
+            "turn_detection": "vad",
+            "preemptive_generation": {"enabled": False},
         },
     )
 
