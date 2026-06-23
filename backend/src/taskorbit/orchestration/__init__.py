@@ -52,7 +52,6 @@ from taskorbit.types import (
     ToolType,
 )
 from taskorbit.workflow_rules import (
-    collect_workflow_dependency_ids,
     expand_workflow_dependencies,
     resolve_workflow_dependencies,
 )
@@ -76,25 +75,6 @@ def _selected_agent_matches_dep(selected_agent: str | None, dep_id: str) -> bool
     return selected_agent == dep_id or selected_agent == dep_registry
 
 
-
-def _direct_dependencies_for_request(request: ConversationRequest) -> list[str]:
-    """Resolve direct workflow deps using locked intent when workflow_rules are configured."""
-    if request.agent_config.workflow_rules and request.current_intent_name:
-        if request.current_intent_name in _KNOWN_INTENTS:
-            locked = _KNOWN_INTENTS[request.current_intent_name]
-            return resolve_workflow_dependencies(
-                request.agent_config,
-                intent_name=request.current_intent_name,
-                intent_agent_name=locked.agent_name,
-            )
-        return list(request.agent_config.workflow_dependencies or [])
-
-    direct = collect_workflow_dependency_ids(request.agent_config)
-    if not direct:
-        direct = list(request.agent_config.workflow_dependencies or [])
-    return direct
-
-
 def _resolve_missing_dependencies(
     request: ConversationRequest,
     intent: IntentResult,
@@ -110,14 +90,26 @@ def _resolve_missing_dependencies(
     return direct, effective, missing
 
 
-def _is_executing_workflow_prerequisite(request: ConversationRequest) -> bool:
+def _workflow_prereq_confirmation_message(entry_name: str, dep_name: str) -> str:
+    return (
+        f"Before we proceed with {entry_name}, I'll need to complete some "
+        f"prerequisite steps regarding {dep_name}. Shall I start with that?"
+    )
+
+
+def _workflow_prereq_start_ack(next_dep: str) -> str:
+    return f"Understood. Let's start with the {next_dep.replace('-', ' ')} steps."
+
+
+def _is_executing_workflow_prerequisite(
+    request: ConversationRequest,
+    intent: IntentResult,
+) -> bool:
     """True after Proceed when the next missing prerequisite is already selected."""
     if not request.selected_agent or not request.dependency_configs:
         return False
 
-    direct = _direct_dependencies_for_request(request)
-    effective = expand_workflow_dependencies(direct, request.dependency_configs)
-    missing = [dep for dep in effective if dep not in request.completed_workflow_steps]
+    _, _, missing = _resolve_missing_dependencies(request, intent)
     return bool(missing) and _selected_agent_matches_dep(request.selected_agent, missing[0])
 
 
@@ -128,18 +120,16 @@ def _resolve_intent_after_clarification_gate(
     """Keep workflow turns moving when follow-ups like ``continue`` fail intent gating."""
     if not intent.requires_clarification:
         return intent
-    if not _is_executing_workflow_prerequisite(request):
+    if not _is_executing_workflow_prerequisite(request, intent):
         return intent
     if request.current_intent_name and request.current_intent_name in _KNOWN_INTENTS:
         return dataclass_replace(_KNOWN_INTENTS[request.current_intent_name], confidence=1.0)
     return dataclass_replace(intent, requires_clarification=False, confidence=1.0)
 
 
-def _workflow_ui_selected_agent(request: ConversationRequest) -> str:
+def _workflow_ui_selected_agent(request: ConversationRequest) -> str | None:
     """Stable workflow routing id for the UI — never intent registry names like general_inquiry."""
-    if request.selected_agent:
-        return request.selected_agent
-    return request.agent_config.id
+    return request.selected_agent or request.agent_config.id or None
 
 
 def _normalize_field_key(fields: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -420,7 +410,7 @@ class ConversationOrchestrator:
                                 description=f"Prerequisite: {dep_name}",
                             ),
                             selected_intent=intent.name,
-                            selected_agent=_workflow_ui_selected_agent(request),
+                            selected_agent=_workflow_ui_selected_agent(request) or "",
                             intent_confidence=intent.confidence,
                             locked_intent_name=intent.name,
                             completed_workflow_steps=request.completed_workflow_steps,
@@ -439,7 +429,7 @@ class ConversationOrchestrator:
                             ),
                             status=ConversationStatus.REJECTED,
                             selected_intent=intent.name,
-                            selected_agent=_workflow_ui_selected_agent(request),
+                            selected_agent=_workflow_ui_selected_agent(request) or "",
                             locked_intent_name=intent.name,
                             completed_workflow_steps=request.completed_workflow_steps,
                         )
@@ -932,7 +922,7 @@ class ConversationOrchestrator:
                                 description=f"Prerequisite: {dep_name}",
                             ),
                             selected_intent=intent.name,
-                            selected_agent=_workflow_ui_selected_agent(request),
+                            selected_agent=_workflow_ui_selected_agent(request) or "",
                             intent_confidence=intent.confidence,
                             locked_intent_name=intent.name,
                             completed_workflow_steps=request.completed_workflow_steps,
@@ -952,7 +942,7 @@ class ConversationOrchestrator:
                             ),
                             status=ConversationStatus.REJECTED,
                             selected_intent=intent.name,
-                            selected_agent=_workflow_ui_selected_agent(request),
+                            selected_agent=_workflow_ui_selected_agent(request) or "",
                             locked_intent_name=intent.name,
                             completed_workflow_steps=request.completed_workflow_steps,
                         )

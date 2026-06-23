@@ -24,8 +24,8 @@ from livekit.agents.metrics import STTMetrics, TTSMetrics
 from livekit.agents.voice.events import AgentEvent
 from pydantic import ValidationError
 
-from taskorbit.api.deps import _DEV_USER_EMAIL
 from taskorbit.config import get_settings
+from taskorbit.constants import DEV_USER_EMAIL
 from taskorbit.database import AsyncSessionLocal
 from taskorbit.database.crud import (
     create_conversation,
@@ -127,13 +127,13 @@ async def entrypoint(ctx: JobContext) -> None:
     # so the voice path can load custom agent dependencies from the database.
     dev_user_id: int | None = None
     async with AsyncSessionLocal() as db:
-        user = await get_user_by_email(db, _DEV_USER_EMAIL)
+        user = await get_user_by_email(db, DEV_USER_EMAIL)
         if user and user.is_active:
             dev_user_id = user.id
         else:
             logger.warning(
                 "worker_dev_user_not_found",
-                email=_DEV_USER_EMAIL,
+                email=DEV_USER_EMAIL,
                 effect="custom agent dependencies may not resolve in voice path",
             )
 
