@@ -132,11 +132,11 @@ def _make_agent(
     )
     captured: list[Any] = []
 
-    async def _process_message(request: Any, db: Any = None, user_id: Any = None) -> Any:
+    async def _process_message_stream(request: Any, db: Any = None, user_id: Any = None):
         captured.append(request)
-        return response
+        yield response
 
-    orchestrator.process_message = _process_message
+    orchestrator.process_message_stream = _process_message_stream
     orchestrator._captured = captured
     agent = OrchestratorAgent(
         orchestrator=orchestrator,
@@ -281,8 +281,17 @@ async def test_voice_path_propagates_persona_guardrails_into_prompt(
     )
     voice_agent_config = _default_agent_config()
 
+    # process_message_stream uses generate_stream for the main LLM call;
+    # intent detection and slot extraction still go through generate.
+    captured_stream_prompt: list[str] = []
+
+    async def _generate_stream(prompt: str, messages: Any, config: Any):
+        captured_stream_prompt.append(prompt)
+        yield "Sorry, only TechStore."
+
     mock_client = MagicMock()
-    mock_client.generate = AsyncMock(return_value="Sorry, only TechStore.")
+    mock_client.generate = AsyncMock(return_value="")
+    mock_client.generate_stream = _generate_stream
 
     agent = OrchestratorAgent(
         orchestrator=orchestrator,
@@ -295,7 +304,8 @@ async def test_voice_path_propagates_persona_guardrails_into_prompt(
     with patch("taskorbit.integrations.llm.factory.get_llm_client", return_value=mock_client):
         [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
 
-    augmented_prompt = mock_client.generate.call_args.args[0]
+    assert captured_stream_prompt, "generate_stream was not called"
+    augmented_prompt = captured_stream_prompt[0]
     # Asserting against the new imperative headers
     assert "Authorized Scope:" in augmented_prompt
     assert "CORE CONSTRAINT - Forbidden Topics" in augmented_prompt
