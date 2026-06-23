@@ -65,7 +65,7 @@ def test_build_agent_session_uses_deepgram_elevenlabs_silero(
 
     mock_vad.load.assert_called_once_with(
         activation_threshold=0.7,
-        deactivation_threshold=0.45,
+        deactivation_threshold=0.6,
         min_speech_duration=0.2,
         min_silence_duration=1.5,
         prefix_padding_duration=0.4,
@@ -91,10 +91,14 @@ def test_build_agent_session_uses_deepgram_elevenlabs_silero(
     # Server-side VAD drives end-of-turn (#153); the prior endpointing.mode
     # "manual" was a no-op typo (mode only accepts "fixed"/"dynamic").
     assert kwargs["turn_handling"]["turn_detection"] == "vad"
-    assert kwargs["turn_handling"]["preemptive_generation"]["preemptive_tts"] is False
-    # Barge-in is enabled; brief noises are ignored via the duration threshold.
-    assert kwargs["allow_interruptions"] is True
-    assert kwargs["min_interruption_duration"] == 0.8
+    # Preemptive generation is disabled (#153): preemptive_tts=False does NOT
+    # stop the framework's early llm_node call, so enabled=False is required to
+    # keep the worker's commit-driven reply the single reply path.
+    assert kwargs["turn_handling"]["preemptive_generation"]["enabled"] is False
+    # Interruption is left at LiveKit 1.6.0 defaults: a more aggressive
+    # min_duration tripped the interrupter on echo/ambient and cancelled the
+    # agent's own replies, so no override is set here (#153).
+    assert "interruption" not in kwargs["turn_handling"]
 
 
 def _make_chat_ctx(messages: list[tuple[str, str]]) -> Any:
@@ -195,6 +199,53 @@ async def test_llm_node_filters_unsupported_chat_items() -> None:
     ]
 
 
+@pytest.mark.asyncio
+async def test_llm_node_dedups_repeated_same_user_input() -> None:
+    """#153: a stale or duplicate trigger re-commits the same turn (no new user
+    message in context). The orchestrator must answer a given turn once, not on
+    every re-commit (which otherwise causes duplicate replies and
+    concurrent-processing errors). Freshness is tracked by user-turn count, so a
+    second trigger with no new turn is dropped.
+    """
+    agent, orchestrator = _make_agent("the one reply")
+    chat_ctx = _make_chat_ctx([("user", "my order is damaged")])
+
+    agent.request_reply()
+    first = [c async for c in agent.llm_node(chat_ctx, [], MagicMock())]
+
+    agent.request_reply()
+    second = [c async for c in agent.llm_node(chat_ctx, [], MagicMock())]
+
+    assert first == ["the one reply"]
+    assert second == []
+    assert len(orchestrator._captured) == 1
+
+
+@pytest.mark.asyncio
+async def test_llm_node_answers_each_new_turn_even_if_repeated() -> None:
+    """#153 regression: a follow-up turn must get its own reply -- including when
+    the user repeats the same words (e.g. re-confirming "yes"). The earlier
+    content-only dedup wrongly dropped an identical follow-up; freshness is now
+    by user-turn count so a genuinely new turn is always answered. This is the
+    exact failure seen live, where a second utterance got no response.
+    """
+    agent, orchestrator = _make_agent("ok")
+
+    agent.request_reply()
+    first = [c async for c in agent.llm_node(_make_chat_ctx([("user", "yes")]), [], MagicMock())]
+
+    # A new user turn arrives; the prior turn is still in context and the new
+    # message repeats "yes". It must still be answered as a distinct turn.
+    agent.request_reply()
+    ctx2 = _make_chat_ctx([("user", "yes"), ("assistant", "ok"), ("user", "yes")])
+    second = [c async for c in agent.llm_node(ctx2, [], MagicMock())]
+
+    assert first == ["ok"]
+    assert second == ["ok"]
+    assert len(orchestrator._captured) == 2
+    assert orchestrator._captured[1].messages[-1].content == "yes"
+
+
 # ---------------------------------------------------------------------------
 # voice_turn_latency_seconds metric
 # ---------------------------------------------------------------------------
@@ -227,79 +278,15 @@ async def test_llm_node_skips_latency_when_no_commit_time() -> None:
     chat_ctx = _make_chat_ctx([("user", "hello")])
     mock_metrics = MagicMock()
 
-    # No commit_turn this turn, so _t_commit stays None; llm_node still runs
-    # (server-VAD-driven reply) but must skip the latency metric.
+    # Arm the reply (no commit time) so llm_node runs but must skip the latency
+    # metric because _t_commit is None.
+    agent._reply_requested = True
     agent._t_commit = None
 
     with patch("taskorbit.livekit_agent.llm.get_metrics", return_value=mock_metrics):
         [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
 
     mock_metrics.voice_turn_latency_seconds.observe.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# Reply dedup + per-turn reset (#153)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_llm_node_replies_without_commit_turn() -> None:
-    """#153: the server-VAD end-of-turn drives a reply with no commit_turn.
-
-    Before the fix, llm_node returned empty unless request_reply() armed it,
-    so a turn the browser failed to commit (noise) never replied. Now a fresh
-    turn produces exactly one reply on its own.
-    """
-    agent, orchestrator = _make_agent("Server VAD reply")
-    chat_ctx = _make_chat_ctx([("user", "are you there")])
-
-    chunks = [c async for c in agent.llm_node(chat_ctx, [], MagicMock())]
-
-    assert chunks == ["Server VAD reply"]
-    assert len(orchestrator._captured) == 1
-
-
-@pytest.mark.asyncio
-async def test_llm_node_dedups_duplicate_calls_in_one_turn() -> None:
-    """#153: server-VAD end-of-turn and an explicit commit_turn must not both
-    reply. The second llm_node call within the same turn yields nothing."""
-    agent, orchestrator = _make_agent("Only once")
-    chat_ctx = _make_chat_ctx([("user", "hello")])
-
-    first = [c async for c in agent.llm_node(chat_ctx, [], MagicMock())]
-    second = [c async for c in agent.llm_node(chat_ctx, [], MagicMock())]
-
-    assert first == ["Only once"]
-    assert second == []
-    assert len(orchestrator._captured) == 1
-
-
-@pytest.mark.asyncio
-async def test_begin_user_turn_allows_next_reply() -> None:
-    """begin_user_turn() resets the dedup so the next utterance replies again."""
-    agent, orchestrator = _make_agent("reply")
-    chat_ctx = _make_chat_ctx([("user", "hi")])
-
-    [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
-    agent.begin_user_turn()
-    second = [c async for c in agent.llm_node(chat_ctx, [], MagicMock())]
-
-    assert second == ["reply"]
-    assert len(orchestrator._captured) == 2
-
-
-def test_begin_user_turn_clears_dedup_and_stale_commit_time() -> None:
-    """begin_user_turn() clears the dedup flag and a stale commit timestamp so a
-    later turn with no commit_turn does not report a bogus latency."""
-    agent, _ = _make_agent("reply")
-    agent._turn_replied = True
-    agent.request_reply(t_commit=123.0)
-    assert agent._t_commit == 123.0
-
-    agent.begin_user_turn()
-
-    assert agent._turn_replied is False
-    assert agent._t_commit is None
 
 
 # ---------------------------------------------------------------------------

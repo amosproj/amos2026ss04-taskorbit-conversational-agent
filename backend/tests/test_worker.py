@@ -424,10 +424,12 @@ async def test_on_metrics_stt_zero_duration_not_observed(configured_settings: No
 
 
 @pytest.mark.asyncio
-async def test_user_state_speaking_resets_turn(configured_settings: None) -> None:
-    """#153: a user_state_changed -> "speaking" transition resets the per-turn
-    reply dedup (begin_user_turn); "listening"/"away" transitions do not."""
+async def test_user_state_listening_publishes_force_commit(configured_settings: None) -> None:
+    """#153: a user_state_changed -> "listening" transition (server VAD detected
+    end-of-speech) publishes a force_commit nudge to the frontend on the right
+    topic; "speaking"/"away" transitions publish nothing."""
     ctx, _ = _make_ctx()
+    ctx.room.local_participant.publish_data = AsyncMock()
     mock_agent = MagicMock()
     handler_ref: list = []
 
@@ -449,16 +451,24 @@ async def test_user_state_speaking_resets_turn(configured_settings: None) -> Non
     ):
         await entrypoint(ctx)
 
-    assert handler_ref, "_on_user_state not registered"
-    handler = handler_ref[0]
+        assert handler_ref, "_on_user_state not registered"
+        handler = handler_ref[0]
 
-    handler(MagicMock(new_state="speaking"))
-    mock_agent.begin_user_turn.assert_called_once()
+        # Non-end-of-speech transitions must not nudge.
+        handler(MagicMock(new_state="speaking"))
+        handler(MagicMock(new_state="away"))
+        await asyncio.sleep(0)
+        ctx.room.local_participant.publish_data.assert_not_called()
 
-    mock_agent.begin_user_turn.reset_mock()
-    handler(MagicMock(new_state="listening"))
-    handler(MagicMock(new_state="away"))
-    mock_agent.begin_user_turn.assert_not_called()
+        # End-of-speech: publish force_commit once on the force_commit topic.
+        handler(MagicMock(new_state="listening"))
+        await asyncio.sleep(0)  # let the scheduled publish task run
+        await asyncio.sleep(0)
+
+    ctx.room.local_participant.publish_data.assert_awaited_once()
+    call = ctx.room.local_participant.publish_data.call_args
+    assert json.loads(call.args[0]) == {"type": "force_commit"}
+    assert call.kwargs["topic"] == "taskorbit.force_commit"
 
 
 @pytest.mark.asyncio

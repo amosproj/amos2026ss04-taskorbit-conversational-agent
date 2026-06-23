@@ -165,9 +165,13 @@ export function useMicRecorder(): MicRecorderApi {
       await localParticipant.setMicrophoneEnabled(true, {
         // Native browser noise processing reduces background noise reaching
         // both LiveKit and the AnalyserNode used for silence detection.
+        // autoGainControl is OFF on purpose (#153): AGC boosts quiet ambient
+        // noise (fans/AC) up toward the silence/speech bands, which makes the
+        // amplitude-based silence detection and barge-in misfire in a real
+        // room. Keep echo cancellation + noise suppression.
         noiseSuppression: true,
         echoCancellation: true,
-        autoGainControl: true,
+        autoGainControl: false,
       });
     } catch (err) {
       const message = (err as Error).message || "Could not access microphone.";
