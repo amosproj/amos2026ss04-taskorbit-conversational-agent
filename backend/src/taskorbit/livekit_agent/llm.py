@@ -289,13 +289,29 @@ class OrchestratorAgent(Agent):
         )
         from taskorbit.types import ToolType as _ToolType
 
-        # Open the DB session before process_message so that manual transfers
-        # and custom-agent DB lookups work in the voice path too.
+        # Stream the orchestrator response: yield str chunks to TTS immediately,
+        # capture the final ConversationResponse for state updates below.
+        # The DB session stays open across the entire stream so that manual
+        # transfers and custom-agent DB lookups work in the voice path.
+        response = None
+        chunk_index = 0
         try:
             async with AsyncSessionLocal() as db:
-                response = await self._orchestrator.process_message(
+                async for item in self._orchestrator.process_message_stream(
                     request, db=db, user_id=self._user_id
-                )
+                ):
+                    if isinstance(item, str):
+                        if chunk_index == 0 and self._t_commit is not None:
+                            _first_chunk_latency = time.perf_counter() - self._t_commit
+                            log.debug(
+                                "llm_first_chunk",
+                                latency_ms=round(_first_chunk_latency * 1000, 1),
+                            )
+                        log.debug("llm_stream_chunk", index=chunk_index, chars=len(item))
+                        chunk_index += 1
+                        yield item
+                    else:
+                        response = item
         except Exception as exc:
             log.error(
                 "voice_turn_orchestrator_failed",
@@ -304,10 +320,13 @@ class OrchestratorAgent(Agent):
             )
             raise
 
-        # Error or clarification responses have no LLM stream in the voice path;
-        # yield the reply text so TTS speaks it instead of staying silent.
-        if response.reply and response.reply.content:
+        # Early-exit paths (clarification, confirmation, handoff block, end-call, error)
+        # produce no str chunks — only a ConversationResponse. Speak the reply via TTS.
+        if chunk_index == 0 and response is not None and response.reply and response.reply.content:
             yield response.reply.content
+
+        if response is None:
+            return
 
         self._locked_intent_name = response.locked_intent_name
         self._completed_workflow_steps = response.completed_workflow_steps
