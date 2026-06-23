@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 import time
 from collections.abc import AsyncIterable
-from typing import Any
+from typing import Any, NamedTuple
 
 from livekit.agents import Agent, FunctionTool, ModelSettings, llm
 
@@ -45,6 +45,14 @@ from taskorbit.types import (
 )
 
 log = get_logger(__name__)
+
+
+class WorkflowSyncResult(NamedTuple):
+    """Values applied by sync_workflow_state; returned so callers avoid private-attr access."""
+
+    routed_agent: str | None
+    completed_steps: list[str]
+
 
 _CONFIRM_PATTERNS = (
     r"\byes\b",
@@ -226,8 +234,12 @@ class OrchestratorAgent(Agent):
         selected_agent: str | None = None,
         completed_workflow_steps: list[str] | None = None,
         clear_pending_confirmation: bool = False,
-    ) -> None:
-        """Apply workflow state from the text UI so voice turns stay in sync."""
+    ) -> WorkflowSyncResult:
+        """Apply workflow state from the text UI so voice turns stay in sync.
+
+        Returns the values that were actually stored so callers can log or act
+        on them without reaching into private attributes.
+        """
         if selected_agent is not None:
             stripped = selected_agent.strip()
             self._current_routed_agent = stripped if stripped else None
@@ -235,6 +247,10 @@ class OrchestratorAgent(Agent):
             self._completed_workflow_steps = list(completed_workflow_steps)
         if clear_pending_confirmation:
             self._pending_confirmation_id = None
+        return WorkflowSyncResult(
+            routed_agent=self._current_routed_agent,
+            completed_steps=list(self._completed_workflow_steps),
+        )
 
     def request_reply(self, t_commit: float | None = None) -> None:
         """Signal that the next ``llm_node`` call should actually produce a reply.
@@ -349,7 +365,10 @@ class OrchestratorAgent(Agent):
 
         self._locked_intent_name = response.locked_intent_name
         self._completed_workflow_steps = response.completed_workflow_steps
-        if response.status in {"confirmation_required", "workflow_confirmation_required"} and response.confirmation:
+        if (
+            response.status in {"confirmation_required", "workflow_confirmation_required"}
+            and response.confirmation
+        ):
             self._pending_confirmation_id = response.confirmation.confirmation_id
         else:
             self._pending_confirmation_id = None
