@@ -206,6 +206,8 @@ class AgentConfig(BaseModel):
     @model_validator(mode="after")
     def _workflow_rules_else_must_be_last(self) -> AgentConfig:
         rules = self.workflow_rules or []
+        if sum(1 for r in rules if r.when.else_branch) > 1:
+            raise ValueError("workflow_rules: only one else_branch rule is allowed")
         for index, rule in enumerate(rules):
             if rule.when.else_branch and index != len(rules) - 1:
                 raise ValueError(
