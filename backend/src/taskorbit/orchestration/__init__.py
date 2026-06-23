@@ -924,7 +924,7 @@ class ConversationOrchestrator:
                 and isinstance(active_tool.parameters.get("params"), list)
                 and active_tool.parameters["params"]
             ):
-                extraction_inputs = active_tool.parameters["params"]
+                extraction_inputs = _normalize_field_key(active_tool.parameters["params"])
                 intent = _replace(intent, required_inputs=extraction_inputs)
 
             slot_result = await self._extract_slots(
