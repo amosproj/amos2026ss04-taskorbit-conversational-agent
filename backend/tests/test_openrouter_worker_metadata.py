@@ -128,7 +128,13 @@ async def test_llm_node_logs_llm_active_with_correct_provider_and_model() -> Non
     agent.request_reply()
 
     mock_chat_ctx = MagicMock(spec=llm.ChatContext)
-    mock_chat_ctx.items = []
+    # A fresh user turn is required: llm_node now waits for a real transcript and
+    # skips an empty context instead of replying to nothing, so llm_active only
+    # fires once an unanswered user message is present (#153).
+    _user_item = MagicMock()
+    _user_item.role = "user"
+    _user_item.content = "I need help"
+    mock_chat_ctx.items = [_user_item]
 
     with (
         patch("taskorbit.livekit_agent.llm.log") as mock_log,
