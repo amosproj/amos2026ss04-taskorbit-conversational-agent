@@ -75,7 +75,6 @@ def _selected_agent_matches_dep(selected_agent: str | None, dep_id: str) -> bool
     return selected_agent == dep_id or selected_agent == dep_registry
 
 
-
 def _resolve_missing_dependencies(
     request: ConversationRequest,
     intent: IntentResult,
