@@ -1,8 +1,11 @@
 import { useEffect, useRef } from "react";
 
 const POLL_MS = 100;
-const SILENCE_DURATION_MS = 2000;
-const SILENCE_THRESHOLD = 20; // 0–255; below this is considered silence
+// Tuned for #153: SILENCE_THRESHOLD raised 20→26 and SILENCE_DURATION_MS lowered
+// 2000→1500 to shrink the gray zone (20–29 amplitude) where ambient room noise
+// was resetting the silence timer before it could fire.
+const SILENCE_DURATION_MS = 1500;
+const SILENCE_THRESHOLD = 26; // 0–255; below this is considered silence
 const SPEECH_THRESHOLD = 30; // 0–255; must cross this before silence detection arms
 
 /**

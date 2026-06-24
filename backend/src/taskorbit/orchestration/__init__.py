@@ -1330,6 +1330,12 @@ class ConversationOrchestrator:
         lines = [
             f"You are {agent_config.name}.",
             f"Persona: {agent_config.persona}",
+            # Replies are spoken aloud in the voice path, so keep them short: a
+            # long monologue is slow to hear and hard to interrupt (#153). One
+            # or two short sentences, asking for at most one missing detail at a
+            # time.
+            "Keep replies brief and conversational, at most two short sentences. "
+            "Ask for at most one missing detail at a time.",
         ]
         if routed_agent is not None and routed_agent.agent_name != "base":
             lines.append(

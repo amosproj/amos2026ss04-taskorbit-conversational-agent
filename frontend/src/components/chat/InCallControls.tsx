@@ -16,7 +16,7 @@
  * depends on the room context.
  */
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   ArrowUp,
   Check,
@@ -32,6 +32,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useMicRecorder } from "@/hooks/useMicRecorder";
 import { useSilenceDetection } from "@/hooks/useSilenceDetection";
+import { useForceCommit } from "@/hooks/useForceCommit";
 import { useVoiceActivityMonitor } from "@/hooks/useVoiceActivityMonitor";
 import { fetchUserAgents } from "@/lib/userAgentsApi";
 import type { CallStatus } from "@/types/callState";
@@ -165,7 +166,13 @@ export function InCallControls({
     onPhase("idle_in_call");
   };
 
+  // True only while the current "thinking" was started by a VOICE commit, so
+  // the recovery watchdog below applies to voice turns and never to a (possibly
+  // slow, cold-start) text-path reply, which it would otherwise stomp (#153).
+  const voiceThinkingRef = useRef(false);
+
   const handleSendUtterance = async (): Promise<void> => {
+    voiceThinkingRef.current = true;
     await mic.sendUtterance();
     onPhase("thinking");
   };
@@ -188,6 +195,12 @@ export function InCallControls({
 
   const handleStopRecordingRef = useRef(handleStopRecording);
   handleStopRecordingRef.current = handleStopRecording;
+
+  const handleSendUtteranceRef = useRef(handleSendUtterance);
+  handleSendUtteranceRef.current = handleSendUtterance;
+
+  const statusRef = useRef(status);
+  statusRef.current = status;
 
   // ── Continuous-mode auto-restart ─────────────────────────────────────────
   // After each agent turn (speaking → idle_in_call), automatically re-enable
@@ -241,13 +254,24 @@ export function InCallControls({
   }, [status, continuousMode, greetingInProgress, mic]);
 
   // ── No-speech timeout ────────────────────────────────────────────────────
-  // If the mic is open but the user never speaks (amplitude stays below the
-  // speech floor for NO_SPEECH_MS), mute back to idle_in_call automatically.
-  // This handles the "agent is waiting, user says nothing" case. Distinct from
-  // silence detection which fires only after the user starts then pauses.
+  // If the mic opens but the user never says anything (amplitude stays below
+  // the speech floor for NO_SPEECH_MS), mute back to idle_in_call and leave
+  // continuous mode so it doesn't blink "Listening..." forever and loop.
+  //
+  // This ONLY handles "mic open, nobody spoke". The moment the user does speak
+  // it disarms (clearInterval) and never fires again for that cycle -- a normal
+  // turn ends via silence detection / the server-VAD force_commit, which commit
+  // the turn and move off "recording". A rolling version that also fired after
+  // a conversational pause was killing continuous mode mid-conversation and
+  // forcing the user to click the mic for every turn (#153).
   useEffect(() => {
     if (status !== "recording") return;
-    const SPEECH_FLOOR = 45;
+    // Must match useSilenceDetection's SPEECH_THRESHOLD (30): any amplitude the
+    // silence detector treats as speech has to disarm this watchdog too,
+    // otherwise a soft speaker sitting in [30,45) (common now that
+    // autoGainControl is off) is audible to the committer but invisible here,
+    // and the 10s cap mutes + drops continuous mode mid-utterance (#153).
+    const SPEECH_FLOOR = 30;
     const NO_SPEECH_MS = 10000;
     const start = Date.now();
     let hasSpeech = false;
@@ -268,6 +292,36 @@ export function InCallControls({
     return () => clearInterval(id);
   }, [status, mic.levelsRef]);
 
+  // ── Thinking-recovery watchdog (#153) ────────────────────────────────────
+  // After a commit we hold "thinking" ("Processing…") until the agent starts
+  // speaking; VoiceSessionBridge no longer downgrades it during the STT gap. If
+  // a reply never materialises (e.g. STT produced nothing), don't spin
+  // "Processing…" forever -- fall back to idle_in_call after a generous timeout
+  // so continuous mode re-arms the mic and the user can simply speak again.
+  // Normal replies arrive in 1-4s, far under this, so it never fires on a
+  // healthy turn; it only self-heals a dropped one instead of needing End Call.
+  // Clear the voice-thinking flag whenever we leave "thinking", so the next
+  // "thinking" -- which may be a text-path reply -- is never mistaken for a
+  // voice turn by the recovery watchdog below. (#153)
+  useEffect(() => {
+    if (status !== "thinking") voiceThinkingRef.current = false;
+  }, [status]);
+
+  useEffect(() => {
+    // Voice-only recovery: escapes a TRULY dropped voice turn. A healthy voice
+    // reply reaches "speaking" and clears this long before 45s, so it never
+    // stomps a live reply; the voiceThinkingRef gate keeps it off the text path
+    // entirely (a slow cold-start text stream must not be interrupted). On fire
+    // it returns to idle_in_call, which re-arms the mic so the user can just
+    // speak again instead of being stranded on "Processing…". (#153)
+    if (status !== "thinking" || !voiceThinkingRef.current) return;
+    const id = setTimeout(() => {
+      voiceThinkingRef.current = false;
+      onPhase("idle_in_call");
+    }, 45000);
+    return () => clearTimeout(id);
+  }, [status, onPhase]);
+
   // ── Silence / barge-in detection ─────────────────────────────────────────
 
   useSilenceDetection({
@@ -278,10 +332,25 @@ export function InCallControls({
     },
   });
 
+  // ── Server-VAD end-of-speech backstop (#153) ─────────────────────────────
+  // The worker raises force_commit when its Silero VAD detects the user
+  // stopped speaking. If we are still recording — our own amplitude silence
+  // detection missed, e.g. background noise held the level above the floor —
+  // commit the turn so it doesn't hang. Any other phase means the turn is
+  // already committed, so it's ignored. The callback is stable (reads status
+  // and the handler from refs) so the data-channel subscription binds once.
+  const onForceCommit = useCallback(() => {
+    if (statusRef.current === "recording") {
+      void handleSendUtteranceRef.current();
+    }
+  }, []);
+  useForceCommit(onForceCommit);
+
   // Passively monitors ambient mic audio (unpublished stream) while agent
-  // is speaking. Fires handleInterruptAndSpeak() after 300 ms of sustained
-  // speech so the agent audio stops and the user's new turn is recorded.
-  // Disabled during the greeting so ambient noise can't interrupt it.
+  // is speaking. Fires handleInterruptAndSpeak() after the hook's 500 ms
+  // sustained-speech window so the agent audio stops and the user's new turn
+  // is recorded. echoCancellation keeps the agent's own TTS from self-tripping
+  // it. Disabled during the greeting so ambient noise can't interrupt it.
   useVoiceActivityMonitor({
     active: status === "speaking" && !greetingInProgress && continuousMode,
     onSpeech: () => {

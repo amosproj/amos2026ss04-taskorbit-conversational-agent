@@ -424,6 +424,54 @@ async def test_on_metrics_stt_zero_duration_not_observed(configured_settings: No
 
 
 @pytest.mark.asyncio
+async def test_user_state_listening_publishes_force_commit(configured_settings: None) -> None:
+    """#153: a user_state_changed -> "listening" transition (server VAD detected
+    end-of-speech) publishes a force_commit nudge to the frontend on the right
+    topic; "speaking"/"away" transitions publish nothing."""
+    ctx, _ = _make_ctx()
+    ctx.room.local_participant.publish_data = AsyncMock()
+    mock_agent = MagicMock()
+    handler_ref: list = []
+
+    mock_session = AsyncMock()
+
+    def capture_on(event: str):
+        def decorator(fn):
+            if event == "user_state_changed":
+                handler_ref.append(fn)
+            return fn
+
+        return decorator
+
+    mock_session.on = MagicMock(side_effect=capture_on)
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+    ):
+        await entrypoint(ctx)
+
+        assert handler_ref, "_on_user_state not registered"
+        handler = handler_ref[0]
+
+        # Non-end-of-speech transitions must not nudge.
+        handler(MagicMock(new_state="speaking"))
+        handler(MagicMock(new_state="away"))
+        await asyncio.sleep(0)
+        ctx.room.local_participant.publish_data.assert_not_called()
+
+        # End-of-speech: publish force_commit once on the force_commit topic.
+        handler(MagicMock(new_state="listening"))
+        await asyncio.sleep(0)  # let the scheduled publish task run
+        await asyncio.sleep(0)
+
+    ctx.room.local_participant.publish_data.assert_awaited_once()
+    call = ctx.room.local_participant.publish_data.call_args
+    assert json.loads(call.args[0]) == {"type": "force_commit"}
+    assert call.kwargs["topic"] == "taskorbit.force_commit"
+
+
+@pytest.mark.asyncio
 async def test_local_participant_packet_ignored(configured_settings: None) -> None:
     """A packet whose sender identity matches the local participant must be ignored."""
     ctx, registered = _make_ctx()

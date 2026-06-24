@@ -41,6 +41,8 @@ from taskorbit.types import AgentConfig
 logger = get_logger(__name__)
 
 # Tunable: increase if the last word of an utterance is missing from replies.
+# The "user turn not yet committed" race is handled robustly in
+# OrchestratorAgent.llm_node (it waits for the user message), so this stays small.
 _DEEPGRAM_FLUSH_DELAY_S: float = 0.3
 
 # Explicit allowlist of data-channel message types this worker handles.
@@ -54,6 +56,10 @@ _RECOGNISED_MSG_TYPES: frozenset[str] = frozenset(
 _HANDOFF_TOPIC: str = "taskorbit.agent_handoff"
 _ROUTED_AGENT_TOPIC: str = "taskorbit.agent_routed"
 _SESSION_ENDED_TOPIC: str = "taskorbit.session_ended"
+# Topic the FE (useForceCommit) subscribes to: the server-side Silero VAD raises
+# this on end-of-speech so the frontend commits the turn even when its own
+# amplitude-based silence detection misses on background noise. #153.
+_FORCE_COMMIT_TOPIC: str = "taskorbit.force_commit"
 
 
 async def entrypoint(ctx: JobContext) -> None:
@@ -170,6 +176,30 @@ async def entrypoint(ctx: JobContext) -> None:
                 duration_ms=round(m.duration * 1000, 1),
                 audio_duration_ms=round(m.audio_duration * 1000, 1),
             )
+
+    @session.on("user_state_changed")
+    def _on_user_state(ev: AgentEvent) -> None:
+        # Server-side VAD end-of-speech backstop (#153). When Silero detects the
+        # user has stopped (speaking -> listening), nudge the frontend to commit
+        # the turn. The frontend's amplitude silence detection is the primary
+        # path; this rescues the case where background noise holds the browser
+        # analyser above its threshold so it never fires and the turn hangs. The
+        # frontend ignores the nudge unless it is still recording, so a turn it
+        # already committed is unaffected.
+        if getattr(ev, "new_state", None) != "listening":
+            return
+
+        async def _publish_force_commit() -> None:
+            try:
+                payload = json.dumps({"type": "force_commit"})
+                await ctx.room.local_participant.publish_data(
+                    payload, reliable=True, topic=_FORCE_COMMIT_TOPIC
+                )
+                logger.info("worker_force_commit_published")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("worker_force_commit_publish_failed", error=str(exc))
+
+        asyncio.create_task(_publish_force_commit())
 
     # Holds the most-recent pending reply task so it can be cancelled on
     # interruption before the orchestrator finishes processing.
