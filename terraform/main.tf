@@ -110,6 +110,8 @@ module "secrets" {
   openai_model           = var.openai_model
   google_api_key         = var.google_api_key
   google_model           = var.google_model
+  openrouter_api_key     = var.openrouter_api_key
+  openrouter_model       = var.openrouter_model
   database_url           = module.database.connection_string
   grafana_admin_password = var.grafana_admin_password
   grafana_admin_user     = var.grafana_admin_user

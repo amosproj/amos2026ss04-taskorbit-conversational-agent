@@ -55,7 +55,9 @@ export type LiveTranscriptTurn = {
  * History.
  */
 export type ConfirmationPromptState = {
-  id: string;
-  tool_name: string;
-  prompt: string;
+  confirmation_id: string;
+  action: string;
+  description: string;
+  /** 'workflow' for prerequisite step confirmations, 'tool' (default) for sensitive tool calls. */
+  type?: "tool" | "workflow";
 };

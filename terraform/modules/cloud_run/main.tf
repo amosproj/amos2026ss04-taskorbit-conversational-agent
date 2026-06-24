@@ -110,6 +110,8 @@ resource "google_cloud_run_v2_service" "backend" {
           OPENAI_MODEL        = "openai-model"
           GOOGLE_API_KEY      = "google-api-key"
           GOOGLE_MODEL        = "google-model"
+          OPENROUTER_API_KEY  = "openrouter-api-key"
+          OPENROUTER_MODEL    = "openrouter-model"
         }
         content {
           name = env.key
@@ -252,6 +254,8 @@ resource "google_cloud_run_v2_service" "worker" {
           OPENAI_MODEL        = "openai-model"
           GOOGLE_API_KEY      = "google-api-key"
           GOOGLE_MODEL        = "google-model"
+          OPENROUTER_API_KEY  = "openrouter-api-key"
+          OPENROUTER_MODEL    = "openrouter-model"
         }
         content {
           name = env.key

@@ -8,7 +8,9 @@ exactly:
 |---|---|---|
 | `api/` | implemented | FastAPI HTTP layer (health, conversations, livekit token, tts) |
 | `livekit_agent/` | implemented | LiveKit agent worker — joins rooms, runs Silero VAD + Deepgram STT + orchestrator + ElevenLabs TTS |
-| `orchestration/` | stub (echo) | Routes the conversation, plans workflows, dispatches tools |
+| `orchestration/` | implemented | Routes the
+
+conversation, plans workflows, dispatches tools, handles mid-call confirmations |
 | `agents/` | stub | Task-specific agents (technical, sales, …) |
 | `tools/` | stub | Tool implementations exposed to the LLM |
 | `integrations/` | stub | Adapters to Meisterwerk and other external APIs |
@@ -118,6 +120,30 @@ backend/
 └── tests/
     └── test_health.py
 ```
+
+---
+
+## API endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/v1/conversations/process` | Single-turn orchestration; returns full JSON response |
+| `POST` | `/v1/conversations/stream` | Single-turn orchestration via SSE; streams tokens then a `done` event |
+| `GET` | `/v1/conversations` | List all conversations |
+| `POST` | `/v1/conversations` | Create a bare conversation record |
+| `GET` | `/v1/conversations/{id}/history` | Full history with messages, tool executions, slots |
+
+### SSE event schema (`POST /v1/conversations/stream`)
+
+The response is `text/event-stream`. Each line is `data: <json>\n\n`.
+
+| `type` | Fields | When |
+|---|---|---|
+| `chunk` | `text: string` | Once per LLM token while generating |
+| `done` | `intent`, `status`, `selected_agent`, `slots`, `missing_slots`, `conversation_id`, `locked_intent_name`, `next_active_tool_id`, `tool_invoked` | After all chunks, on success |
+| `error` | `message: string` | When orchestration fails |
+
+No new runtime dependencies are introduced by the stream endpoint — it reuses the existing LLM client `generate_stream()` protocol (OpenAI and Gemini both implemented). SBOM is unchanged.
 
 ---
 

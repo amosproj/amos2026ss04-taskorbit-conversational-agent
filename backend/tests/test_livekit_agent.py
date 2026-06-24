@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from taskorbit.config import get_settings
-from taskorbit.livekit_agent.llm import OrchestratorAgent
+from taskorbit.livekit_agent.llm import OrchestratorAgent, _voice_confirmation_decision
 from taskorbit.livekit_agent.session import build_agent_session
 from taskorbit.types import (
     AgentConfig,
@@ -65,7 +65,7 @@ def test_build_agent_session_uses_deepgram_elevenlabs_silero(
 
     mock_vad.load.assert_called_once_with(
         activation_threshold=0.7,
-        deactivation_threshold=0.45,
+        deactivation_threshold=0.6,
         min_speech_duration=0.2,
         min_silence_duration=1.5,
         prefix_padding_duration=0.4,
@@ -88,10 +88,17 @@ def test_build_agent_session_uses_deepgram_elevenlabs_silero(
     assert kwargs["vad"] is mock_vad.load.return_value
     assert kwargs["stt"] is mock_stt.return_value
     assert kwargs["tts"] is mock_tts.return_value
-    assert kwargs["turn_handling"]["endpointing"]["mode"] == "manual"
-    # Barge-in is enabled; brief noises are ignored via the duration threshold.
-    assert kwargs["allow_interruptions"] is True
-    assert kwargs["min_interruption_duration"] == 0.8
+    # Server-side VAD drives end-of-turn (#153); the prior endpointing.mode
+    # "manual" was a no-op typo (mode only accepts "fixed"/"dynamic").
+    assert kwargs["turn_handling"]["turn_detection"] == "vad"
+    # Preemptive generation is disabled (#153): preemptive_tts=False does NOT
+    # stop the framework's early llm_node call, so enabled=False is required to
+    # keep the worker's commit-driven reply the single reply path.
+    assert kwargs["turn_handling"]["preemptive_generation"]["enabled"] is False
+    # Interruption is left at LiveKit 1.6.0 defaults: a more aggressive
+    # min_duration tripped the interrupter on echo/ambient and cancelled the
+    # agent's own replies, so no override is set here (#153).
+    assert "interruption" not in kwargs["turn_handling"]
 
 
 def _make_chat_ctx(messages: list[tuple[str, str]]) -> Any:
@@ -107,14 +114,31 @@ def _make_chat_ctx(messages: list[tuple[str, str]]) -> Any:
     return ctx
 
 
+@pytest.fixture(autouse=True)
+def _patch_async_session() -> Any:
+    """Prevent llm_node tests from opening a real DB connection."""
+    mock_db = AsyncMock()
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_db)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+    with patch("taskorbit.livekit_agent.llm.AsyncSessionLocal", return_value=mock_session):
+        yield
+
+
 def _make_agent(reply: str) -> tuple[OrchestratorAgent, MagicMock]:
     orchestrator = MagicMock()
-    orchestrator.process_message = AsyncMock(
-        return_value=ConversationResponse(
-            conversation_id="test-conv",
-            reply=Message(role=MessageRole.ASSISTANT, content=reply),
-        )
+    response = ConversationResponse(
+        conversation_id="test-conv",
+        reply=Message(role=MessageRole.ASSISTANT, content=reply),
     )
+    captured: list[Any] = []
+
+    async def _process_message_stream(request: Any, db: Any = None, user_id: Any = None):
+        captured.append(request)
+        yield response
+
+    orchestrator.process_message_stream = _process_message_stream
+    orchestrator._captured = captured
     agent = OrchestratorAgent(
         orchestrator=orchestrator,
         agent_config=AgentConfig(
@@ -137,8 +161,8 @@ async def test_llm_node_yields_orchestrator_reply() -> None:
     chunks = [c async for c in agent.llm_node(chat_ctx, [], MagicMock())]
 
     assert chunks == ["Hello back!"]
-    orchestrator.process_message.assert_awaited_once()
-    request = orchestrator.process_message.await_args.args[0]
+    assert len(orchestrator._captured) == 1
+    request = orchestrator._captured[0]
     assert [(m.role, m.content) for m in request.messages] == [
         (MessageRole.USER, "Hello there"),
     ]
@@ -169,10 +193,57 @@ async def test_llm_node_filters_unsupported_chat_items() -> None:
     agent.request_reply()
     [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
 
-    request = orchestrator.process_message.await_args.args[0]
+    request = orchestrator._captured[0]
     assert [(m.role, m.content) for m in request.messages] == [
         (MessageRole.USER, "real message"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_llm_node_dedups_repeated_same_user_input() -> None:
+    """#153: a stale or duplicate trigger re-commits the same turn (no new user
+    message in context). The orchestrator must answer a given turn once, not on
+    every re-commit (which otherwise causes duplicate replies and
+    concurrent-processing errors). Freshness is tracked by user-turn count, so a
+    second trigger with no new turn is dropped.
+    """
+    agent, orchestrator = _make_agent("the one reply")
+    chat_ctx = _make_chat_ctx([("user", "my order is damaged")])
+
+    agent.request_reply()
+    first = [c async for c in agent.llm_node(chat_ctx, [], MagicMock())]
+
+    agent.request_reply()
+    second = [c async for c in agent.llm_node(chat_ctx, [], MagicMock())]
+
+    assert first == ["the one reply"]
+    assert second == []
+    assert len(orchestrator._captured) == 1
+
+
+@pytest.mark.asyncio
+async def test_llm_node_answers_each_new_turn_even_if_repeated() -> None:
+    """#153 regression: a follow-up turn must get its own reply -- including when
+    the user repeats the same words (e.g. re-confirming "yes"). The earlier
+    content-only dedup wrongly dropped an identical follow-up; freshness is now
+    by user-turn count so a genuinely new turn is always answered. This is the
+    exact failure seen live, where a second utterance got no response.
+    """
+    agent, orchestrator = _make_agent("ok")
+
+    agent.request_reply()
+    first = [c async for c in agent.llm_node(_make_chat_ctx([("user", "yes")]), [], MagicMock())]
+
+    # A new user turn arrives; the prior turn is still in context and the new
+    # message repeats "yes". It must still be answered as a distinct turn.
+    agent.request_reply()
+    ctx2 = _make_chat_ctx([("user", "yes"), ("assistant", "ok"), ("user", "yes")])
+    second = [c async for c in agent.llm_node(ctx2, [], MagicMock())]
+
+    assert first == ["ok"]
+    assert second == ["ok"]
+    assert len(orchestrator._captured) == 2
+    assert orchestrator._captured[1].messages[-1].content == "yes"
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +278,8 @@ async def test_llm_node_skips_latency_when_no_commit_time() -> None:
     chat_ctx = _make_chat_ctx([("user", "hello")])
     mock_metrics = MagicMock()
 
-    # Manually set _t_commit to None to simulate no commit time
+    # Arm the reply (no commit time) so llm_node runs but must skip the latency
+    # metric because _t_commit is None.
     agent._reply_requested = True
     agent._t_commit = None
 
@@ -258,8 +330,17 @@ async def test_voice_path_propagates_persona_guardrails_into_prompt(
     )
     voice_agent_config = _default_agent_config()
 
+    # process_message_stream uses generate_stream for the main LLM call;
+    # intent detection and slot extraction still go through generate.
+    captured_stream_prompt: list[str] = []
+
+    async def _generate_stream(prompt: str, messages: Any, config: Any):
+        captured_stream_prompt.append(prompt)
+        yield "Sorry, only TechStore."
+
     mock_client = MagicMock()
-    mock_client.generate = AsyncMock(return_value="Sorry, only TechStore.")
+    mock_client.generate = AsyncMock(return_value="")
+    mock_client.generate_stream = _generate_stream
 
     agent = OrchestratorAgent(
         orchestrator=orchestrator,
@@ -272,7 +353,8 @@ async def test_voice_path_propagates_persona_guardrails_into_prompt(
     with patch("taskorbit.integrations.llm.factory.get_llm_client", return_value=mock_client):
         [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
 
-    augmented_prompt = mock_client.generate.call_args.args[0]
+    assert captured_stream_prompt, "generate_stream was not called"
+    augmented_prompt = captured_stream_prompt[0]
     # Asserting against the new imperative headers
     assert "Authorized Scope:" in augmented_prompt
     assert "CORE CONSTRAINT - Forbidden Topics" in augmented_prompt
@@ -293,7 +375,7 @@ async def test_llm_node_passes_formatted_number_unchanged() -> None:
     agent.request_reply()
     [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
 
-    request = orchestrator.process_message.await_args.args[0]
+    request = orchestrator._captured[0]
     assert request.messages[0].content == "my number is 321"
 
 
@@ -307,7 +389,7 @@ async def test_llm_node_passes_email_from_smart_format_unchanged() -> None:
     agent.request_reply()
     [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
 
-    request = orchestrator.process_message.await_args.args[0]
+    request = orchestrator._captured[0]
     assert request.messages[0].content == "my email is user@example.com"
 
 
@@ -321,7 +403,7 @@ async def test_llm_node_passes_date_from_smart_format_unchanged() -> None:
     agent.request_reply()
     [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
 
-    request = orchestrator.process_message.await_args.args[0]
+    request = orchestrator._captured[0]
     assert request.messages[0].content == "I need it by 05/29/2026"
 
 
@@ -336,9 +418,20 @@ async def test_llm_node_normalizes_unicode_em_dash_from_stt() -> None:
     agent.request_reply()
     [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
 
-    request = orchestrator.process_message.await_args.args[0]
+    request = orchestrator._captured[0]
     assert "—" not in request.messages[0].content
     assert "-" in request.messages[0].content
+
+
+def test_voice_confirmation_does_not_match_ok_substring_in_hello() -> None:
+    assert _voice_confirmation_decision("hello") is None
+
+
+def test_voice_confirmation_matches_explicit_confirm_and_reject() -> None:
+    assert _voice_confirmation_decision("ok") == "confirm"
+    assert _voice_confirmation_decision("Yes, proceed") == "confirm"
+    assert _voice_confirmation_decision("go ahead please") == "confirm"
+    assert _voice_confirmation_decision("cancel") == "reject"
 
 
 # ---------------------------------------------------------------------------

@@ -187,6 +187,199 @@ async def test_generate_records_token_metrics(client: OpenAIClient, llm_config: 
     assert call(5) in inc_calls
 
 
+# ---------------------------------------------------------------------------
+# generate_stream helpers
+# ---------------------------------------------------------------------------
+
+
+class _FakeStream:
+    """Minimal async-iterable + close() shim that stands in for openai AsyncStream."""
+
+    def __init__(self, chunks: list) -> None:
+        self._chunks = iter(chunks)
+        self.closed = False
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        try:
+            return next(self._chunks)
+        except StopIteration:
+            raise StopAsyncIteration
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+def _make_stream_chunk(delta_content: str | None = None, usage=None) -> MagicMock:
+    chunk = MagicMock()
+    if delta_content is not None:
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta.content = delta_content
+    else:
+        chunk.choices = []
+    chunk.usage = usage
+    return chunk
+
+
+# ---------------------------------------------------------------------------
+# generate_stream — happy path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_generate_stream_yields_text_chunks(
+    client: OpenAIClient, llm_config: LLMConfig
+) -> None:
+    chunks = [_make_stream_chunk("Hello "), _make_stream_chunk("world!")]
+    fake_stream = _FakeStream(chunks)
+
+    with patch.object(
+        client._client.chat.completions, "create", new=AsyncMock(return_value=fake_stream)
+    ):
+        collected = [
+            t
+            async for t in client.generate_stream(
+                "sys", [Message(role=MessageRole.USER, content="hi")], llm_config
+            )
+        ]
+
+    assert collected == ["Hello ", "world!"]
+    assert fake_stream.closed
+
+
+@pytest.mark.asyncio
+async def test_generate_stream_assembles_to_full_text(
+    client: OpenAIClient, llm_config: LLMConfig
+) -> None:
+    chunks = [_make_stream_chunk("A"), _make_stream_chunk("B"), _make_stream_chunk("C")]
+    fake_stream = _FakeStream(chunks)
+
+    with patch.object(
+        client._client.chat.completions, "create", new=AsyncMock(return_value=fake_stream)
+    ):
+        result = "".join(
+            [
+                t
+                async for t in client.generate_stream(
+                    "sys", [Message(role=MessageRole.USER, content="hi")], llm_config
+                )
+            ]
+        )
+
+    assert result == "ABC"
+
+
+@pytest.mark.asyncio
+async def test_generate_stream_skips_empty_delta(
+    client: OpenAIClient, llm_config: LLMConfig
+) -> None:
+    chunks = [
+        _make_stream_chunk("Hi"),
+        _make_stream_chunk(None),  # no-content delta — must be filtered
+        _make_stream_chunk(" there"),
+    ]
+    fake_stream = _FakeStream(chunks)
+
+    with patch.object(
+        client._client.chat.completions, "create", new=AsyncMock(return_value=fake_stream)
+    ):
+        collected = [
+            t
+            async for t in client.generate_stream(
+                "sys", [Message(role=MessageRole.USER, content="hi")], llm_config
+            )
+        ]
+
+    assert collected == ["Hi", " there"]
+
+
+# ---------------------------------------------------------------------------
+# generate_stream — error mapping on stream initiation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_generate_stream_auth_error_raises_llm_auth_error(
+    client: OpenAIClient, llm_config: LLMConfig
+) -> None:
+    auth_exc = openai.AuthenticationError(
+        message="Invalid key", response=MagicMock(status_code=401), body=None
+    )
+    with patch.object(
+        client._client.chat.completions, "create", new=AsyncMock(side_effect=auth_exc)
+    ):
+        with pytest.raises(LLMAuthError):
+            async for _ in client.generate_stream(
+                "sys", [Message(role=MessageRole.USER, content="hi")], llm_config
+            ):
+                pass
+
+
+@pytest.mark.asyncio
+async def test_generate_stream_rate_limit_raises_llm_rate_limit_error(
+    client: OpenAIClient, llm_config: LLMConfig
+) -> None:
+    rate_exc = openai.RateLimitError(
+        message="Rate limited", response=MagicMock(status_code=429), body=None
+    )
+    with patch.object(
+        client._client.chat.completions, "create", new=AsyncMock(side_effect=rate_exc)
+    ):
+        with pytest.raises(LLMRateLimitError):
+            async for _ in client.generate_stream(
+                "sys", [Message(role=MessageRole.USER, content="hi")], llm_config
+            ):
+                pass
+
+
+@pytest.mark.asyncio
+async def test_generate_stream_timeout_raises_llm_timeout_error(
+    client: OpenAIClient, llm_config: LLMConfig
+) -> None:
+    with patch.object(
+        client._client.chat.completions,
+        "create",
+        new=AsyncMock(side_effect=openai.APITimeoutError(request=MagicMock())),
+    ):
+        with pytest.raises(LLMTimeoutError):
+            async for _ in client.generate_stream(
+                "sys", [Message(role=MessageRole.USER, content="hi")], llm_config
+            ):
+                pass
+
+
+# ---------------------------------------------------------------------------
+# generate_stream — metrics emitted after completion
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_generate_stream_records_metrics_on_completion(
+    client: OpenAIClient, llm_config: LLMConfig
+) -> None:
+    usage = MagicMock(prompt_tokens=8, completion_tokens=4)
+    chunks = [_make_stream_chunk("ok"), _make_stream_chunk(None, usage=usage)]
+    fake_stream = _FakeStream(chunks)
+    mock_metrics = MagicMock()
+
+    with patch("taskorbit.integrations.llm.openai_client.get_metrics", return_value=mock_metrics):
+        with patch.object(
+            client._client.chat.completions, "create", new=AsyncMock(return_value=fake_stream)
+        ):
+            _ = [
+                t
+                async for t in client.generate_stream(
+                    "sys", [Message(role=MessageRole.USER, content="hi")], llm_config
+                )
+            ]
+
+    mock_metrics.llm_requests_total.labels.assert_called_with(
+        provider="openai", model="gpt-4o-mini", status="success"
+    )
+
+
 @pytest.mark.asyncio
 async def test_generate_records_zero_tokens_when_usage_is_none(
     client: OpenAIClient, llm_config: LLMConfig

@@ -19,11 +19,14 @@ export default defineConfig(({ mode }) => {
       host: true, // listen on 0.0.0.0 so Docker port-forwarding works
       port: 5173,
       strictPort: true,
+      watch: {
+        usePolling: true,
+      },
       // Proxy backend calls during development so the frontend can use
       // relative URLs like `/api/health` and avoid CORS hassle.
       proxy: {
         "/api": {
-          target: process.env.VITE_API_URL ?? env.VITE_API_URL ?? "http://localhost:8000",
+          target: process.env.VITE_API_URL ?? env.VITE_API_URL ?? "http://127.0.0.1:8000",
           changeOrigin: true,
           rewrite: (p) => p.replace(/^\/api/, ""),
         },

@@ -25,6 +25,12 @@ from livekit.agents.voice.events import AgentEvent
 from pydantic import ValidationError
 
 from taskorbit.config import get_settings
+from taskorbit.database import AsyncSessionLocal
+from taskorbit.database.crud import (
+    create_conversation,
+    create_conversation_message,
+    get_conversation,
+)
 from taskorbit.livekit_agent import build_agent_session, build_default_agent
 from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import configure_default_metrics, get_metrics
@@ -33,6 +39,8 @@ from taskorbit.types import AgentConfig
 logger = get_logger(__name__)
 
 # Tunable: increase if the last word of an utterance is missing from replies.
+# The "user turn not yet committed" race is handled robustly in
+# OrchestratorAgent.llm_node (it waits for the user message), so this stays small.
 _DEEPGRAM_FLUSH_DELAY_S: float = 0.3
 
 # Explicit allowlist of data-channel message types this worker handles.
@@ -43,6 +51,11 @@ _RECOGNISED_MSG_TYPES: frozenset[str] = frozenset({"commit_turn", "interrupt_pla
 # card mid-call without dropping the LiveKit room. #8 Task 6 AC7.
 _HANDOFF_TOPIC: str = "taskorbit.agent_handoff"
 _ROUTED_AGENT_TOPIC: str = "taskorbit.agent_routed"
+_SESSION_ENDED_TOPIC: str = "taskorbit.session_ended"
+# Topic the FE (useForceCommit) subscribes to: the server-side Silero VAD raises
+# this on end-of-speech so the frontend commits the turn even when its own
+# amplitude-based silence detection misses on background noise. #153.
+_FORCE_COMMIT_TOPIC: str = "taskorbit.force_commit"
 
 
 async def entrypoint(ctx: JobContext) -> None:
@@ -68,24 +81,54 @@ async def entrypoint(ctx: JobContext) -> None:
         participant = await asyncio.wait_for(ctx.wait_for_participant(), timeout=30.0)
         meta = json.loads(participant.metadata or "{}")
         greeting = str(meta.get("greeting") or "")
-        try:
-            agent_config = AgentConfig.model_validate(meta)
+        if not meta:
+            # No metadata at all (e.g. LiveKit playground / CLI joins): the
+            # defaults are the correct behavior, not a failure.
             logger.info(
-                "worker_agent_config_loaded_from_metadata",
-                agent_id=agent_config.id,
-                agent_name=agent_config.name,
+                "worker_no_participant_metadata",
+                effect="default agent config and STT/TTS providers",
             )
-        except ValidationError as exc:
-            logger.warning(
-                "worker_agent_config_parse_failed",
-                error=str(exc),
-                fallback="_default_agent_config",
-            )
-    except Exception:  # noqa: BLE001
-        pass
+        else:
+            try:
+                agent_config = AgentConfig.model_validate(meta)
+                logger.info(
+                    "worker_agent_config_loaded_from_metadata",
+                    agent_id=agent_config.id,
+                    agent_name=agent_config.name,
+                )
+                logger.info(
+                    "worker_agent_config_tools_loaded",
+                    tools_count=len(agent_config.tools),
+                    tool_types=[t.type for t in agent_config.tools],
+                )
+            except ValidationError as exc:
+                # Error-level on purpose: metadata WAS provided but could not
+                # be used, so the session falls back to DEFAULT STT/TTS
+                # providers (#135), overriding whatever the user selected in
+                # the agent config. Must be loud in logs.
+                logger.error(
+                    "worker_agent_config_parse_failed",
+                    error=str(exc),
+                    fallback="_default_agent_config",
+                    effect="default STT/TTS providers will be used",
+                )
+    except Exception as exc:  # noqa: BLE001
+        # Covers wait_for_participant timeout and malformed-JSON metadata;
+        # both land on default config + providers, so say so in the logs.
+        logger.warning(
+            "worker_participant_metadata_unavailable",
+            error=str(exc),
+            effect="default agent config and STT/TTS providers",
+        )
 
-    session = build_agent_session(settings=cfg)
-    agent = build_default_agent(settings=cfg, agent_config=agent_config)
+    # #135: forward the parsed config so the session constructs the STT/TTS
+    # providers the user selected, instead of always using the env defaults.
+    session = build_agent_session(settings=cfg, agent_config=agent_config)
+    agent = build_default_agent(
+        settings=cfg,
+        agent_config=agent_config,
+        conversation_id=ctx.room.name,
+    )
 
     @session.on("metrics_collected")
     def _on_metrics(ev: AgentEvent) -> None:
@@ -113,6 +156,30 @@ async def entrypoint(ctx: JobContext) -> None:
                 duration_ms=round(m.duration * 1000, 1),
                 audio_duration_ms=round(m.audio_duration * 1000, 1),
             )
+
+    @session.on("user_state_changed")
+    def _on_user_state(ev: AgentEvent) -> None:
+        # Server-side VAD end-of-speech backstop (#153). When Silero detects the
+        # user has stopped (speaking -> listening), nudge the frontend to commit
+        # the turn. The frontend's amplitude silence detection is the primary
+        # path; this rescues the case where background noise holds the browser
+        # analyser above its threshold so it never fires and the turn hangs. The
+        # frontend ignores the nudge unless it is still recording, so a turn it
+        # already committed is unaffected.
+        if getattr(ev, "new_state", None) != "listening":
+            return
+
+        async def _publish_force_commit() -> None:
+            try:
+                payload = json.dumps({"type": "force_commit"})
+                await ctx.room.local_participant.publish_data(
+                    payload, reliable=True, topic=_FORCE_COMMIT_TOPIC
+                )
+                logger.info("worker_force_commit_published")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("worker_force_commit_publish_failed", error=str(exc))
+
+        asyncio.create_task(_publish_force_commit())
 
     # Holds the most-recent pending reply task so it can be cancelled on
     # interruption before the orchestrator finishes processing.
@@ -158,6 +225,20 @@ async def entrypoint(ctx: JobContext) -> None:
                     )
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("worker_agent_routed_publish_failed", error=str(exc))
+
+            # Publish session_ended so the frontend can tear down the call
+            # when the user explicitly requests to end via voice.
+            if agent._call_ended:
+                try:
+                    payload = json.dumps({"type": "session_ended"})
+                    await ctx.room.local_participant.publish_data(
+                        payload, reliable=True, topic=_SESSION_ENDED_TOPIC
+                    )
+                    logger.info("worker_session_ended_published")
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("worker_session_ended_publish_failed", error=str(exc))
+                finally:
+                    agent._call_ended = False
 
             # AC7: now that the orchestrator has finished (wait_for_playout
             # above), the pending target is set if an agent_transfer dispatched
@@ -217,6 +298,23 @@ async def entrypoint(ctx: JobContext) -> None:
     if greeting:
         session.say(greeting)
         logger.info("worker_greeting_spoken", length=len(greeting))
+        try:
+            async with AsyncSessionLocal() as db:
+                if not await get_conversation(db, ctx.room.name):
+                    await create_conversation(
+                        db,
+                        agent_id=agent_config.id if agent_config else "livekit-default",
+                        agent_name=agent_config.name if agent_config else "Voice Agent",
+                        id=ctx.room.name,
+                    )
+                await create_conversation_message(
+                    db,
+                    conversation_id=ctx.room.name,
+                    role="assistant",
+                    content=greeting,
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("worker_greeting_persist_failed", error=str(exc))
 
 
 def run_worker() -> None:

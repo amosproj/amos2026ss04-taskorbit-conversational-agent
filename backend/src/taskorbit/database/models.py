@@ -28,6 +28,9 @@ class Conversation(Base):
     tool_executions: Mapped[list[ToolExecution]] = relationship(
         back_populates="conversation", cascade="all, delete-orphan"
     )
+    slot_extractions: Mapped[list[SlotExtraction]] = relationship(
+        back_populates="conversation", cascade="all, delete-orphan"
+    )
 
 
 class ConversationMessage(Base):
@@ -120,3 +123,29 @@ class DefaultAgentTemplate(Base):
     config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class SlotExtraction(Base):
+    """One row per extracted field per conversation turn.
+
+    tool_id records which tool triggered the extraction (e.g. "data_extraction",
+    "agent_transfer") so the frontend can show provenance per field.
+    """
+
+    __tablename__ = "slot_extractions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    conversation_id: Mapped[str] = mapped_column(
+        String, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    tool_id: Mapped[str] = mapped_column(String, nullable=False)
+    field_name: Mapped[str] = mapped_column(String, nullable=False)
+    field_value: Mapped[str | None] = mapped_column(String, nullable=True)
+    extracted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    conversation: Mapped[Conversation] = relationship(back_populates="slot_extractions")

@@ -17,8 +17,8 @@ export function IdentitySection({ value, onChange, showErrors }: Props) {
   const idAgentId = useId();
   const idName = useId();
 
-  const agentIdInvalid = showErrors && !value.agent_id.trim();
-  const nameInvalid = showErrors && !value.name.trim();
+  const agentIdInvalid = showErrors && !(value.agent_id ?? "").trim();
+  const nameInvalid = showErrors && !(value.name ?? "").trim();
 
   return (
     <Card>

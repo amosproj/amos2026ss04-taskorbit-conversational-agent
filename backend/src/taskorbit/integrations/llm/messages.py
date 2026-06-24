@@ -1,5 +1,6 @@
 """Translate taskorbit Message objects to provider-specific wire formats.
 
+
 Each concrete LLM client (OpenAIClient, GeminiClient) calls one of these
 helpers in its `generate` implementation so that message-format mapping
 logic stays out of the clients themselves.

@@ -13,7 +13,12 @@
  * AC7 of #8, voice handoff continuity.
  */
 
-import type { AgentConfig, ToolDefinition as FrontendTool } from "@/types/agentConfig";
+import {
+  END_CALL_DEFAULT_DESCRIPTION,
+  type AgentConfig,
+  type ConfirmationsConfig,
+  type ToolDefinition as FrontendTool,
+} from "@/types/agentConfig";
 
 type BackendTool = {
   id: string;
@@ -24,13 +29,26 @@ type BackendTool = {
   parameters: Record<string, unknown>;
 };
 
-function adaptTool(tool: FrontendTool): BackendTool {
+function toolNeedsConfirmation(
+  toolName: string,
+  confirmations: ConfirmationsConfig | undefined,
+): boolean {
+  if (confirmations === undefined) return false; // missing means legacy/disabled
+  if (!confirmations.required) return false;
+  return confirmations.tools.length === 0 || confirmations.tools.includes(toolName);
+}
+
+function adaptTool(
+  tool: FrontendTool,
+  confirmations: ConfirmationsConfig | undefined,
+): BackendTool {
   const base = {
     id: tool.name || tool.type,
     name: tool.name,
     type: tool.type,
-    description: tool.description,
-    confirmation: { required: false, prompt: "" },
+    description:
+      tool.description?.trim() || (tool.type === "end_call" ? END_CALL_DEFAULT_DESCRIPTION : ""),
+    confirmation: { required: toolNeedsConfirmation(tool.name, confirmations), prompt: "" },
   };
   if (tool.type === "data_extraction") {
     return { ...base, parameters: { params: tool.params } };
@@ -38,18 +56,31 @@ function adaptTool(tool: FrontendTool): BackendTool {
   if (tool.type === "agent_transfer") {
     return { ...base, parameters: { targets: tool.targets } };
   }
+  if (tool.type === "external_api") {
+    // External API tools (#66) carry the full backend config in
+    // `parameters` already. Pass it through so the voice path can
+    // dispatch external_api the same way the text path does.
+    return { ...base, parameters: tool.parameters };
+  }
   return { ...base, parameters: {} };
 }
 
 export function buildLiveKitWorkerMetadata(agent: AgentConfig): Record<string, unknown> {
-  const llmProvider = agent.llm.provider === "gemini" ? "google" : "openai";
+  const llmProvider =
+    agent.llm.provider === "gemini"
+      ? "google"
+      : agent.llm.provider === "openrouter"
+        ? "openrouter"
+        : "openai";
   return {
     id: agent.agent_id,
     name: agent.name,
     persona: agent.instructions,
     greeting: agent.first_message.message,
     stt: {
-      provider: "deepgram",
+      // #135: pass the user's selection through; this was hardcoded to
+      // "deepgram" before, silently discarding the configured provider.
+      provider: agent.stt.provider,
       language: "multi",
       model: agent.stt.model,
     },
@@ -58,11 +89,14 @@ export function buildLiveKitWorkerMetadata(agent: AgentConfig): Record<string, u
       model: agent.llm.model,
     },
     tts: {
-      provider: "elevenlabs",
+      // #135: same fix as stt.provider above (was hardcoded "elevenlabs").
+      provider: agent.tts.provider,
       voice_id: agent.tts.voice_id,
       model: agent.tts.model,
     },
-    tools: agent.tools.map(adaptTool),
+    tools: agent.tools.map((t) => adaptTool(t, agent.confirmations)),
     persona_constraints: agent.persona_constraints ?? null,
+    workflow_dependencies: agent.workflow_dependencies ?? [],
+    allowed_handoffs: agent.allowed_handoffs ?? [],
   };
 }

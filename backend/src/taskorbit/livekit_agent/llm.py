@@ -15,12 +15,22 @@ later only requires changing ``ConversationOrchestrator.process_message``
 
 from __future__ import annotations
 
+import asyncio
+import re
 import time
 from collections.abc import AsyncIterable
 from typing import Any
 
 from livekit.agents import Agent, FunctionTool, ModelSettings, llm
 
+from taskorbit.database import AsyncSessionLocal
+from taskorbit.database.crud import (
+    create_conversation,
+    create_conversation_message,
+    create_slot_extractions,
+    create_tool_execution,
+    get_conversation,
+)
 from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import get_metrics
 from taskorbit.orchestration import ConversationOrchestrator
@@ -36,6 +46,30 @@ from taskorbit.types import (
 )
 
 log = get_logger(__name__)
+
+_CONFIRM_PATTERNS = (
+    r"\byes\b",
+    r"\bproceed\b",
+    r"\bsure\b",
+    r"\bok\b",
+    r"\bgo ahead\b",
+)
+_REJECT_PATTERNS = (
+    r"\bno\b",
+    r"\bstop\b",
+    r"\bcancel\b",
+    r"\bwait\b",
+)
+
+
+def _voice_confirmation_decision(content: str) -> str | None:
+    """Map spoken text to a workflow/tool confirmation when one is pending."""
+    lowered = content.lower()
+    if any(re.search(pat, lowered) for pat in _CONFIRM_PATTERNS):
+        return "confirm"
+    if any(re.search(pat, lowered) for pat in _REJECT_PATTERNS):
+        return "reject"
+    return None
 
 
 def _default_agent_config() -> AgentConfig:
@@ -149,9 +183,12 @@ class OrchestratorAgent(Agent):
     ``ChatChunk``. Streaming is left for a real LLM integration; the
     pipeline can stream this single chunk into the TTS without issue.
 
-    Push-to-talk guard: ``llm_node`` only processes when ``request_reply()``
-    has been called first. Preemptive generation calls from AgentSession
-    are silently dropped, preventing double responses.
+    Reply gate (#153): ``llm_node`` only produces a reply when
+    ``request_reply()`` has been called, i.e. the frontend sent a
+    ``commit_turn``. The framework's own VAD end-of-turn calls are dropped here
+    so they cannot double-fire. The frontend commits either from its own
+    silence detection or when nudged by the worker's ``force_commit`` signal,
+    which the server-side VAD raises on end-of-speech and is robust to noise.
     """
 
     def __init__(
@@ -161,6 +198,7 @@ class OrchestratorAgent(Agent):
         instructions: str | None = None,
         agent_config: AgentConfig | None = None,
         conversation_id: str = "livekit-session",
+        user_id: int | None = None,
     ) -> None:
         super().__init__(
             instructions=instructions or "You are TaskOrbit, a helpful voice assistant.",
@@ -168,15 +206,31 @@ class OrchestratorAgent(Agent):
         self._orchestrator = orchestrator
         self._agent_config = agent_config or _default_agent_config()
         self._conversation_id = conversation_id
+        self._user_id = user_id
         self._reply_requested: bool = False
         self._t_commit: float | None = None
+        # IDs of the user turns we have already answered (#153). The framework
+        # hands llm_node a frozen COPY of the chat context, and a commit can
+        # fire before Deepgram delivers the final transcript, so that snapshot
+        # may still show only previous turns. We therefore poll the LIVE agent
+        # context (self.chat_ctx) and key "have we answered this turn?" off each
+        # user message's stable id. This makes a follow-up impossible to drop, a
+        # stale re-read impossible to answer twice, and an identical repeat on a
+        # NEW turn (new id) still get a reply -- none of which content- or
+        # count-based matching got right. The id is added synchronously before
+        # the first await so two racing calls cannot both answer one turn.
+        self._answered_user_ids: set[str] = set()
         self._locked_intent_name: str | None = None
         self._current_routed_agent: str = ""
+        self._call_ended: bool = False
         # Voice-path handoff hook (#8 Task 6): the most recent agent_transfer
         # target surfaced by the orchestrator. A future LiveKit data-channel
         # handler can read this to notify the client that the active agent
         # changed mid-call without dropping the room.
         self._pending_handoff_target: str | None = None
+        # #71: Workflow state for voice path
+        self._completed_workflow_steps: list[str] = []
+        self._pending_confirmation_id: str | None = None
 
     def request_reply(self, t_commit: float | None = None) -> None:
         """Signal that the next ``llm_node`` call should actually produce a reply.
@@ -186,7 +240,7 @@ class OrchestratorAgent(Agent):
         AgentSession's preemptive generation does not produce a spurious response.
 
         ``t_commit`` should be ``time.perf_counter()`` captured at the moment
-        the commit_turn data channel message was received — used to measure
+        the commit_turn data channel message was received, used to measure
         end-to-end voice turn latency.
         """
         self._reply_requested = True
@@ -206,9 +260,81 @@ class OrchestratorAgent(Agent):
         back to ``Agent.default.llm_node`` instead.
         """
         if not self._reply_requested:
-            # Preemptive generation call — not triggered by Send. Drop it.
+            # Framework VAD end-of-turn / preemptive call, not triggered by a
+            # commit_turn. Drop it so only an explicit commit drives the reply.
             return
+
+        def _live_chat_ctx() -> llm.ChatContext:
+            # The chat_ctx ARGUMENT is a frozen copy taken when the reply was
+            # created (livekit agent_activity copies it before llm_node), so a
+            # transcript that lands a moment later never appears in it. Read the
+            # agent's LIVE context instead, which the framework appends finalized
+            # user turns to. Fall back to the argument when the live context is
+            # unavailable (unit tests build the agent without an AgentSession).
+            live = getattr(self, "chat_ctx", None)
+            if live is not None and getattr(live, "items", None):
+                return live
+            return chat_ctx
+
+        def _unanswered_user_turn() -> tuple[str, str] | None:
+            # (id, text) of the most recent non-empty user message we have not
+            # already answered, else None (empty context, or the latest turn is
+            # one we already replied to -- a stale or duplicate trigger).
+            # Latest-wins: we return on the FIRST (newest) user message and do
+            # not fall back to an older un-answered one. If a user fires two
+            # turns before either is answered, we answer the newer and skip the
+            # older (whose text is still in context for the orchestrator to see)
+            # -- matching the framework's own new-turn-interrupts-old behavior.
+            for item in reversed(getattr(_live_chat_ctx(), "items", [])):
+                if getattr(item, "role", None) != "user":
+                    continue
+                text = _extract_text(item)
+                if not text.strip():
+                    continue
+                msg_id = str(getattr(item, "id", None) or text)
+                return None if msg_id in self._answered_user_ids else (msg_id, text)
+            return None
+
+        # Race guard (#153): a commit_turn (FE silence detection or the
+        # server-VAD force_commit) can fire before Deepgram delivers the final
+        # transcript for THIS turn, so the live context still shows only the
+        # already-answered previous turn. Poll the live context until a genuinely
+        # new user turn (an id we have not answered) lands, up to ~2.5s to cover
+        # the observed Deepgram transcript delay (~1.4s, occasionally longer).
+        turn = _unanswered_user_turn()
+        _waited = 0
+        while turn is None and _waited < 25:
+            await asyncio.sleep(0.1)
+            turn = _unanswered_user_turn()
+            _waited += 1
+        if turn is None:
+            # No new turn materialised in time. Leave the gate armed so the next
+            # trigger (the framework VAD end-of-turn for this same turn, or a
+            # re-commit) retries instead of permanently dropping the reply. Clear
+            # the commit timestamp so a later armed retry that answers without a
+            # fresh commit_turn does not report this turn's stale latency.
+            self._t_commit = None
+            log.info("voice_turn_awaiting_transcript", conversation_id=self._conversation_id)
+            return
+
+        msg_id, user_text = turn
+        # Claim this turn synchronously -- no await between the membership check
+        # and the add -- so two concurrent llm_node calls cannot both answer it.
+        if msg_id in self._answered_user_ids:
+            return
+        self._answered_user_ids.add(msg_id)
         self._reply_requested = False
+
+        # Build the request from the same live context we claimed the turn from.
+        messages = _convert_chat_ctx_to_messages(_live_chat_ctx())
+        last_user = next((m for m in reversed(messages) if m.role == MessageRole.USER), None)
+
+        log.info(
+            "llm_active",
+            provider=self._agent_config.llm.provider,
+            model=self._agent_config.llm.model,
+            conversation_id=self._conversation_id,
+        )
 
         # STT latency: time from commit_turn received to transcript available in llm_node.
         # llm_node is only invoked after AgentSession has a final Deepgram transcript,
@@ -220,31 +346,139 @@ class OrchestratorAgent(Agent):
             )
             log.debug("stt_processing_complete", latency_ms=round(stt_elapsed * 1000, 1))
 
-        messages = _convert_chat_ctx_to_messages(chat_ctx)
-        last_user = next((m for m in reversed(messages) if m.role == MessageRole.USER), None)
-        if last_user:
-            log.debug("stt_transcript_received", length=len(last_user.content))
+        log.debug("stt_transcript_received", length=len(user_text))
+
+        # #71: Simple voice-path confirmation detection. If we have a pending
+        # confirmation, we check if the user said something affirmative.
+        decision = None
+        if self._pending_confirmation_id and last_user:
+            decision = _voice_confirmation_decision(last_user.content)
+
         request = ConversationRequest(
             conversation_id=self._conversation_id,
             agent_config=self._agent_config,
             messages=messages,
             current_intent_name=self._locked_intent_name,
+            selected_agent=self._current_routed_agent,
+            completed_workflow_steps=self._completed_workflow_steps,
+            confirmation_id=self._pending_confirmation_id if decision else None,
+            decision=decision,
         )
-        response = await self._orchestrator.process_message(request)
+        from taskorbit.types import ToolType as _ToolType
+
+        # Stream the orchestrator response: yield str chunks to TTS immediately,
+        # capture the final ConversationResponse for state updates below.
+        # The DB session stays open across the entire stream so that manual
+        # transfers and custom-agent DB lookups work in the voice path.
+        response = None
+        chunk_index = 0
+        try:
+            async with AsyncSessionLocal() as db:
+                async for item in self._orchestrator.process_message_stream(
+                    request, db=db, user_id=self._user_id
+                ):
+                    if isinstance(item, str):
+                        if chunk_index == 0 and self._t_commit is not None:
+                            _first_chunk_latency = time.perf_counter() - self._t_commit
+                            log.debug(
+                                "llm_first_chunk",
+                                latency_ms=round(_first_chunk_latency * 1000, 1),
+                            )
+                        log.debug("llm_stream_chunk", index=chunk_index, chars=len(item))
+                        chunk_index += 1
+                        yield item
+                    else:
+                        response = item
+        except Exception as exc:
+            log.error(
+                "voice_turn_orchestrator_failed",
+                error=str(exc),
+                conversation_id=self._conversation_id,
+            )
+            raise
+
+        # Early-exit paths (clarification, confirmation, handoff block, end-call, error)
+        # produce no str chunks — only a ConversationResponse. Speak the reply via TTS.
+        if chunk_index == 0 and response is not None and response.reply and response.reply.content:
+            yield response.reply.content
+
+        if response is None:
+            return
+
         self._locked_intent_name = response.locked_intent_name
+        self._completed_workflow_steps = response.completed_workflow_steps
+        if response.status == "workflow_confirmation_required" and response.confirmation:
+            self._pending_confirmation_id = response.confirmation.confirmation_id
+        else:
+            self._pending_confirmation_id = None
+
         if response.selected_agent:
             self._current_routed_agent = response.selected_agent
+
+        # Persist the voice turn to the database so conversation history is
+        # available regardless of whether the user interacted via text or voice.
+        try:
+            async with AsyncSessionLocal() as db:
+                conv_id = self._conversation_id
+                log.debug("voice_turn_db_persist_start", conversation_id=conv_id)
+                if not await get_conversation(db, conv_id):
+                    conv = await create_conversation(
+                        db,
+                        agent_id=self._agent_config.id,
+                        agent_name=self._agent_config.name,
+                        id=conv_id,
+                    )
+                    if conv is None:
+                        log.error("voice_turn_conversation_create_failed", conversation_id=conv_id)
+                if last_user:
+                    await create_conversation_message(
+                        db,
+                        conversation_id=conv_id,
+                        role=last_user.role.value,
+                        content=last_user.content,
+                    )
+                if response.reply:
+                    await create_conversation_message(
+                        db,
+                        conversation_id=conv_id,
+                        role=response.reply.role.value,
+                        content=response.reply.content,
+                    )
+                if response.extracted_slots:
+                    tool_id = response.tool_invoked.id if response.tool_invoked else "orchestrator"
+                    await create_slot_extractions(
+                        db,
+                        conversation_id=conv_id,
+                        tool_id=tool_id,
+                        slots=response.extracted_slots,
+                    )
+                if response.tool_invoked:
+                    await create_tool_execution(
+                        db,
+                        conversation_id=conv_id,
+                        tool_id=response.tool_invoked.id,
+                        tool_type=response.tool_invoked.type.value,
+                        result={"extracted_slots": response.extracted_slots}
+                        if response.extracted_slots
+                        else None,
+                    )
+        except Exception as exc:
+            log.error(
+                "voice_turn_db_persist_failed",
+                error=str(exc),
+                conversation_id=self._conversation_id,
+            )
+        else:
+            log.info("voice_turn_db_persist_ok", conversation_id=conv_id)
+
+        if response.status == "ended":
+            self._call_ended = True
         status = "success" if response.status == "success" else "error"
         get_metrics().voice_pipeline_requests_total.labels(
             handler="/v1/conversations/process", status=status
         ).inc()
 
-        # Surface agent_transfer for the voice path (#8 Task 6 AC7). The
-        # worker reads self._pending_handoff_target after generate_reply()
-        # completes and publishes it on the taskorbit.agent_handoff topic
-        # so the FE swaps the active agent without dropping the LiveKit room.
-        from taskorbit.types import ToolType as _ToolType
-
+        # Surface agent_transfer for the voice path (#8 Task 6 AC7).
         if (
             response.tool_invoked is not None
             and response.tool_invoked.type == _ToolType.AGENT_TRANSFER
@@ -259,14 +493,8 @@ class OrchestratorAgent(Agent):
                     conversation_id=self._conversation_id,
                 )
 
-        text = response.reply.content or ""
-
         if self._t_commit is not None:
             elapsed = time.perf_counter() - self._t_commit
             get_metrics().voice_turn_latency_seconds.observe(elapsed)
             log.info("voice_turn_complete", latency_ms=round(elapsed * 1000, 1))
             self._t_commit = None
-
-        if not text:
-            return
-        yield text

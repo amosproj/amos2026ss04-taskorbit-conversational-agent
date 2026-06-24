@@ -13,9 +13,11 @@
  * touches them.
  */
 
-export type SttProvider = "deepgram";
-export type TtsProvider = "elevenlabs";
-export type LlmProvider = "openai" | "gemini";
+// Both vendors are dual-capability (#135): either can serve STT or TTS,
+// selected independently. Mirrors STTProvider/TTSProvider in backend types.py.
+export type SttProvider = "deepgram" | "elevenlabs";
+export type TtsProvider = "elevenlabs" | "deepgram";
+export type LlmProvider = "openai" | "gemini" | "openrouter";
 
 export type ParamType = "string" | "number" | "boolean" | "date";
 
@@ -54,7 +56,27 @@ export type AgentTransferTool = {
   targets: string[];
 };
 
-export type ToolDefinition = DataExtractionTool | EndCallTool | AgentTransferTool;
+/**
+ * ExternalApiTool — ticket #66.
+ *
+ * Generic adapter for HTTP-based external tools. The full backend config
+ * (request, response.extract, auth.allowed_env, error_mapping, args_schema)
+ * is carried in `parameters` so admins can plug in new APIs by editing
+ * configuration alone, no Python required. Mirrors the contract enforced
+ * by `taskorbit.tools.generic_api.parse_config` in the backend.
+ *
+ * `parameters` is intentionally typed loosely (Record<string, unknown>)
+ * so the contract can grow without a FE type migration each time. The
+ * form editor populates a strict shape; validation lives backend-side.
+ */
+export type ExternalApiTool = {
+  type: "external_api";
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+};
+
+export type ToolDefinition = DataExtractionTool | EndCallTool | AgentTransferTool | ExternalApiTool;
 
 export type ToolType = ToolDefinition["type"];
 
@@ -130,6 +152,8 @@ export type AgentConfig = {
   llm: { provider: LlmProvider; model: string };
   tools: ToolDefinition[];
   engine: Record<string, unknown>;
+  workflow_dependencies: string[];
+  allowed_handoffs: string[];
 
   // Architecture-driven optional extensions (kept off Preet's wire format
   // unless the user opts in via the Advanced/Confirmations sections):
@@ -153,6 +177,8 @@ export function serializeAgent(agent: AgentConfig): Record<string, unknown> {
     llm: agent.llm,
     tools: agent.tools,
     engine: agent.engine,
+    workflow_dependencies: agent.workflow_dependencies,
+    allowed_handoffs: agent.allowed_handoffs,
   };
   if (agent.confirmations) out.confirmations = agent.confirmations;
   if (agent.language) out.language = agent.language;
@@ -162,6 +188,9 @@ export function serializeAgent(agent: AgentConfig): Record<string, unknown> {
   return out;
 }
 
+export const END_CALL_DEFAULT_DESCRIPTION =
+  "End the conversation gracefully when the user asks to end the call.";
+
 export function emptyToolByType(type: ToolType): ToolDefinition {
   switch (type) {
     case "data_extraction":
@@ -170,7 +199,7 @@ export function emptyToolByType(type: ToolType): ToolDefinition {
       return {
         type,
         name: "end_call",
-        description: "End the conversation gracefully when the goal is met.",
+        description: END_CALL_DEFAULT_DESCRIPTION,
       };
     case "agent_transfer":
       return {
@@ -178,6 +207,19 @@ export function emptyToolByType(type: ToolType): ToolDefinition {
         name: "transfer_to_agent",
         description: "Hand off the conversation to a specialised agent.",
         targets: [],
+      };
+    case "external_api":
+      return {
+        type,
+        name: "call_external_api",
+        description: "Call an external HTTP API to fetch or send data.",
+        parameters: {
+          request: { method: "GET", url: "" },
+          response: { extract: {} },
+          auth: { allowed_env: [] },
+          error_mapping: {},
+          args_schema: { type: "object", properties: {} },
+        },
       };
   }
 }

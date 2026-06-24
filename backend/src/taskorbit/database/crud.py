@@ -1,6 +1,6 @@
 """CRUD operations for database models."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -8,9 +8,19 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from taskorbit.agent_config_util import agent_config_from_stored_blob, logical_id_from_stored_blob
 from taskorbit.logging.setup import get_logger
+from taskorbit.types import AgentConfig, ConversationRequest
 
-from .models import AgentConfiguration, ConversationMessage, DefaultAgentTemplate, User
+from .models import (
+    AgentConfiguration,
+    Conversation,
+    ConversationMessage,
+    DefaultAgentTemplate,
+    SlotExtraction,
+    ToolExecution,
+    User,
+)
 
 logger = get_logger(__name__)
 
@@ -119,6 +129,206 @@ async def delete_user(db: AsyncSession, user_id: int) -> bool:
         logger.error("delete_user_failed", error=str(e))
         await db.rollback()
         return False
+
+
+# ============ CONVERSATION CRUD ============
+
+
+async def get_conversation(db: AsyncSession, conversation_id: str) -> Conversation | None:
+    try:
+        result = await db.execute(select(Conversation).where(Conversation.id == conversation_id))
+        return result.scalar_one_or_none()
+    except SQLAlchemyError as e:
+        logger.error("get_conversation_failed", error=str(e))
+        return None
+
+
+async def create_conversation(
+    db: AsyncSession, agent_id: str, agent_name: str, id: str | None = None
+) -> Conversation | None:
+    try:
+        conversation = Conversation(
+            id=id or str(uuid4()),
+            agent_id=agent_id,
+            agent_name=agent_name,
+            started_at=datetime.now(UTC),
+        )
+        db.add(conversation)
+        await db.commit()
+        await db.refresh(conversation)
+        logger.info("conversation_created", conversation_id=conversation.id)
+        return conversation
+    except SQLAlchemyError as e:
+        logger.error("create_conversation_failed", error=str(e))
+        await db.rollback()
+        return None
+
+
+# ============ SLOT EXTRACTION CRUD ============
+
+
+async def create_slot_extractions(
+    db: AsyncSession,
+    conversation_id: str,
+    tool_id: str,
+    slots: dict,
+    user_id: int | None = None,
+) -> list[SlotExtraction]:
+    """Bulk-insert one row per extracted field, recording which tool extracted it."""
+    if not slots:
+        return []
+    try:
+        extractions = [
+            SlotExtraction(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                tool_id=tool_id,
+                field_name=str(name),
+                field_value=str(value) if value is not None else None,
+            )
+            for name, value in slots.items()
+        ]
+        db.add_all(extractions)
+        await db.commit()
+        for extraction in extractions:
+            await db.refresh(extraction)
+        logger.info(
+            "slot_extractions_saved",
+            conversation_id=conversation_id,
+            tool_id=tool_id,
+            count=len(extractions),
+        )
+        return extractions
+    except SQLAlchemyError as e:
+        logger.error("create_slot_extractions_failed", error=str(e))
+        await db.rollback()
+        return []
+
+
+async def get_slot_extractions(db: AsyncSession, conversation_id: str) -> list[SlotExtraction]:
+    """Return all slot extractions for a conversation ordered by extraction time."""
+    try:
+        result = await db.execute(
+            select(SlotExtraction)
+            .where(SlotExtraction.conversation_id == conversation_id)
+            .order_by(SlotExtraction.extracted_at.asc())
+        )
+        return list(result.scalars().all())
+    except SQLAlchemyError as e:
+        logger.error("get_slot_extractions_failed", error=str(e))
+        return []
+
+
+# ============ CONVERSATION HISTORY ============
+
+
+async def get_conversation_history(db: AsyncSession, conversation_id: str) -> dict | None:
+    """Return a conversation with its messages, tool executions, and slot extractions.
+
+    Returns None when the conversation does not exist.
+    """
+    try:
+        conv = await get_conversation(db, conversation_id)
+        if conv is None:
+            return None
+
+        messages_result = await db.execute(
+            select(ConversationMessage)
+            .where(ConversationMessage.conversation_id == conversation_id)
+            .order_by(ConversationMessage.created_at.asc())
+        )
+        messages = list(messages_result.scalars().all())
+
+        tools_result = await db.execute(
+            select(ToolExecution)
+            .where(ToolExecution.conversation_id == conversation_id)
+            .order_by(ToolExecution.executed_at.asc())
+        )
+        tool_executions = list(tools_result.scalars().all())
+
+        slots_result = await db.execute(
+            select(SlotExtraction)
+            .where(SlotExtraction.conversation_id == conversation_id)
+            .order_by(SlotExtraction.extracted_at.asc())
+        )
+        slot_extractions = list(slots_result.scalars().all())
+
+        return {
+            "conversation_id": conv.id,
+            "agent_id": conv.agent_id,
+            "agent_name": conv.agent_name,
+            "started_at": conv.started_at.isoformat() if conv.started_at else None,
+            "ended_at": conv.ended_at.isoformat() if conv.ended_at else None,
+            "messages": [
+                {
+                    "id": m.id,
+                    "role": m.role,
+                    "content": m.content,
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
+                }
+                for m in messages
+            ],
+            "tool_executions": [
+                {
+                    "id": t.id,
+                    "tool_id": t.tool_id,
+                    "tool_type": t.tool_type,
+                    "confirmed": t.confirmed,
+                    "executed_at": t.executed_at.isoformat() if t.executed_at else None,
+                    "result": t.result,
+                }
+                for t in tool_executions
+            ],
+            "slot_extractions": [
+                {
+                    "id": s.id,
+                    "tool_id": s.tool_id,
+                    "field_name": s.field_name,
+                    "field_value": s.field_value,
+                    "extracted_at": s.extracted_at.isoformat() if s.extracted_at else None,
+                }
+                for s in slot_extractions
+            ],
+        }
+    except SQLAlchemyError as e:
+        logger.error(
+            "get_conversation_history_failed", conversation_id=conversation_id, error=str(e)
+        )
+        return None
+
+
+# ============ TOOL EXECUTION CRUD ============
+
+
+async def create_tool_execution(
+    db: AsyncSession,
+    conversation_id: str,
+    tool_id: str,
+    tool_type: str,
+    result: dict | None = None,
+) -> ToolExecution | None:
+    """Record a tool invocation for the conversation history."""
+    try:
+        execution = ToolExecution(
+            conversation_id=conversation_id,
+            tool_id=tool_id,
+            tool_type=tool_type,
+            result=result,
+        )
+        db.add(execution)
+        await db.commit()
+        await db.refresh(execution)
+        logger.info(
+            "tool_execution_saved",
+            conversation_id=conversation_id,
+            tool_id=tool_id,
+            tool_type=tool_type,
+        )
+        return execution
+    except SQLAlchemyError as e:
+        logger.error("create_tool_execution_failed", error=str(e))
+        await db.rollback()
+        return None
 
 
 # ============ CONVERSATION MESSAGE CRUD ============
@@ -411,6 +621,81 @@ async def get_user_agent(
         return None
 
 
+async def resolve_dependency_agent_config(
+    db: AsyncSession, logical_id: str, user_id: int
+) -> AgentConfig | None:
+    """Resolve a workflow dependency id to a full AgentConfig.
+
+    Workflow dependencies store logical ids (e.g. ``technical-support-agent-demo``),
+    but saved rows in ``agent_configurations`` use a DB uuid primary key. Search
+    user copies first, then admin/shared saves (``user_id IS NULL``).
+    """
+    row = await get_user_agent(db, logical_id, user_id)
+    if row:
+        return agent_config_from_stored_blob(row.config)
+
+    try:
+        result = await db.execute(
+            select(AgentConfiguration).where(
+                (AgentConfiguration.user_id == user_id) | (AgentConfiguration.user_id.is_(None))
+            )
+        )
+        user_blob: dict | None = None
+        admin_blob: dict | None = None
+        for candidate in result.scalars().all():
+            blob = candidate.config or {}
+            if logical_id_from_stored_blob(blob) != logical_id:
+                continue
+            if candidate.user_id == user_id:
+                user_blob = blob
+                break
+            if candidate.user_id is None and admin_blob is None:
+                admin_blob = blob
+
+        chosen = user_blob or admin_blob
+        if chosen is None:
+            return None
+        return agent_config_from_stored_blob(chosen)
+    except SQLAlchemyError as e:
+        logger.error(
+            "resolve_dependency_agent_config_failed",
+            logical_id=logical_id,
+            user_id=user_id,
+            error=str(e),
+        )
+        return None
+
+
+async def enrich_request_dependency_configs(
+    request: ConversationRequest,
+    db: AsyncSession,
+    user_id: int,
+) -> ConversationRequest:
+    """Attach resolved prerequisite AgentConfigs to a conversation request."""
+    if not request.agent_config.workflow_dependencies:
+        return request
+
+    dep_configs: dict[str, AgentConfig] = {}
+    for dep_id in request.agent_config.workflow_dependencies:
+        if dep_id in request.dependency_configs:
+            continue
+        resolved = await resolve_dependency_agent_config(db, dep_id, user_id)
+        if resolved:
+            dep_configs[dep_id] = resolved
+        else:
+            logger.warning(
+                "workflow_dependency_config_unresolved",
+                dependency=dep_id,
+                conversation_id=request.conversation_id,
+            )
+
+    if not dep_configs:
+        return request
+    return request.model_copy(
+        update={"dependency_configs": {**request.dependency_configs, **dep_configs}}
+    )
+
+
 async def update_user_agent(
     db: AsyncSession,
     agent_id: str,
@@ -519,6 +804,54 @@ async def copy_on_write_user_agent(
             error=str(e),
         )
         await db.rollback()
+        return None
+
+
+async def get_agent_configuration_by_id(
+    db: AsyncSession, agent_id: str, user_id: int | None = None
+) -> AgentConfiguration | None:
+    """Look up a single AgentConfiguration by its primary key (async).
+
+    When user_id is provided, only returns records owned by that user OR global
+    template records (user_id IS NULL). Returns None for both missing rows and
+    rows owned by another user — callers cannot distinguish the two cases.
+    """
+    try:
+        query = select(AgentConfiguration).where(AgentConfiguration.id == agent_id)
+        if user_id is not None:
+            query = query.where(
+                (AgentConfiguration.user_id == user_id) | (AgentConfiguration.user_id.is_(None))
+            )
+        result = await db.execute(query)
+        return result.scalar_one_or_none()
+    except SQLAlchemyError as e:
+        logger.error("get_agent_configuration_by_id_failed", agent_id=agent_id, error=str(e))
+        return None
+
+
+async def get_agent_configuration_by_name(
+    db: AsyncSession, name: str, user_id: int | None = None
+) -> AgentConfiguration | None:
+    """Look up a single AgentConfiguration by name, scoped to a user.
+
+    When user_id is provided, matches records owned by that user only.
+    When user_id is None (e.g. voice path before auth lands), fails closed:
+    only global template records (user_id IS NULL) are returned so the voice
+    path cannot resolve one user's custom agent into another user's session.
+    """
+    try:
+        query = select(AgentConfiguration).where(AgentConfiguration.name == name)
+        if user_id is not None:
+            query = query.where(AgentConfiguration.user_id == user_id)
+        else:
+            # Fail-closed: unauthenticated callers see global templates only.
+            query = query.where(AgentConfiguration.user_id.is_(None))
+        result = await db.execute(query)
+        return result.scalar_one_or_none()
+    except SQLAlchemyError as e:
+        logger.error(
+            "get_agent_configuration_by_name_failed", name=name, user_id=user_id, error=str(e)
+        )
         return None
 
 

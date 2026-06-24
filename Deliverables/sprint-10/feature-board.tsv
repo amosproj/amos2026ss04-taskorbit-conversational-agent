@@ -1,0 +1,43 @@
+Title	URL	Assignees	Status	Estimated size	Real size
+Component Benchmarking	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/68		Product Backlog		
+Self-Hosted LLM Inference on GCP	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/160		Product Backlog		
+Remove Legacy Text Processing Pipeline	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/126		Product Backlog		
+Visuals & Fallback for external API Outages	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/150		Product Backlog		
+Grafana OS Model Monitoring Integration	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/139		Product Backlog		
+Support Markdown formatting in Chat UI	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/165		Product Backlog		
+ElevenLabs and Deepgram provider switching is unreliable	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/166		Product Backlog		
+Transitive Workflow Dependency Resolution	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/156		Product Backlog		
+Dynamic Critical Action Confirmation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/143		Product Backlog		
+SBOM Automation & Legal Notices UI	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/138		Product Backlog		
+Voice detection does not terminate	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/153	1Endri, Asadraza17	In Progress	5	
+Benchmarking Environment	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/86	djv03, shikharthakur2404	In Progress	8	
+Investigate high API usage rate	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/151	Asadraza17, shikharthakur2404	In Progress	5	
+Consistent data extraction from the conversation and showing in history	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/159	abdulmoeez1225, qiblatainf	Awaiting Review		
+LLM Streaming frontend integration	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/162	K-Vineesh	Awaiting Review	3	
+Greeting message not showing up in the conversation history	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/164	abdulmoeez1225, qiblatainf	Awaiting Review		3
+Cloud Open Source Inference Server	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/67	abdulmoeez1225, K-Vineesh, qiblatainf	Awaiting Review	13	
+Interchangeable Model Selection	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/135	Asadraza17	Feature Archive	3	5
+Conditional Workflow Engine	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/71	1Endri, shikharthakur2404	Feature Archive	5	8
+Provider Model Dropdown	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/87	K-Vineesh	Feature Archive	2	5
+Mute Agent Output	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/107	K-Vineesh	Feature Archive	3	3
+Microphone Mute interrupts Agent TTS output	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/101	1Endri	Feature Archive	3	3
+Stream LLM Responses	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/57	djv03, K-Vineesh	Feature Archive	5	5
+Custom Agent Routing	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/129	abdulmoeez1225, qiblatainf	Feature Archive	5	8
+[PROD] Grafana Backend Fix	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/103	abdulmoeez1225, djv03	Feature Archive	3	3
+Generic Adapter for external Tools	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/66	Asadraza17	Feature Archive	3	5
+Clean up session start UI	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/125		Feature Archive		
+Agent Routing Foundation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/8	abdulmoeez1225, Asadraza17, qiblatainf	Feature Archive	8	8
+Critical Action Confirmation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/49	djv03, shikharthakur2404	Feature Archive	3	5
+[Tools] End Call	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/116	abdulmoeez1225, qiblatainf	Feature Archive	3	3
+User Conversation History	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/45	abdulmoeez1225, qiblatainf	Feature Archive	5	5
+Agent Config not persistant through text and voice prompts	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/99	K-Vineesh	Feature Archive	3	3
+Livekit - Session Limit	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/112	abdulmoeez1225, qiblatainf	Feature Archive	3	3
+Voice input splits into multiple bubbles & numbers/symbols are formatted wrong	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/102	1Endri, djv03	Feature Archive	5	5
+Agent/LLM Memory Safeguards	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/56	djv03, shikharthakur2404	Feature Archive	8	8
+[PROD] Agent config not loaded correctly	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/100	abdulmoeez1225, Asadraza17	Feature Archive	3	3
+Integrate Cloud Environment with IaC	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/21	abdulmoeez1225, qiblatainf	Feature Archive	8	8
+Agent Persona Guardrails	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/69	Asadraza17, shikharthakur2404	Feature Archive	5	5
+User, Design & Build Documentation	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/74	K-Vineesh	Feature Archive	2	3
+Logging & Monitoring Setup	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/11	abdulmoeez1225, djv03, qiblatainf	Feature Archive	8	8
+Voice Interruption for Audio Chat	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/55	abdulmoeez1225, qiblatainf	Feature Archive	5	8
+Slot Extraction for Structured Task Inputs	https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/70	1Endri, djv03	Feature Archive	5	5

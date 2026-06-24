@@ -424,6 +424,54 @@ async def test_on_metrics_stt_zero_duration_not_observed(configured_settings: No
 
 
 @pytest.mark.asyncio
+async def test_user_state_listening_publishes_force_commit(configured_settings: None) -> None:
+    """#153: a user_state_changed -> "listening" transition (server VAD detected
+    end-of-speech) publishes a force_commit nudge to the frontend on the right
+    topic; "speaking"/"away" transitions publish nothing."""
+    ctx, _ = _make_ctx()
+    ctx.room.local_participant.publish_data = AsyncMock()
+    mock_agent = MagicMock()
+    handler_ref: list = []
+
+    mock_session = AsyncMock()
+
+    def capture_on(event: str):
+        def decorator(fn):
+            if event == "user_state_changed":
+                handler_ref.append(fn)
+            return fn
+
+        return decorator
+
+    mock_session.on = MagicMock(side_effect=capture_on)
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+    ):
+        await entrypoint(ctx)
+
+        assert handler_ref, "_on_user_state not registered"
+        handler = handler_ref[0]
+
+        # Non-end-of-speech transitions must not nudge.
+        handler(MagicMock(new_state="speaking"))
+        handler(MagicMock(new_state="away"))
+        await asyncio.sleep(0)
+        ctx.room.local_participant.publish_data.assert_not_called()
+
+        # End-of-speech: publish force_commit once on the force_commit topic.
+        handler(MagicMock(new_state="listening"))
+        await asyncio.sleep(0)  # let the scheduled publish task run
+        await asyncio.sleep(0)
+
+    ctx.room.local_participant.publish_data.assert_awaited_once()
+    call = ctx.room.local_participant.publish_data.call_args
+    assert json.loads(call.args[0]) == {"type": "force_commit"}
+    assert call.kwargs["topic"] == "taskorbit.force_commit"
+
+
+@pytest.mark.asyncio
 async def test_local_participant_packet_ignored(configured_settings: None) -> None:
     """A packet whose sender identity matches the local participant must be ignored."""
     ctx, registered = _make_ctx()
@@ -601,6 +649,103 @@ async def test_entrypoint_falls_back_when_metadata_malformed(configured_settings
         await entrypoint(ctx)
 
     assert mock_build.call_args.kwargs.get("agent_config") is None
+
+
+@pytest.mark.asyncio
+async def test_entrypoint_forwards_agent_config_to_session(configured_settings: None) -> None:
+    """The parsed AgentConfig must reach build_agent_session so the session
+    constructs the user-selected STT/TTS providers (#135). Uses NON-default
+    providers to prove the values survive the metadata round-trip; this is the
+    only automated guard on the frontend metadata chain (FE has no test infra).
+    """
+    ctx, _ = _make_ctx()
+    mock_session = _make_session_mock()
+    mock_agent = MagicMock()
+
+    participant = MagicMock()
+    participant.metadata = json.dumps(
+        {
+            "id": "matrix-bot",
+            "name": "MatrixBot",
+            "persona": "p",
+            "greeting": "hi",
+            "stt": {"provider": "elevenlabs", "language": "multi", "model": "scribe_v2_realtime"},
+            "llm": {"provider": "openai", "model": "gpt-4o-mini"},
+            "tts": {"provider": "deepgram", "voice_id": "", "model": "aura-2-andromeda-en"},
+            "tools": [],
+        }
+    )
+    ctx.wait_for_participant = AsyncMock(return_value=participant)
+
+    with (
+        patch(
+            "taskorbit.worker.build_agent_session", return_value=mock_session
+        ) as mock_build_session,
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+    ):
+        await entrypoint(ctx)
+
+    session_kwargs = mock_build_session.call_args.kwargs
+    forwarded = session_kwargs.get("agent_config")
+    assert forwarded is not None
+    assert forwarded.stt.provider.value == "elevenlabs"
+    assert forwarded.stt.model == "scribe_v2_realtime"
+    assert forwarded.tts.provider.value == "deepgram"
+    assert forwarded.tts.model == "aura-2-andromeda-en"
+
+
+@pytest.mark.asyncio
+async def test_entrypoint_parse_failure_logs_error_and_uses_defaults(
+    configured_settings: None,
+) -> None:
+    """Metadata that is PRESENT but invalid must log at error level (the session
+    silently falls back to default STT/TTS providers, overriding the user's
+    selection, so it has to be loud) and pass agent_config=None onward (#135)."""
+    ctx, _ = _make_ctx()
+    mock_session = _make_session_mock()
+    mock_agent = MagicMock()
+
+    participant = MagicMock()
+    participant.metadata = json.dumps({"unrelated": "shape"})
+    ctx.wait_for_participant = AsyncMock(return_value=participant)
+
+    with (
+        patch(
+            "taskorbit.worker.build_agent_session", return_value=mock_session
+        ) as mock_build_session,
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+        patch("taskorbit.worker.logger") as mock_logger,
+    ):
+        await entrypoint(ctx)
+
+    assert mock_build_session.call_args.kwargs.get("agent_config") is None
+    error_events = [call.args[0] for call in mock_logger.error.call_args_list]
+    assert "worker_agent_config_parse_failed" in error_events
+
+
+@pytest.mark.asyncio
+async def test_entrypoint_empty_metadata_does_not_log_error(configured_settings: None) -> None:
+    """A participant with NO metadata (LiveKit playground / CLI joins) is a
+    normal defaults case, not a failure: no error-level log may fire (#135)."""
+    ctx, _ = _make_ctx()
+    mock_session = _make_session_mock()
+    mock_agent = MagicMock()
+
+    participant = MagicMock()
+    participant.metadata = ""
+    ctx.wait_for_participant = AsyncMock(return_value=participant)
+
+    with (
+        patch(
+            "taskorbit.worker.build_agent_session", return_value=mock_session
+        ) as mock_build_session,
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+        patch("taskorbit.worker.logger") as mock_logger,
+    ):
+        await entrypoint(ctx)
+
+    assert mock_build_session.call_args.kwargs.get("agent_config") is None
+    mock_logger.error.assert_not_called()
 
 
 @pytest.mark.asyncio

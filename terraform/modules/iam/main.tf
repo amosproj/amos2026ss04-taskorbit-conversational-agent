@@ -127,6 +127,12 @@ resource "google_project_iam_member" "deployer_run_admin" {
   member  = "serviceAccount:terraform-deployer@${var.project_id}.iam.gserviceaccount.com"
 }
 
+resource "google_project_iam_member" "deployer_pubsub_admin" {
+  project = var.project_id
+  role    = "roles/pubsub.admin"
+  member  = "serviceAccount:terraform-deployer@${var.project_id}.iam.gserviceaccount.com"
+}
+
 # terraform-deployer must be able to actAs each Cloud Run service account
 # when deploying services (iam.serviceaccounts.actAs required by Cloud Run).
 resource "google_service_account_iam_member" "deployer_actAs_backend" {

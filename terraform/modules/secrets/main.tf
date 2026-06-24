@@ -16,6 +16,8 @@ locals {
     "openai-model"          = var.openai_model
     "google-api-key"        = var.google_api_key
     "google-model"          = var.google_model
+    "openrouter-api-key"    = var.openrouter_api_key
+    "openrouter-model"      = var.openrouter_model
     "database-url"          = var.database_url
     "grafana-admin-password" = var.grafana_admin_password
     "grafana-admin-user"     = var.grafana_admin_user

@@ -104,8 +104,9 @@ def test_conversation_response_defaults() -> None:
         reply=Message(role=MessageRole.ASSISTANT, content="Hello!"),
     )
     assert resp.tool_invoked is None
-    assert resp.requires_confirmation is False
-    assert resp.confirmation_prompt == ""
+    # #49: requires_confirmation/confirmation_prompt replaced by the structured
+    # `confirmation` payload, which defaults to None when no confirmation is pending.
+    assert resp.confirmation is None
 
 
 # ---------------------------------------------------------------------------
@@ -154,3 +155,176 @@ def test_agent_config_round_trips_persona_constraints() -> None:
     dumped = original.model_dump()
     restored = AgentConfig.model_validate(dumped)
     assert restored.persona_constraints == original.persona_constraints
+
+
+# ---------------------------------------------------------------------------
+# ToolDefinition.description default (end_call missing-description bug)
+# ---------------------------------------------------------------------------
+
+
+def test_tool_definition_description_defaults_to_empty_string() -> None:
+    """description has a default of '' so omitting it never fails validation."""
+    tool = ToolDefinition(id="end-1", name="end_call", type=ToolType.END_CALL)
+    assert tool.description == ""
+
+
+def test_agent_config_validate_end_call_tool_without_description() -> None:
+    """AgentConfig.model_validate succeeds when an end_call tool has no description.
+
+    This is the exact failure mode that caused the end-call early exit to silently
+    skip: JSON.stringify drops undefined values, so old stored agents sent a
+    ToolDefinition dict without 'description', which caused a Pydantic
+    ValidationError, which caused the entire agent_config to fall back to
+    _default_agent_config() with tools=[].
+    """
+    raw = {
+        "id": "agent-1",
+        "name": "Sales Bot",
+        "persona": "Sales agent",
+        "greeting": "Hello!",
+        "tools": [
+            # no 'description' key — mirrors what JSON.stringify produced for old agents
+            {"id": "end-1", "name": "end_call", "type": "end_call"},
+        ],
+    }
+    config = AgentConfig.model_validate(raw)
+    assert len(config.tools) == 1
+    assert config.tools[0].type == ToolType.END_CALL
+    assert config.tools[0].description == ""
+
+
+def test_end_call_tool_found_after_validate_without_description() -> None:
+    """The orchestrator's end_call_tool lookup succeeds even with no description."""
+    raw = {
+        "id": "agent-1",
+        "name": "Bot",
+        "persona": "p",
+        "greeting": "hi",
+        "tools": [{"id": "end-1", "name": "end_call", "type": "end_call"}],
+    }
+    config = AgentConfig.model_validate(raw)
+    end_call = next((t for t in config.tools if t.type == ToolType.END_CALL), None)
+    assert end_call is not None
+
+
+def test_agent_config_workflow_fields() -> None:
+    """AgentConfig supports workflow_dependencies and allowed_handoffs."""
+    config = AgentConfig(
+        id="agent-1",
+        name="Sales Bot",
+        persona="Sales agent",
+        greeting="Hello!",
+        workflow_dependencies=["lead-gen-agent"],
+        allowed_handoffs=["appointment-agent"],
+    )
+    assert config.workflow_dependencies == ["lead-gen-agent"]
+    assert config.allowed_handoffs == ["appointment-agent"]
+
+    # Test round-trip
+    dumped = config.model_dump()
+    restored = AgentConfig.model_validate(dumped)
+    assert restored.workflow_dependencies == ["lead-gen-agent"]
+    assert restored.allowed_handoffs == ["appointment-agent"]
+
+
+def test_conversation_status_workflow() -> None:
+    """ConversationStatus includes WORKFLOW_CONFIRMATION_REQUIRED."""
+    from taskorbit.types import ConversationStatus
+
+    assert (
+        ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED.value == "workflow_confirmation_required"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Interchangeable STT/TTS providers (#135)
+# ---------------------------------------------------------------------------
+
+
+def test_provider_matrix_round_trips() -> None:
+    """Every cell of the 2x2 STT/TTS provider matrix validates and round-trips.
+
+    Both vendors are dual-capability (#135 AC2): deepgram and elevenlabs
+    must each be accepted for either pipeline stage, independently.
+    """
+    import itertools
+
+    for stt_provider, tts_provider in itertools.product(
+        ["deepgram", "elevenlabs"], ["elevenlabs", "deepgram"]
+    ):
+        raw = {
+            "id": "agent-1",
+            "name": "Bot",
+            "persona": "p",
+            "greeting": "hi",
+            "stt": {"provider": stt_provider, "language": "multi", "model": "m"},
+            "tts": {"provider": tts_provider, "voice_id": "v", "model": "m"},
+        }
+        config = AgentConfig.model_validate(raw)
+        assert config.stt.provider.value == stt_provider
+        assert config.tts.provider.value == tts_provider
+        # Round-trip: dump and re-validate without loss.
+        restored = AgentConfig.model_validate(config.model_dump())
+        assert restored.stt.provider == config.stt.provider
+        assert restored.tts.provider == config.tts.provider
+
+
+# ---------------------------------------------------------------------------
+# LLMProvider.OPENROUTER (open-source inference via OpenRouter)
+# ---------------------------------------------------------------------------
+
+
+def test_llm_provider_openrouter_value() -> None:
+    from taskorbit.types import LLMProvider
+
+    assert LLMProvider.OPENROUTER.value == "openrouter"
+
+
+def test_llm_config_accepts_openrouter_provider() -> None:
+    from taskorbit.types import LLMConfig, LLMProvider
+
+    cfg = LLMConfig(provider=LLMProvider.OPENROUTER, model="qwen/qwen3-next-80b-a3b-instruct:free")
+    assert cfg.provider == LLMProvider.OPENROUTER
+    assert cfg.model == "qwen/qwen3-next-80b-a3b-instruct:free"
+
+
+def test_agent_config_validates_openrouter_from_raw_dict() -> None:
+    """Worker metadata parsed via model_validate must accept provider='openrouter'."""
+    raw = {
+        "id": "agent-1",
+        "name": "Bot",
+        "persona": "p",
+        "greeting": "hi",
+        "llm": {"provider": "openrouter", "model": "google/gemma-4-31b-it:free"},
+    }
+    config = AgentConfig.model_validate(raw)
+    from taskorbit.types import LLMProvider
+
+    assert config.llm.provider == LLMProvider.OPENROUTER
+    assert config.llm.model == "google/gemma-4-31b-it:free"
+
+
+def test_llm_config_openrouter_round_trips() -> None:
+    from taskorbit.types import LLMConfig, LLMProvider
+
+    original = LLMConfig(provider=LLMProvider.OPENROUTER, model="openai/gpt-oss-120b:free")
+    restored = LLMConfig.model_validate(original.model_dump())
+    assert restored.provider == LLMProvider.OPENROUTER
+    assert restored.model == original.model
+
+
+def test_provider_defaults_unchanged() -> None:
+    """Configs that omit providers keep the historical defaults, so existing
+    saved agents keep working exactly as before (#135 AC4 backward-compat)."""
+    assert STTConfig().provider.value == "deepgram"
+    assert TTSConfig().provider.value == "elevenlabs"
+
+
+def test_unknown_provider_rejected() -> None:
+    """A provider outside the supported set fails Pydantic validation loudly."""
+    import pytest
+
+    with pytest.raises(ValueError):
+        STTConfig.model_validate({"provider": "whisper", "language": "multi", "model": "m"})
+    with pytest.raises(ValueError):
+        TTSConfig.model_validate({"provider": "azure", "voice_id": "v", "model": "m"})

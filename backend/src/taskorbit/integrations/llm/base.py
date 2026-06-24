@@ -7,6 +7,7 @@ class — only on LLMClient.
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from typing import Protocol, runtime_checkable
 
 from taskorbit.types import LLMConfig, Message
@@ -25,5 +26,20 @@ class LLMClient(Protocol):
         Raises LLMTimeoutError if the provider does not respond within the
         configured deadline. Raises LLMAPIError on any upstream failure (auth,
         rate limit, malformed response). Never returns an empty string.
+        """
+        ...
+
+    def generate_stream(
+        self,
+        system_prompt: str,
+        messages: list[Message],
+        llm_config: LLMConfig,
+    ) -> AsyncGenerator[str, None]:
+        """Stream the assistant response token by token.
+
+        Returns an async generator that yields text chunks as they arrive from
+        the provider. Raises the same error types as generate() — auth, rate
+        limit, timeout, and API errors — on the first iteration if the request
+        fails to initiate.
         """
         ...

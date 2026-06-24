@@ -16,6 +16,9 @@ from typing import TYPE_CHECKING
 from taskorbit.logging.setup import get_logger
 from taskorbit.types import AgentConfig, ConversationRequest, ConversationResponse, ToolDefinition
 
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
 logger = get_logger(__name__)
 
 # Tracks how many times each agent type has been invoked this process lifetime.
@@ -138,6 +141,26 @@ class CustomerDissatisfactionAgent(BaseAgent):
         return self.config.tools
 
 
+class GenericAgent(BaseAgent):
+    """Fallback agent for custom IDs that don't match any specialized class.
+
+    Preserves the original config.id as its agent_name to ensure metrics
+    and handoff logic correctly identify the specific custom agent.
+    """
+
+    def __init__(self, config: AgentConfig, orchestrator: ConversationOrchestrator) -> None:
+        super().__init__(config, orchestrator)
+        # AC #71: Use the actual config.id as the agent name instead of a hardcoded string.
+        # This prevents silent fallbacks to 'sales' in logs and response status.
+        self.agent_name = config.id
+
+    async def handle_message(self, request: ConversationRequest) -> ConversationResponse:
+        return await self.orchestrator.process_message(request)
+
+    def get_task_definitions(self) -> list[ToolDefinition]:
+        return self.config.tools
+
+
 # ---------------------------------------------------------------------------
 # Registry / constructor
 # ---------------------------------------------------------------------------
@@ -168,6 +191,16 @@ class AgentRegistry:
     _DEFAULT: type[BaseAgent] = SalesAgent
 
     @classmethod
+    def get_agent_name_for_id(cls, config_id: str) -> str:
+        """Map a logical config.id (e.g. from allowed_handoffs) to a registry agent_name."""
+        agent_id = config_id.lower()
+        for keywords, agent_cls in cls._REGISTRY:
+            if any(kw in agent_id for kw in keywords):
+                return agent_cls.agent_name.lower()
+        # AC #71: Return the ID itself if no keyword matches, instead of falling back to 'sales'.
+        return agent_id
+
+    @classmethod
     def create(
         cls,
         config: AgentConfig,
@@ -175,52 +208,100 @@ class AgentRegistry:
     ) -> BaseAgent:
         """Construct and return the agent that matches *config.id*.
 
-        Falls back to SalesAgent when no keyword matches.
+        Falls back to GenericAgent (preserving the ID) when no keyword matches.
         """
         agent_id = config.id.lower()
         for keywords, agent_cls in cls._REGISTRY:
             if any(kw in agent_id for kw in keywords):
-                _agent_call_counts[agent_cls.agent_name] += 1
-                count = _agent_call_counts[agent_cls.agent_name]
-                print(f"[AgentRegistry] {agent_cls.agent_name} called (total: {count})", flush=True)
-                logger.info("agent_selected", agent=agent_cls.agent_name, total_calls=count)
+                normalized_name = agent_cls.agent_name.lower()
+                _agent_call_counts[normalized_name] += 1
+                count = _agent_call_counts[normalized_name]
+                logger.info("agent_selected", agent=normalized_name, total_calls=count)
                 return agent_cls(config, orchestrator)
 
-        _agent_call_counts[cls._DEFAULT.agent_name] += 1
-        count = _agent_call_counts[cls._DEFAULT.agent_name]
-        print(
-            f"[AgentRegistry] {cls._DEFAULT.agent_name} called (default) (total: {count})",
-            flush=True,
-        )
-        logger.info(
-            "agent_selected", agent=cls._DEFAULT.agent_name, total_calls=count, via="default"
-        )
-        return cls._DEFAULT(config, orchestrator)
+        # AC #71: Explicitly use GenericAgent for custom IDs to avoid silent 'sales' fallback.
+        normalized_id = config.id.lower()
+        _agent_call_counts[normalized_id] += 1
+        count = _agent_call_counts[normalized_id]
+        logger.info("agent_selected", agent=normalized_id, total_calls=count, via="generic")
+        return GenericAgent(config, orchestrator)
 
     @classmethod
-    def create_by_name(
+    def known_agent_names(cls) -> frozenset[str]:
+        """Return the set of built-in agent_name strings."""
+        return frozenset(agent_cls.agent_name for _, agent_cls in cls._REGISTRY)
+
+    @classmethod
+    async def create_by_name(
         cls,
         agent_name: str,
         config: AgentConfig,
         orchestrator: ConversationOrchestrator,
+        db: AsyncSession | None = None,
+        user_id: int | None = None,
     ) -> BaseAgent:
-        """Construct an agent directly by agent_name (e.g. from an IntentResult).
+        """Construct an agent by agent_name (e.g. from an IntentResult).
 
-        Falls back to the default agent if agent_name is empty or unrecognised.
+        Resolution order:
+          1. Built-in agents matched by agent_name.
+          2. Custom agents looked up by name in agent_configurations (when db given).
+          3. Default agent fallback (via config.id).
         """
+        target_name = agent_name.lower()
         for _, agent_cls in cls._REGISTRY:
-            if agent_cls.agent_name == agent_name:
-                _agent_call_counts[agent_cls.agent_name] += 1
-                count = _agent_call_counts[agent_cls.agent_name]
-                print(
-                    f"[AgentRegistry] {agent_cls.agent_name} called via intent (total: {count})",
-                    flush=True,
-                )
+            if agent_cls.agent_name.lower() == target_name:
+                normalized_name = agent_cls.agent_name.lower()
+                _agent_call_counts[normalized_name] += 1
+                count = _agent_call_counts[normalized_name]
                 logger.info(
-                    "agent_selected", agent=agent_cls.agent_name, total_calls=count, via="intent"
+                    "agent_selected", agent=normalized_name, total_calls=count, via="intent"
                 )
                 return agent_cls(config, orchestrator)
+
+        # Fall back to DB for custom agents — scope by user_id to prevent cross-user leakage.
+        if db is not None:
+            from pydantic import ValidationError
+
+            from taskorbit.database.crud import get_agent_configuration_by_name
+            from taskorbit.types import AgentConfig as AgentConfigType
+
+            record = await get_agent_configuration_by_name(db, agent_name, user_id=user_id)
+            if record is not None:
+                try:
+                    custom_config = AgentConfigType(**record.config)
+                except (ValidationError, Exception) as exc:
+                    logger.error(
+                        "custom_agent_invalid_config",
+                        agent_name=agent_name,
+                        error=str(exc),
+                    )
+                    logger.warning("agent_not_found", agent_name=agent_name, fallback="default")
+                    return cls.create(config, orchestrator)
+                logger.info(
+                    "agent_selected",
+                    agent=custom_config.id,
+                    config_name=agent_name,
+                    via="db_fallback",
+                )
+                return cls.create_custom(custom_config, orchestrator)
+
+        logger.warning("agent_not_found", agent_name=agent_name, fallback="default")
         return cls.create(config, orchestrator)
+
+    @classmethod
+    def create_custom(
+        cls, config: AgentConfig, orchestrator: ConversationOrchestrator
+    ) -> BaseAgent:
+        """Construct a GenericAgent from a DB-resolved AgentConfig.
+
+        Called by the orchestrator after it has loaded the config from the
+        agent_configurations table. Built-in routing is not consulted.
+        """
+        normalized_id = config.id.lower()
+        _agent_call_counts[normalized_id] += 1
+        count = _agent_call_counts[normalized_id]
+        logger.info("agent_selected", agent=normalized_id, config_id=config.id, total_calls=count)
+        return GenericAgent(config, orchestrator)
 
     # Keep the old name available so existing call sites don't break.
     @classmethod

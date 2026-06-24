@@ -9,7 +9,12 @@
  * in dev without CORS configuration.
  */
 
-import type { AgentConfig, ToolDefinition as FrontendTool } from "@/types/agentConfig";
+import {
+  END_CALL_DEFAULT_DESCRIPTION,
+  type AgentConfig,
+  type ConfirmationsConfig,
+  type ToolDefinition as FrontendTool,
+} from "@/types/agentConfig";
 import type { LiveTranscriptTurn } from "@/types/callState";
 
 // ---------------------------------------------------------------------------
@@ -47,29 +52,75 @@ type BackendAgentConfig = {
   tools: BackendTool[];
   persona_constraints?: BackendPersonaConstraints;
   context_limit?: BackendContextLimit;
+  workflow_dependencies: string[];
+  allowed_handoffs: string[];
 };
 
 type BackendMessage = { role: "user" | "assistant" | "system"; content: string };
+
+type ManualTransfer = {
+  target_agent_id?: string;
+  target_agent_name?: string;
+};
 
 type ConversationRequest = {
   conversation_id: string;
   agent_config: BackendAgentConfig;
   messages: BackendMessage[];
   current_intent_name?: string | null;
+  selected_agent?: string | null;
+  confirmation_id?: string | null;
+  decision?: "confirm" | "reject" | null;
+  completed_workflow_steps: string[];
+  manual_transfer?: ManualTransfer | null;
 };
 
 export type ConversationResponse = {
   conversation_id: string;
   reply: { role: string; content: string; timestamp: string | null };
   tool_invoked: BackendTool | null;
-  requires_confirmation: boolean;
-  confirmation_prompt: string;
-  status: "success" | "clarification" | "ended" | "error";
+  confirmation?: { confirmation_id: string; action: string; description: string };
+  status:
+    | "success"
+    | "clarification"
+    | "ended"
+    | "error"
+    | "confirmation_required"
+    | "rejected"
+    | "workflow_confirmation_required"
+    | "handoff_blocked";
   selected_intent: string;
   selected_agent: string;
   locked_intent_name: string | null;
   next_active_tool_id: string | null;
+  completed_workflow_steps: string[];
 };
+
+export type StreamEvent =
+  | { type: "chunk"; text: string }
+  | {
+      type: "done";
+      intent: string;
+      status:
+        | "success"
+        | "clarification"
+        | "ended"
+        | "error"
+        | "confirmation_required"
+        | "rejected"
+        | "workflow_confirmation_required"
+        | "handoff_blocked";
+      selected_agent: string;
+      slots: Record<string, unknown>;
+      missing_slots: string[];
+      conversation_id: string;
+      locked_intent_name: string | null;
+      next_active_tool_id: string | null;
+      tool_invoked: BackendTool | null;
+      completed_workflow_steps: string[];
+      confirmation?: { confirmation_id: string; action: string; description: string } | null;
+    }
+  | { type: "error"; message: string };
 
 type ConversationsResponse = {
   conversations: Array<{
@@ -82,17 +133,54 @@ type ConversationsResponse = {
   total: number;
 };
 
+export type ConversationHistory = {
+  conversation_id: string;
+  agent_id: string;
+  agent_name: string;
+  started_at: string;
+  ended_at: string | null;
+  messages: Array<{ id: number; role: string; content: string; created_at: string }>;
+  tool_executions: Array<{
+    id: number;
+    tool_id: string;
+    tool_type: string;
+    confirmed: boolean;
+    executed_at: string;
+    result: Record<string, unknown> | null;
+  }>;
+  slot_extractions: Array<{
+    id: number;
+    tool_id: string;
+    field_name: string;
+    field_value: string | null;
+    extracted_at: string;
+  }>;
+};
+
 // ---------------------------------------------------------------------------
 // Adapters: frontend schema → backend wire schema
 // ---------------------------------------------------------------------------
 
-function adaptTool(tool: FrontendTool): BackendTool {
+function toolNeedsConfirmation(
+  toolName: string,
+  confirmations: ConfirmationsConfig | undefined,
+): boolean {
+  if (confirmations === undefined) return false; // missing means legacy/disabled
+  if (!confirmations.required) return false;
+  return confirmations.tools.length === 0 || confirmations.tools.includes(toolName);
+}
+
+function adaptTool(
+  tool: FrontendTool,
+  confirmations: ConfirmationsConfig | undefined,
+): BackendTool {
   const base = {
     id: tool.name || tool.type,
     name: tool.name,
     type: tool.type,
-    description: tool.description,
-    confirmation: { required: true, prompt: "" },
+    description:
+      tool.description?.trim() || (tool.type === "end_call" ? END_CALL_DEFAULT_DESCRIPTION : ""),
+    confirmation: { required: toolNeedsConfirmation(tool.name, confirmations), prompt: "" },
   };
   if (tool.type === "data_extraction") {
     return { ...base, parameters: { params: tool.params } };
@@ -100,13 +188,24 @@ function adaptTool(tool: FrontendTool): BackendTool {
   if (tool.type === "agent_transfer") {
     return { ...base, parameters: { targets: tool.targets } };
   }
+  if (tool.type === "external_api") {
+    // External API tools (#66) carry the full backend config in
+    // `parameters` already (request / response / auth / error_mapping /
+    // args_schema), so pass it through verbatim.
+    return { ...base, parameters: tool.parameters };
+  }
   return { ...base, parameters: {} };
 }
 
 function adaptAgentConfig(agent: AgentConfig): BackendAgentConfig {
-  // Map FE provider id to backend LLMProvider enum, matching the voice
-  // path in livekitAgentMetadata.ts (backend accepts "openai"/"google").
-  const llmProvider = agent.llm.provider === "gemini" ? "google" : "openai";
+  // Map FE provider id to backend LLMProvider enum value.
+  // "gemini" → "google", "openrouter" → "openrouter", "openai" → "openai".
+  const llmProvider =
+    agent.llm.provider === "gemini"
+      ? "google"
+      : agent.llm.provider === "openrouter"
+        ? "openrouter"
+        : "openai";
   const out: BackendAgentConfig = {
     id: agent.agent_id,
     name: agent.name,
@@ -115,7 +214,9 @@ function adaptAgentConfig(agent: AgentConfig): BackendAgentConfig {
     stt: { provider: agent.stt.provider, language: "multi", model: agent.stt.model },
     llm: { provider: llmProvider, model: agent.llm.model },
     tts: { provider: agent.tts.provider, voice_id: agent.tts.voice_id, model: agent.tts.model },
-    tools: agent.tools.map(adaptTool),
+    tools: agent.tools.map((t) => adaptTool(t, agent.confirmations)),
+    workflow_dependencies: agent.workflow_dependencies,
+    allowed_handoffs: agent.allowed_handoffs,
   };
   if (agent.persona_constraints) {
     out.persona_constraints = agent.persona_constraints;
@@ -144,10 +245,15 @@ export async function sendMessage(
   conversationId: string,
   signal?: AbortSignal,
   lockedIntentName?: string | null,
+  confirmationId?: string | null,
+  decision?: "confirm" | "reject" | null,
+  completedWorkflowSteps: string[] = [],
+  selectedAgent?: string | null,
+  manualTransfer?: ManualTransfer | null,
 ): Promise<ConversationResponse> {
   // STEP A: Map transcript -> backend Message[]
   const messages: BackendMessage[] = transcript.map((turn) => ({
-    role: turn.role === "user" ? "user" : "assistant",
+    role: turn.role,
     content: turn.text,
   }));
 
@@ -157,6 +263,11 @@ export async function sendMessage(
     agent_config: adaptAgentConfig(agent),
     messages,
     current_intent_name: lockedIntentName ?? null,
+    selected_agent: selectedAgent ?? null,
+    confirmation_id: confirmationId ?? null,
+    decision: decision ?? null,
+    completed_workflow_steps: completedWorkflowSteps,
+    manual_transfer: manualTransfer ?? null,
   };
 
   const res = await fetch("/api/v1/conversations/process", {
@@ -185,6 +296,102 @@ export async function getConversations(): Promise<ConversationsResponse> {
   const response = await fetch("/api/v1/conversations");
   if (!response.ok) {
     throw new Error("Failed to fetch conversations");
+  }
+  return response.json();
+}
+
+/**
+ * Stream one conversation turn via POST /api/v1/conversations/stream (SSE).
+ *
+ * Yields typed StreamEvent values as they arrive. Callers should iterate with
+ * `for await` and handle "chunk", "done", and "error" variants. Malformed
+ * SSE lines are silently skipped.
+ */
+export async function* sendMessageStream(
+  agent: AgentConfig,
+  transcript: LiveTranscriptTurn[],
+  conversationId: string,
+  signal?: AbortSignal,
+  lockedIntentName?: string | null,
+  confirmationId?: string | null,
+  decision?: "confirm" | "reject" | null,
+  completedWorkflowSteps?: string[],
+  selectedAgent?: string | null,
+  manualTransfer?: ManualTransfer | null,
+): AsyncGenerator<StreamEvent> {
+  const messages: BackendMessage[] = transcript.map((turn) => ({
+    role: turn.role === "user" ? "user" : "assistant",
+    content: turn.text,
+  }));
+
+  const body: ConversationRequest = {
+    conversation_id: conversationId,
+    agent_config: adaptAgentConfig(agent),
+    messages,
+    current_intent_name: lockedIntentName ?? null,
+    confirmation_id: confirmationId ?? null,
+    decision: decision ?? null,
+    completed_workflow_steps: completedWorkflowSteps ?? [],
+    selected_agent: selectedAgent ?? null,
+    manual_transfer: manualTransfer ?? null,
+  };
+
+  const res = await fetch("/api/v1/conversations/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(String(err.detail ?? `HTTP ${res.status}`));
+  }
+
+  if (!res.body) {
+    throw new Error("Response body is null");
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() ?? "";
+
+      for (const part of parts) {
+        for (const line of part.split("\n")) {
+          if (!line.startsWith("data: ")) continue;
+          const json = line.slice(6).trim();
+          if (!json) continue;
+          try {
+            yield JSON.parse(json) as StreamEvent;
+          } catch {
+            // malformed line — skip
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+/**
+ * Fetch full history for a single conversation — messages, tool executions,
+ * and slot extractions. Used on reload to restore a previous session.
+ */
+export async function getConversationHistory(conversationId: string): Promise<ConversationHistory> {
+  const response = await fetch(`/api/v1/conversations/${conversationId}/history`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch history for conversation ${conversationId}`);
   }
   return response.json();
 }

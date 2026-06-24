@@ -32,10 +32,12 @@ elevenlabs_voice_id = "21m00Tcm4TlvDq8ikWAM"
 elevenlabs_model    = "eleven_multilingual_v2"
 
 # ── LLM ───────────────────────────────────────────────────────────────────────
-openai_api_key = ""
-openai_model   = "gpt-4o-mini"
-google_api_key = ""
-google_model   = "gemini-2.5-flash"
+openai_api_key     = ""
+openai_model       = "gpt-4o-mini"
+google_api_key     = ""
+google_model       = "gemini-2.5-flash"
+openrouter_api_key = ""
+openrouter_model   = "meta-llama/llama-3.1-8b-instruct:free"
 
 # ── Grafana ───────────────────────────────────────────────────────────────────
 grafana_admin_password = "change-me-strong-password"
