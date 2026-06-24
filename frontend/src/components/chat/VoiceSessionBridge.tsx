@@ -75,7 +75,16 @@ export function VoiceSessionBridge({
       return;
     }
     if (agentState === "listening") {
-      onPhase("idle_in_call");
+      // The agent reports "listening" both before a turn AND during the STT gap
+      // right after the user commits (Deepgram's ~1.4s delay before it reports
+      // "thinking"). While we are in "thinking" (the user committed and is
+      // waiting on a reply), do NOT fall back to idle_in_call: that would flash
+      // "Listening…" (idle -> auto-restart -> recording) instead of holding
+      // "Processing…" until the reply arrives. Only the post-speaking listening
+      // transition should return us to idle to re-arm the mic. (#153)
+      if (statusRef.current !== "thinking") {
+        onPhase("idle_in_call");
+      }
     }
   }, [agentState, onPhase]);
 

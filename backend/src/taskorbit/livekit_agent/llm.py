@@ -15,6 +15,7 @@ later only requires changing ``ConversationOrchestrator.process_message``
 
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 from collections.abc import AsyncIterable
@@ -193,9 +194,12 @@ class OrchestratorAgent(Agent):
     ``ChatChunk``. Streaming is left for a real LLM integration; the
     pipeline can stream this single chunk into the TTS without issue.
 
-    Push-to-talk guard: ``llm_node`` only processes when ``request_reply()``
-    has been called first. Preemptive generation calls from AgentSession
-    are silently dropped, preventing double responses.
+    Reply gate (#153): ``llm_node`` only produces a reply when
+    ``request_reply()`` has been called, i.e. the frontend sent a
+    ``commit_turn``. The framework's own VAD end-of-turn calls are dropped here
+    so they cannot double-fire. The frontend commits either from its own
+    silence detection or when nudged by the worker's ``force_commit`` signal,
+    which the server-side VAD raises on end-of-speech and is robust to noise.
     """
 
     def __init__(
@@ -216,6 +220,17 @@ class OrchestratorAgent(Agent):
         self._user_id = user_id
         self._reply_requested: bool = False
         self._t_commit: float | None = None
+        # IDs of the user turns we have already answered (#153). The framework
+        # hands llm_node a frozen COPY of the chat context, and a commit can
+        # fire before Deepgram delivers the final transcript, so that snapshot
+        # may still show only previous turns. We therefore poll the LIVE agent
+        # context (self.chat_ctx) and key "have we answered this turn?" off each
+        # user message's stable id. This makes a follow-up impossible to drop, a
+        # stale re-read impossible to answer twice, and an identical repeat on a
+        # NEW turn (new id) still get a reply -- none of which content- or
+        # count-based matching got right. The id is added synchronously before
+        # the first await so two racing calls cannot both answer one turn.
+        self._answered_user_ids: set[str] = set()
         self._locked_intent_name: str | None = None
         self._current_routed_agent: str | None = None
         self._call_ended: bool = False
@@ -260,7 +275,7 @@ class OrchestratorAgent(Agent):
         AgentSession's preemptive generation does not produce a spurious response.
 
         ``t_commit`` should be ``time.perf_counter()`` captured at the moment
-        the commit_turn data channel message was received — used to measure
+        the commit_turn data channel message was received, used to measure
         end-to-end voice turn latency.
         """
         self._reply_requested = True
@@ -280,9 +295,74 @@ class OrchestratorAgent(Agent):
         back to ``Agent.default.llm_node`` instead.
         """
         if not self._reply_requested:
-            # Preemptive generation call — not triggered by Send. Drop it.
+            # Framework VAD end-of-turn / preemptive call, not triggered by a
+            # commit_turn. Drop it so only an explicit commit drives the reply.
             return
+
+        def _live_chat_ctx() -> llm.ChatContext:
+            # The chat_ctx ARGUMENT is a frozen copy taken when the reply was
+            # created (livekit agent_activity copies it before llm_node), so a
+            # transcript that lands a moment later never appears in it. Read the
+            # agent's LIVE context instead, which the framework appends finalized
+            # user turns to. Fall back to the argument when the live context is
+            # unavailable (unit tests build the agent without an AgentSession).
+            live = getattr(self, "chat_ctx", None)
+            if live is not None and getattr(live, "items", None):
+                return live
+            return chat_ctx
+
+        def _unanswered_user_turn() -> tuple[str, str] | None:
+            # (id, text) of the most recent non-empty user message we have not
+            # already answered, else None (empty context, or the latest turn is
+            # one we already replied to -- a stale or duplicate trigger).
+            # Latest-wins: we return on the FIRST (newest) user message and do
+            # not fall back to an older un-answered one. If a user fires two
+            # turns before either is answered, we answer the newer and skip the
+            # older (whose text is still in context for the orchestrator to see)
+            # -- matching the framework's own new-turn-interrupts-old behavior.
+            for item in reversed(getattr(_live_chat_ctx(), "items", [])):
+                if getattr(item, "role", None) != "user":
+                    continue
+                text = _extract_text(item)
+                if not text.strip():
+                    continue
+                msg_id = str(getattr(item, "id", None) or text)
+                return None if msg_id in self._answered_user_ids else (msg_id, text)
+            return None
+
+        # Race guard (#153): a commit_turn (FE silence detection or the
+        # server-VAD force_commit) can fire before Deepgram delivers the final
+        # transcript for THIS turn, so the live context still shows only the
+        # already-answered previous turn. Poll the live context until a genuinely
+        # new user turn (an id we have not answered) lands, up to ~2.5s to cover
+        # the observed Deepgram transcript delay (~1.4s, occasionally longer).
+        turn = _unanswered_user_turn()
+        _waited = 0
+        while turn is None and _waited < 25:
+            await asyncio.sleep(0.1)
+            turn = _unanswered_user_turn()
+            _waited += 1
+        if turn is None:
+            # No new turn materialised in time. Leave the gate armed so the next
+            # trigger (the framework VAD end-of-turn for this same turn, or a
+            # re-commit) retries instead of permanently dropping the reply. Clear
+            # the commit timestamp so a later armed retry that answers without a
+            # fresh commit_turn does not report this turn's stale latency.
+            self._t_commit = None
+            log.info("voice_turn_awaiting_transcript", conversation_id=self._conversation_id)
+            return
+
+        msg_id, user_text = turn
+        # Claim this turn synchronously -- no await between the membership check
+        # and the add -- so two concurrent llm_node calls cannot both answer it.
+        if msg_id in self._answered_user_ids:
+            return
+        self._answered_user_ids.add(msg_id)
         self._reply_requested = False
+
+        # Build the request from the same live context we claimed the turn from.
+        messages = _convert_chat_ctx_to_messages(_live_chat_ctx())
+        last_user = next((m for m in reversed(messages) if m.role == MessageRole.USER), None)
 
         log.info(
             "llm_active",
@@ -301,10 +381,7 @@ class OrchestratorAgent(Agent):
             )
             log.debug("stt_processing_complete", latency_ms=round(stt_elapsed * 1000, 1))
 
-        messages = _convert_chat_ctx_to_messages(chat_ctx)
-        last_user = next((m for m in reversed(messages) if m.role == MessageRole.USER), None)
-        if last_user:
-            log.debug("stt_transcript_received", length=len(last_user.content))
+        log.debug("stt_transcript_received", length=len(user_text))
 
         # #71: Simple voice-path confirmation detection. If we have a pending
         # confirmation, we check if the user said something affirmative.

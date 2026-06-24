@@ -176,7 +176,11 @@ def test_build_system_prompt_without_constraints_unchanged() -> None:
     """With no persona_constraints the prompt is exactly the existing format."""
     orch = ConversationOrchestrator()
     prompt = orch._build_system_prompt(_agent_with_constraints(None), active_tool=None)
-    assert prompt == "You are John.\nPersona: TechStore customer support."
+    assert prompt == (
+        "You are John.\nPersona: TechStore customer support.\n"
+        "Keep replies brief and conversational, at most two short sentences. "
+        "Ask for at most one missing detail at a time."
+    )
 
 
 def test_build_system_prompt_includes_persona_constraints() -> None:
@@ -211,7 +215,11 @@ def test_build_system_prompt_empty_constraints_object_is_noop() -> None:
     prompt = orch._build_system_prompt(
         _agent_with_constraints(PersonaConstraints()), active_tool=None
     )
-    assert prompt == "You are John.\nPersona: TechStore customer support."
+    assert prompt == (
+        "You are John.\nPersona: TechStore customer support.\n"
+        "Keep replies brief and conversational, at most two short sentences. "
+        "Ask for at most one missing detail at a time."
+    )
 
 
 # ---------------------------------------------------------------------------
