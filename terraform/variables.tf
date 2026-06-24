@@ -267,6 +267,22 @@ variable "google_model" {
   }
 }
 
+variable "openrouter_api_key" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "openrouter_model" {
+  type    = string
+  default = "meta-llama/llama-3.1-8b-instruct:free"
+
+  validation {
+    condition     = length(var.openrouter_model) > 0
+    error_message = "openrouter_model must not be empty."
+  }
+}
+
 variable "grafana_admin_password" {
   description = "Grafana admin password stored in Secret Manager."
   type        = string
