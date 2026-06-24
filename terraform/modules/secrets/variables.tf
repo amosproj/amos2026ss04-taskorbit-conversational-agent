@@ -65,6 +65,17 @@ variable "google_model" {
   default = "gemini-2.5-flash"
 }
 
+variable "openrouter_api_key" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "openrouter_model" {
+  type    = string
+  default = "meta-llama/llama-3.1-8b-instruct:free"
+}
+
 variable "database_url" {
   type      = string
   sensitive = true
