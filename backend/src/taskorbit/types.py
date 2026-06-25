@@ -253,6 +253,23 @@ class ConversationRequest(BaseModel):
     manual_transfer: ManualTransferRequest | None = None
 
 
+class PipelineLatencyMs(BaseModel):
+    """Per-stage wall-clock timings for a single pipeline turn (milliseconds).
+
+    Null fields mean the stage was not measured on this path (e.g. STT/TTS on
+    the text /v1/conversations/process path). Populated by the orchestrator for
+    benchmark harness consumption (#68).
+    """
+
+    stt_processing: float | None = None
+    llm_call: float | None = None
+    llm_api: float | None = None
+    tool_call: float | None = None
+    tts_synthesis: float | None = None
+    total: float | None = None
+    voice_turn: float | None = None
+
+
 class ConversationResponse(BaseModel):
     conversation_id: str
     reply: Message
@@ -270,6 +287,8 @@ class ConversationResponse(BaseModel):
     next_active_tool_id: str | None = None
     # #71: Workflow state
     completed_workflow_steps: list[str] = Field(default_factory=list)
+    # #68: Per-stage latency for benchmark harness (text path)
+    latency_ms: PipelineLatencyMs | None = None
 
 
 # ---------------------------------------------------------------------------

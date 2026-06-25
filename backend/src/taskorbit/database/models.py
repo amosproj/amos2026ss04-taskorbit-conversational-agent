@@ -64,6 +64,7 @@ class ToolExecution(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    duration_ms: Mapped[float | None] = mapped_column(nullable=True)
 
     conversation: Mapped[Conversation] = relationship(back_populates="tool_executions")
 

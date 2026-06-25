@@ -17,6 +17,24 @@ pip install -r requirements.txt
 python runner/run_benchmark.py --config configs/baseline-cloud.yaml
 ```
 
+### Component Benchmarks (#68)
+
+Compare STT / LLM / TTS pipeline combinations across the four AC prompt categories
+(short/long, with/without tool calls):
+
+```bash
+# Dry-run (no backend required — validates config + schema output)
+python runner/run_component_benchmark.py --config configs/component-benchmark.yaml --dry-run
+
+# Live run against a running backend
+export BENCHMARK_API_URL=http://localhost:8000
+export BENCHMARK_API_TOKEN=<your-jwt>
+python runner/run_component_benchmark.py --config configs/component-benchmark.yaml
+```
+
+Results are written as JSONL to `benchmarks/results/component/` using the harness
+schema in `runner/benchmark_schema.py` (consumed by Endri's aggregator).
+
 ### View Results
 
 ```bash

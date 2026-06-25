@@ -306,6 +306,7 @@ async def create_tool_execution(
     tool_id: str,
     tool_type: str,
     result: dict | None = None,
+    duration_ms: float | None = None,
 ) -> ToolExecution | None:
     """Record a tool invocation for the conversation history."""
     try:
@@ -314,6 +315,7 @@ async def create_tool_execution(
             tool_id=tool_id,
             tool_type=tool_type,
             result=result,
+            duration_ms=duration_ms,
         )
         db.add(execution)
         await db.commit()

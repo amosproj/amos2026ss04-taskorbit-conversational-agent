@@ -432,7 +432,7 @@ async def test_agent_transfer_dispatch_sets_tool_invoked() -> None:
             ConversationOrchestrator,
             "_dispatch_tool",
             new_callable=AsyncMock,
-            return_value={"transferred_to": "technical_support", "history_preserved": True},
+            return_value=({"transferred_to": "technical_support", "history_preserved": True}, 0.0),
         ),
         patch.object(
             ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
@@ -506,9 +506,9 @@ async def test_external_api_dispatch_passes_full_config_plus_args() -> None:
         _tool: ToolDefinition,
         ctx: dict[str, Any],
         **_kwargs: Any,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], float]:
         dispatch_calls.append(ctx)
-        return {"status": 200, "data": {"temp": 18.3}}
+        return {"status": 200, "data": {"temp": 18.3}}, 0.0
 
     with (
         patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
@@ -602,7 +602,7 @@ async def test_process_message_confirmation_flow(mock_good_intent: Any) -> None:
             with patch.object(
                 ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock
             ) as mock_dispatch:
-                mock_dispatch.return_value = {"saved": True}
+                mock_dispatch.return_value = ({"saved": True}, 0.0)
 
                 response = await orch.process_message(req)
 
@@ -856,7 +856,7 @@ async def test_process_message_stream_dispatches_tool_when_slots_complete(
                 with patch.object(
                     ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock
                 ) as mock_dispatch:
-                    mock_dispatch.return_value = {"saved": True}
+                    mock_dispatch.return_value = ({"saved": True}, 0.0)
                     events = []
                     async for event in orch.process_message_stream(req):
                         events.append(event)
@@ -984,7 +984,7 @@ async def test_end_call_returns_ended_status() -> None:
         ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="Goodbye!"
     ):
         with patch.object(
-            ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock, return_value={}
+            ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock, return_value=({}, 0.0)
         ):
             response = await orch.process_message(_make_request_with_end_call_tool("goodbye"))
 
@@ -1001,7 +1001,7 @@ async def test_end_call_skips_intent_router() -> None:
         ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="Goodbye!"
     ):
         with patch.object(
-            ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock, return_value={}
+            ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock, return_value=({}, 0.0)
         ):
             with patch.object(orch._intent_router, "detect", new_callable=AsyncMock) as mock_detect:
                 await orch.process_message(_make_request_with_end_call_tool("hang up please"))
@@ -1055,7 +1055,7 @@ async def test_end_call_reply_is_llm_farewell() -> None:
         ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value=farewell_text
     ):
         with patch.object(
-            ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock, return_value={}
+            ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock, return_value=({}, 0.0)
         ):
             response = await orch.process_message(_make_request_with_end_call_tool("goodbye"))
 
@@ -1076,7 +1076,7 @@ async def test_end_call_uses_fallback_farewell_on_llm_timeout() -> None:
 
     with patch.object(ConversationOrchestrator, "_call_llm", side_effect=slow_llm):
         with patch.object(
-            ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock, return_value={}
+            ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock, return_value=({}, 0.0)
         ):
             response = await orch.process_message(_make_request_with_end_call_tool("goodbye"))
 
@@ -1098,7 +1098,7 @@ async def test_end_call_uses_fallback_farewell_on_llm_error() -> None:
         side_effect=RuntimeError("LLM unavailable"),
     ):
         with patch.object(
-            ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock, return_value={}
+            ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock, return_value=({}, 0.0)
         ):
             response = await orch.process_message(_make_request_with_end_call_tool("hang up"))
 

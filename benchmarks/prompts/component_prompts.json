@@ -1,0 +1,66 @@
+[
+  {
+    "id": "inq_hours_01",
+    "category": "short_no_tool",
+    "turns": ["What are your business hours?"],
+    "expects_tool": false,
+    "expected_tool_type": null,
+    "expected_status": "success",
+    "agent_template": "general_inquiry"
+  },
+  {
+    "id": "inq_services_01",
+    "category": "short_no_tool",
+    "turns": ["What services do you offer?"],
+    "expects_tool": false,
+    "expected_tool_type": null,
+    "expected_status": "success",
+    "agent_template": "general_inquiry"
+  },
+  {
+    "id": "transfer_tech_01",
+    "category": "short_with_tool",
+    "turns": ["I have a technical problem, please transfer me to tech support."],
+    "expects_tool": true,
+    "expected_tool_type": "agent_transfer",
+    "expected_status": "success",
+    "agent_template": "transfer_technical_support"
+  },
+  {
+    "id": "end_call_01",
+    "category": "short_with_tool",
+    "turns": ["That's all I needed, please end the call."],
+    "expects_tool": true,
+    "expected_tool_type": "end_call",
+    "expected_status": "ended",
+    "agent_template": "end_call"
+  },
+  {
+    "id": "tech_multiturn_01",
+    "category": "long_no_tool",
+    "turns": [
+      "My internet keeps dropping every few minutes.",
+      "John Smith",
+      "The router reboots randomly, lights go off."
+    ],
+    "expects_tool": false,
+    "expected_tool_type": null,
+    "expected_status": "success",
+    "agent_template": "technical_support"
+  },
+  {
+    "id": "appt_booking_01",
+    "category": "long_with_tool",
+    "turns": [
+      "I need to book a plumbing service appointment.",
+      "Alice Brown",
+      "alice@example.com",
+      "+49 170 1234567",
+      "Next Thursday"
+    ],
+    "expects_tool": true,
+    "expected_tool_type": "data_extraction",
+    "expected_status": "success",
+    "agent_template": "appointment_booking"
+  }
+]
