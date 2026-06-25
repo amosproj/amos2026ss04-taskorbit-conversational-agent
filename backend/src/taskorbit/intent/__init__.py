@@ -7,15 +7,17 @@ IntentRouter replaces it with LLM-based classification and a confidence gate.
 from __future__ import annotations
 
 import json
-import logging
+import re
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
+from taskorbit.logging.setup import get_logger
+
 if TYPE_CHECKING:
     from taskorbit.types import LLMConfig, Message
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 CONFIDENCE_THRESHOLD = 0.7
 
@@ -298,13 +300,18 @@ class IntentRouter:
 
         classification_messages: list[Msg] = [Msg(role=MessageRole.USER, content=prompt)]
 
+        raw = ""
         try:
             raw = await llm_fn(system_prompt, classification_messages, llm_config)
-            parsed = json.loads(raw)
+            # Gemini (2.x) wraps JSON in markdown fences even with explicit instructions
+            # not to — strip them before parsing.
+            cleaned = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.IGNORECASE)
+            cleaned = re.sub(r"\s*```$", "", cleaned)
+            parsed = json.loads(cleaned)
             intent_name: str | None = parsed.get("intent")
             confidence: float = float(parsed.get("confidence", 0.0))
         except Exception as exc:
-            logger.warning("intent_router_parse_error", extra={"error": str(exc)})
+            logger.warning("intent_router_parse_error", error=str(exc))
             # Fallback to keyword matching so the call never silently drops.
             # confidence=0.5 is below the threshold so requires_clarification is set
             # consistently — prevents silent mis-routing when the LLM is unavailable.

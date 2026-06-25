@@ -120,7 +120,10 @@ class GeminiClient:
             ).inc()
             raise LLMAPIError(f"Google API error: {exc}") from exc
 
-        text = response.text
+        try:
+            text = response.text
+        except (ValueError, AttributeError):
+            text = None
         if not text:
             _log.error("llm_call_failed", provider="google", error_type="empty_response")
             get_metrics().llm_requests_total.labels(
@@ -186,7 +189,12 @@ class GeminiClient:
                 contents=contents,
                 config=GenerateContentConfig(system_instruction=system_prompt),
             ):
-                text = chunk.text
+                # .text raises ValueError on metadata-only / safety-filtered chunks
+                # in google-genai >=1.0 — skip those silently.
+                try:
+                    text = chunk.text
+                except (ValueError, AttributeError):
+                    text = None
                 if text:
                     char_count += len(text)
                     yield text

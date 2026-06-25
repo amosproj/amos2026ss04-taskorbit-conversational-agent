@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
 
+    # --- Auth ---
+    # Set AUTH_ENABLED=true and provide a strong SECRET_KEY in production.
+    # Generate with: python -c "import secrets; print(secrets.token_hex(32))"
+    auth_enabled: bool = False
+    secret_key: str = ""
+
     # --- CORS ---
     cors_allow_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 

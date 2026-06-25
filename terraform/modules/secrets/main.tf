@@ -21,6 +21,8 @@ locals {
     "database-url"          = var.database_url
     "grafana-admin-password" = var.grafana_admin_password
     "grafana-admin-user"     = var.grafana_admin_user
+    "auth-enabled"           = var.auth_enabled
+    "secret-key"             = var.secret_key
   }
 }
 

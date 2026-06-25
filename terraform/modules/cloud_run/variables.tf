@@ -8,6 +8,7 @@ variable "frontend_image" { type = string }
 variable "backend_sa_email" { type = string }
 variable "worker_sa_email" { type = string }
 variable "frontend_sa_email" { type = string }
+variable "observability_sa_email" { type = string }
 
 variable "vpc_connector_id" { type = string }
 variable "cloud_sql_connection_name" { type = string }

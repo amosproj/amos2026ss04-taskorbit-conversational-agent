@@ -71,3 +71,9 @@ worker_min_instances   = 1
 worker_max_instances   = 5
 frontend_min_instances = 1
 frontend_max_instances = 5
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+# Set auth_enabled = "true" in production once JWT flow is in place.
+# Generate: python -c "import secrets; print(secrets.token_hex(32))"
+auth_enabled = "false"
+secret_key   = ""
