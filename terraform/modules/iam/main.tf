@@ -8,7 +8,6 @@ locals {
     "google-api-key", "google-model",
     "openrouter-api-key", "openrouter-model",
     "database-url",
-    "auth-enabled", "secret-key",
   ]
   # Secrets needed only by the observability stack.
   grafana_secret_keys = ["grafana-admin-user", "grafana-admin-password"]
