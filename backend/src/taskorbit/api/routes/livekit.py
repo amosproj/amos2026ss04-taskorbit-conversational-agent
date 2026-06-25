@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from livekit import api as lk_api
 
+from taskorbit.api.deps import get_current_user_id
 from taskorbit.config import get_settings
 from taskorbit.logging.setup import get_logger
 from taskorbit.types import LiveKitTokenRequest, LiveKitTokenResponse
@@ -34,7 +35,10 @@ _MAX_METADATA_BYTES = 4096
 
 
 @router.post("/token", response_model=LiveKitTokenResponse)
-async def create_livekit_token(body: LiveKitTokenRequest) -> LiveKitTokenResponse:
+async def create_livekit_token(
+    body: LiveKitTokenRequest,
+    _user_id: int = Depends(get_current_user_id),
+) -> LiveKitTokenResponse:
     """Return a signed JWT that grants the participant access to the named room.
 
     Requires LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET to be set

@@ -90,3 +90,14 @@ variable "grafana_admin_user" {
   type      = string
   sensitive = true
 }
+
+variable "auth_enabled" {
+  type    = string
+  default = "false"
+}
+
+variable "secret_key" {
+  type      = string
+  sensitive = true
+  default   = ""
+}

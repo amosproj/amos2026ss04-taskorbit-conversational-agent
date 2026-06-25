@@ -343,3 +343,16 @@ variable "inactivity_timeout_minutes" {
   type        = number
   default     = 7
 }
+
+variable "auth_enabled" {
+  description = "Set to 'true' to enable JWT authentication on all API endpoints. Keep 'false' for local dev."
+  type        = string
+  default     = "false"
+}
+
+variable "secret_key" {
+  description = "HS256 signing key for JWT tokens. Generate with: python -c \"import secrets; print(secrets.token_hex(32))\""
+  type        = string
+  sensitive   = true
+  default     = ""
+}
