@@ -1,61 +1,70 @@
 """FastAPI dependencies shared across routes.
 
-Auth stub — returns the seeded dev user (id=1) until JWT auth is wired in.
+Authentication:
+  - When AUTH_ENABLED=true (production): validates a signed HS256 JWT from the
+    `Authorization: Bearer <token>` header.  The token must carry `{"sub": "<user_id>"}`.
+  - When AUTH_ENABLED=false (development default): falls back to the seeded dev
+    user so local development works without a login flow.
 
-To add real authentication:
-  1. Install python-jose + passlib[bcrypt] (or any JWT library).
-  2. Replace the body of `get_current_user_id()` with token validation:
+To generate a suitable SECRET_KEY:
+    python -c "import secrets; print(secrets.token_hex(32))"
 
-     from fastapi.security import OAuth2PasswordBearer
-     from jose import jwt, JWTError
-
-     oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/v1/auth/login")
-
-     async def get_current_user_id(
-         token: str = Depends(oauth2_scheme),
-         db: AsyncSession = Depends(get_session),
-     ) -> int:
-         try:
-             payload = jwt.decode(token, settings.secret_key, algorithms=["HS256"])
-             user_id: int = int(payload["sub"])
-         except (JWTError, KeyError, ValueError):
-             raise HTTPException(status_code=401, detail="Invalid or expired token")
-         user = await get_user(db, user_id)
-         if not user or not user.is_active:
-             raise HTTPException(status_code=401, detail="User not found or inactive")
-         return user_id
-
-  3. No route file needs to change — they all depend on `get_current_user_id`.
+To replace with a different auth scheme (e.g. OAuth2, third-party IdP):
+    1. Change the body of `get_current_user_id` — no route files need updating.
+    2. Keep the function signature and return type (int) identical.
 """
 
 from __future__ import annotations
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from taskorbit.config import get_settings
 from taskorbit.database import get_session
-from taskorbit.database.crud import get_user_by_email
+from taskorbit.database.crud import get_user, get_user_by_email
 from taskorbit.logging.setup import get_logger
 
 logger = get_logger(__name__)
 
-# ---------------------------------------------------------------------------
-# Hardcoded dev user — swap this entire function for JWT logic when ready.
-# ---------------------------------------------------------------------------
+_bearer_scheme = HTTPBearer(auto_error=False)
 
 _DEV_USER_EMAIL = "dev@taskorbit.local"
 
 
 async def get_current_user_id(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> int:
-    """Return the current user's ID.
+    """Return the authenticated user's ID.
 
-    STUB: looks up the seeded dev user by email (avoids fragile id=1 assumption).
-    Replace with JWT token validation when auth is implemented.
+    In production (AUTH_ENABLED=true) validates the JWT Bearer token.
+    In development (AUTH_ENABLED=false) returns the seeded dev user.
     """
-    from fastapi import HTTPException
+    settings = get_settings()
 
+    if settings.auth_enabled:
+        if credentials is None:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        if not settings.secret_key:
+            logger.error("auth_misconfigured_missing_secret_key")
+            raise HTTPException(status_code=500, detail="Server authentication is misconfigured")
+        try:
+            payload = jwt.decode(
+                credentials.credentials,
+                settings.secret_key,
+                algorithms=["HS256"],
+            )
+            user_id: int = int(payload["sub"])
+        except (JWTError, KeyError, ValueError) as exc:
+            raise HTTPException(status_code=401, detail="Invalid or expired token") from exc
+        user = await get_user(db, user_id)
+        if not user or not user.is_active:
+            raise HTTPException(status_code=401, detail="User not found or inactive")
+        return user_id
+
+    # Development fallback — disabled in production via AUTH_ENABLED=true
     user = await get_user_by_email(db, _DEV_USER_EMAIL)
     if not user or not user.is_active:
         logger.warning("dev_user_not_found_or_inactive", email=_DEV_USER_EMAIL)

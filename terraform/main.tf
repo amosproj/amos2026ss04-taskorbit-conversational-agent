@@ -53,8 +53,9 @@ module "iam" {
 
   project_id        = var.project_id
   github_repository = var.github_repository
+  secret_ids        = module.secrets.secret_ids
 
-  depends_on = [google_project_service.apis]
+  depends_on = [module.secrets, google_project_service.apis]
 }
 
 # ── STEP 4 (ACTIVE): Artifact Registry ───────────────────────────────────────
@@ -115,6 +116,8 @@ module "secrets" {
   database_url           = module.database.connection_string
   grafana_admin_password = var.grafana_admin_password
   grafana_admin_user     = var.grafana_admin_user
+  auth_enabled           = var.auth_enabled
+  secret_key             = var.secret_key
 
   depends_on = [module.database, google_project_service.apis]
 }
@@ -137,9 +140,10 @@ module "cloud_run" {
   backend_image  = var.backend_image
   frontend_image = var.frontend_image
 
-  backend_sa_email  = module.iam.backend_sa_email
-  worker_sa_email   = module.iam.worker_sa_email
-  frontend_sa_email = module.iam.frontend_sa_email
+  backend_sa_email       = module.iam.backend_sa_email
+  worker_sa_email        = module.iam.worker_sa_email
+  frontend_sa_email      = module.iam.frontend_sa_email
+  observability_sa_email = module.iam.observability_sa_email
 
   vpc_connector_id          = module.network.vpc_connector_id
   cloud_sql_connection_name = module.database.instance_connection_name
