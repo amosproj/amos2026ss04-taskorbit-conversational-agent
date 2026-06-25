@@ -57,7 +57,8 @@ python runner/compare.py --config baseline-local --limit 10
 benchmarks/
 ├── configs/              # Experiment specifications (YAML)
 │   ├── baseline-cloud.yaml
-│   └── baseline-local.yaml
+│   ├── baseline-local.yaml      # Qwen via OpenRouter (#67)
+│   └── baseline-oss-gemma.yaml  # Gemma via OpenRouter (#67)
 ├── runner/               # Runner and comparison tools
 │   ├── config.py         # Config schema + validation
 │   ├── storage.py        # Result serialization
@@ -100,11 +101,13 @@ tags:                                  # Optional: custom tags
 
 ### Valid Metrics
 
-- `latency_e2e` — End-to-end latency from input → response
-- `latency_components` — Per-component breakdown (STT, LLM, TTS)
-- `token_usage` — Prompt and completion tokens
+- `latency_e2e` — End-to-end latency from input → response (uses `latency_ms.total` from API when available)
+- `latency_components` — Per-component breakdown from `ConversationResponse.latency_ms` (`llm`, `tool_call`, `stt`, `tts`; text path typically has `llm` only)
+- `token_usage` — Prompt and completion tokens (see note below)
 - `errors` — Error counts and types
 - `throughput` — Requests per second
+
+**Note on token_usage:** The backend tracks tokens in Prometheus (`taskorbit_tokens_used_total`, #11). The harness records `token_usage` in results JSONL; live runs currently default to `0` until token counts are exposed on the API response. Use Grafana/Prometheus alongside benchmark JSONL for token analysis today.
 
 ## Results Format
 
