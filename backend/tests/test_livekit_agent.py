@@ -462,3 +462,22 @@ def test_vad_silence_duration_prevents_premature_bubble_splits(
         "min_silence_duration was reduced below 1.5s — see issue #102: "
         "lower values cause mid-utterance pauses to split into multiple bubbles"
     )
+
+
+def test_sync_workflow_state_updates_routed_agent_and_completed_steps() -> None:
+    """workflow_state data-channel payloads must update voice-path workflow fields."""
+    agent, _ = _make_agent("ok")
+    agent.sync_workflow_state(
+        selected_agent=" agent-b ",
+        completed_workflow_steps=["agent-c"],
+        clear_pending_confirmation=False,
+    )
+    assert agent._current_routed_agent == "agent-b"
+    assert agent._completed_workflow_steps == ["agent-c"]
+
+
+def test_sync_workflow_state_clears_empty_selected_agent() -> None:
+    agent, _ = _make_agent("ok")
+    agent._current_routed_agent = "agent-a"
+    agent.sync_workflow_state(selected_agent="   ")
+    assert agent._current_routed_agent is None

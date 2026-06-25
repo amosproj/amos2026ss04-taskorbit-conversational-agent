@@ -25,11 +25,13 @@ from livekit.agents.voice.events import AgentEvent
 from pydantic import ValidationError
 
 from taskorbit.config import get_settings
+from taskorbit.constants import DEV_USER_EMAIL
 from taskorbit.database import AsyncSessionLocal
 from taskorbit.database.crud import (
     create_conversation,
     create_conversation_message,
     get_conversation,
+    get_user_by_email,
 )
 from taskorbit.livekit_agent import build_agent_session, build_default_agent
 from taskorbit.logging.setup import get_logger
@@ -45,7 +47,9 @@ _DEEPGRAM_FLUSH_DELAY_S: float = 0.3
 
 # Explicit allowlist of data-channel message types this worker handles.
 # Packets with any other `type` value are silently discarded.
-_RECOGNISED_MSG_TYPES: frozenset[str] = frozenset({"commit_turn", "interrupt_playback"})
+_RECOGNISED_MSG_TYPES: frozenset[str] = frozenset(
+    {"commit_turn", "interrupt_playback", "workflow_state"}
+)
 
 # Topic the FE subscribes to via useAgentHandoff to swap the active agent
 # card mid-call without dropping the LiveKit room. #8 Task 6 AC7.
@@ -124,10 +128,26 @@ async def entrypoint(ctx: JobContext) -> None:
     # #135: forward the parsed config so the session constructs the STT/TTS
     # providers the user selected, instead of always using the env defaults.
     session = build_agent_session(settings=cfg, agent_config=agent_config)
+
+    # Auth stub: resolve the seeded dev user by email (same as get_current_user_id)
+    # so the voice path can load custom agent dependencies from the database.
+    dev_user_id: int | None = None
+    async with AsyncSessionLocal() as db:
+        user = await get_user_by_email(db, DEV_USER_EMAIL)
+        if user and user.is_active:
+            dev_user_id = user.id
+        else:
+            logger.warning(
+                "worker_dev_user_not_found",
+                email=DEV_USER_EMAIL,
+                effect="custom agent dependencies may not resolve in voice path",
+            )
+
     agent = build_default_agent(
         settings=cfg,
         agent_config=agent_config,
         conversation_id=ctx.room.name,
+        user_id=dev_user_id,
     )
 
     @session.on("metrics_collected")
@@ -292,6 +312,19 @@ async def entrypoint(ctx: JobContext) -> None:
                 logger.info("worker_interrupt_requested")
             except Exception as exc:  # noqa: BLE001
                 logger.warning("worker_interrupt_failed", error=str(exc))
+        elif msg_type == "workflow_state":
+            selected = msg.get("selected_agent")
+            completed = msg.get("completed_workflow_steps")
+            agent.sync_workflow_state(
+                selected_agent=selected if isinstance(selected, str) else None,
+                completed_workflow_steps=completed if isinstance(completed, list) else None,
+                clear_pending_confirmation=bool(msg.get("clear_pending_confirmation", True)),
+            )
+            logger.info(
+                "worker_workflow_state_synced",
+                selected_agent=agent._current_routed_agent,
+                completed_steps=len(agent._completed_workflow_steps),
+            )
 
     await session.start(agent, room=ctx.room)
 

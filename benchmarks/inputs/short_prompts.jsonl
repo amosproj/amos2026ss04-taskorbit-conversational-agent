@@ -1,0 +1,10 @@
+{"input": "Book a meeting with the sales team for tomorrow at 2pm.", "expected_type": "task_creation"}
+{"input": "What tasks do I have due this week?", "expected_type": "task_query"}
+{"input": "Mark the quarterly report task as complete.", "expected_type": "task_update"}
+{"input": "Remind me to follow up with the client on Friday.", "expected_type": "reminder_creation"}
+{"input": "Cancel my 3pm call today.", "expected_type": "event_cancellation"}
+{"input": "Create a task to review the pull request by end of day.", "expected_type": "task_creation"}
+{"input": "Show me all overdue tasks.", "expected_type": "task_query"}
+{"input": "Move the product demo to next Monday.", "expected_type": "event_reschedule"}
+{"input": "Add a note to the project kickoff task: bring the design mockups.", "expected_type": "task_update"}
+{"input": "What is on my schedule for tomorrow morning?", "expected_type": "schedule_query"}

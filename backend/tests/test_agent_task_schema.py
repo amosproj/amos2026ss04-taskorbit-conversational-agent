@@ -126,6 +126,45 @@ def test_schema_rejects_unknown_field_inside_persona_constraints(
 
 
 # ---------------------------------------------------------------------------
+# workflow_rules (Issue #71)
+# ---------------------------------------------------------------------------
+
+
+def test_schema_accepts_workflow_rules(
+    schema: dict[str, Any], valid_example: dict[str, Any]
+) -> None:
+    """Conditional workflow branches validate against workflowRule defs."""
+    data = deepcopy(valid_example)
+    data["agent"]["workflow_rules"] = [
+        {
+            "when": {"intent": "technical_support_request"},
+            "dependencies": ["identity-verification"],
+        },
+        {
+            "when": {"else": True},
+            "dependencies": ["customer-entry"],
+        },
+    ]
+    validate(instance=data, schema=schema)
+
+
+def test_schema_rejects_unknown_workflow_rule_field(
+    schema: dict[str, Any], valid_example: dict[str, Any]
+) -> None:
+    """workflowRule has additionalProperties=false — unknown keys fail."""
+    data = deepcopy(valid_example)
+    data["agent"]["workflow_rules"] = [
+        {
+            "when": {"intent": "technical_support_request"},
+            "dependencies": ["identity-verification"],
+            "priority": 1,
+        }
+    ]
+    with pytest.raises(ValidationError):
+        validate(instance=data, schema=schema)
+
+
+# ---------------------------------------------------------------------------
 # external_api tool (ticket #66)
 # ---------------------------------------------------------------------------
 

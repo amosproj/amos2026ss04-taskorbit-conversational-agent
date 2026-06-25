@@ -592,6 +592,38 @@ async def create_user_agents_from_templates(
         return []
 
 
+async def create_user_agent(
+    db: AsyncSession,
+    user_id: int,
+    name: str,
+    config: dict,
+) -> AgentConfiguration | None:
+    """Create a brand-new user agent row, independent of any template.
+
+    Used by the "Save as new" path so a fresh INSERT always happens — the
+    caller's currently-loaded agent is never touched.
+    """
+    try:
+        agent = AgentConfiguration(
+            id=uuid4().hex,
+            user_id=user_id,
+            template_id=None,
+            name=name,
+            config=config,
+            is_default=False,
+            is_customized=True,
+        )
+        db.add(agent)
+        await db.commit()
+        await db.refresh(agent)
+        logger.info("user_agent_created", agent_id=agent.id, user_id=user_id)
+        return agent
+    except SQLAlchemyError as e:
+        logger.error("create_user_agent_failed", user_id=user_id, error=str(e))
+        await db.rollback()
+        return None
+
+
 async def list_user_agents(db: AsyncSession, user_id: int) -> list[AgentConfiguration]:
     try:
         result = await db.execute(
@@ -671,28 +703,63 @@ async def enrich_request_dependency_configs(
     db: AsyncSession,
     user_id: int,
 ) -> ConversationRequest:
-    """Attach resolved prerequisite AgentConfigs to a conversation request."""
-    if not request.agent_config.workflow_dependencies:
-        return request
+    """Attach resolved prerequisite AgentConfigs to a conversation request (transitive)."""
+    from collections import deque
 
-    dep_configs: dict[str, AgentConfig] = {}
-    for dep_id in request.agent_config.workflow_dependencies:
-        if dep_id in request.dependency_configs:
+    from taskorbit.workflow_rules import collect_workflow_dependency_ids
+
+    # Use a worklist to find all transitive dependencies
+    all_dep_ids: set[str] = set()
+    new_dep_configs: dict[str, AgentConfig] = {}
+
+    # Start with the entry agent's dependencies
+    to_check: deque[str] = deque(collect_workflow_dependency_ids(request.agent_config))
+
+    logger.debug(
+        "enrich_dependencies_start",
+        entry_agent=request.agent_config.id,
+        initial_to_check=to_check,
+        user_id=user_id,
+    )
+
+    while to_check:
+        dep_id = to_check.popleft()
+        if dep_id in all_dep_ids:
             continue
-        resolved = await resolve_dependency_agent_config(db, dep_id, user_id)
-        if resolved:
-            dep_configs[dep_id] = resolved
-        else:
-            logger.warning(
-                "workflow_dependency_config_unresolved",
-                dependency=dep_id,
-                conversation_id=request.conversation_id,
-            )
+        all_dep_ids.add(dep_id)
 
-    if not dep_configs:
+        # Check if already in request or new_dep_configs
+        resolved = request.dependency_configs.get(dep_id) or new_dep_configs.get(dep_id)
+        if not resolved:
+            resolved = await resolve_dependency_agent_config(db, dep_id, user_id)
+            if resolved:
+                new_dep_configs[dep_id] = resolved
+                logger.debug("enrich_dependency_resolved", id=dep_id, name=resolved.name)
+            else:
+                logger.warning(
+                    "workflow_dependency_config_unresolved",
+                    dependency=dep_id,
+                    conversation_id=request.conversation_id,
+                )
+
+        # If we have a config, add its dependencies to the worklist
+        if resolved:
+            nested_deps = collect_workflow_dependency_ids(resolved)
+            if nested_deps:
+                logger.debug("enrich_dependency_nested_found", parent=dep_id, nested=nested_deps)
+                to_check.extend(nested_deps)
+
+    if not new_dep_configs:
         return request
+
+    logger.info(
+        "enrich_dependencies_complete",
+        conversation_id=request.conversation_id,
+        resolved_ids=list(new_dep_configs.keys()),
+    )
+
     return request.model_copy(
-        update={"dependency_configs": {**request.dependency_configs, **dep_configs}}
+        update={"dependency_configs": {**request.dependency_configs, **new_dep_configs}}
     )
 
 

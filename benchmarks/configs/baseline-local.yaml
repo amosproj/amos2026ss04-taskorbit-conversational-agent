@@ -1,0 +1,44 @@
+# Baseline open-source config — Qwen 3 80B via OpenRouter (free tier)
+# Represents the OS model alternative introduced in Cloud Open Source Inference Server #67.
+# Compare latency results from this config against baseline-cloud.yaml to
+# quantify the trade-off between free open-source and paid cloud models.
+#
+# Requirements:
+#   OPENROUTER_API_KEY must be set in the environment.
+#   Get a free key (no credit card) at: https://openrouter.ai/keys
+#
+# Alternative OS models (swap `model:` to test):
+#   google/gemma-4-31b-it:free          — Gemma 4 31B
+#   google/gemma-4-26b-a4b-it:free      — Gemma 4 26B MoE
+#   meta-llama/llama-3.3-70b-instruct:free
+#
+# Run:
+#   python runner/run_benchmark.py --config configs/baseline-local.yaml
+
+name: baseline-local
+description: "Open-source model baseline — Qwen 3 80B MoE via OpenRouter free tier"
+
+# LLM provider and model (maps to LLMProvider.OPENROUTER in types.py, added in #67)
+provider: openrouter
+model: qwen/qwen3-next-80b-a3b-instruct:free
+
+# Same input dataset as baseline-cloud for a fair apples-to-apples comparison
+input_set: benchmarks/inputs/short_prompts.jsonl
+
+# Free-tier models can be slower; 3 repetitions is sufficient for a stable average.
+repetitions: 3
+concurrency: 1
+
+metrics:
+  - latency_e2e
+  - latency_components
+  - token_usage
+  - errors
+
+# Free-tier models are rate-limited and may take longer; 120 s avoids false timeouts.
+timeout_seconds: 120
+
+tags:
+  tier: open-source
+  provider: openrouter
+  version: v1

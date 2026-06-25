@@ -72,7 +72,7 @@ export function buildLiveKitWorkerMetadata(agent: AgentConfig): Record<string, u
       : agent.llm.provider === "openrouter"
         ? "openrouter"
         : "openai";
-  return {
+  const out: Record<string, unknown> = {
     id: agent.agent_id,
     name: agent.name,
     persona: agent.instructions,
@@ -99,4 +99,8 @@ export function buildLiveKitWorkerMetadata(agent: AgentConfig): Record<string, u
     workflow_dependencies: agent.workflow_dependencies ?? [],
     allowed_handoffs: agent.allowed_handoffs ?? [],
   };
+  if (agent.workflow_rules?.length) {
+    out.workflow_rules = agent.workflow_rules;
+  }
+  return out;
 }

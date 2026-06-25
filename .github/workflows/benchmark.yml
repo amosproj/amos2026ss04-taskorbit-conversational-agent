@@ -1,0 +1,236 @@
+# Benchmark CI workflow — Issue #86
+#
+# Validates the benchmarking environment on every push to the feature branch
+# and on manual dispatch. Uses --dry-run mode so no API keys are required in
+# CI; real provider runs are performed locally or in scheduled nightly jobs.
+#
+# Jobs:
+#   1. build     — build the Docker image
+#   2. dry-run   — execute both configs with --dry-run, verify exit codes
+#   3. validate  — check results.jsonl structure and index.csv creation
+#   4. upload    — upload results/ as a GitHub Actions artifact
+
+name: Benchmark Environment
+
+on:
+  push:
+    branches:
+      - feature/benchmarking-environment
+  workflow_dispatch:
+    inputs:
+      config:
+        description: "Config to run (baseline-local / baseline-cloud / both)"
+        required: false
+        default: "both"
+
+concurrency:
+  group: benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.11"
+  IMAGE_NAME: taskorbit-bench
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1 — Build Docker image
+  # ---------------------------------------------------------------------------
+  build:
+    name: "1. Build Docker image"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build benchmark Docker image
+        working-directory: benchmarks
+        run: docker build -t ${{ env.IMAGE_NAME }} .
+
+      - name: Verify image runs --help without error
+        run: docker run --rm ${{ env.IMAGE_NAME }} --help
+
+  # ---------------------------------------------------------------------------
+  # Job 2 — Dry-run both experiment configs
+  # ---------------------------------------------------------------------------
+  dry-run:
+    name: "2. Dry-run experiments"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: build
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install benchmark dependencies
+        working-directory: benchmarks
+        run: pip install -r requirements.txt
+
+      - name: Dry-run baseline-local (open-source model)
+        working-directory: benchmarks
+        run: |
+          python runner/run_benchmark.py \
+            --config configs/baseline-local.yaml \
+            --results-dir results \
+            --dry-run \
+            --verbose
+        env:
+          PYTHONPATH: runner
+
+      - name: Dry-run baseline-cloud (cloud model)
+        working-directory: benchmarks
+        run: |
+          python runner/run_benchmark.py \
+            --config configs/baseline-cloud.yaml \
+            --results-dir results \
+            --dry-run \
+            --verbose
+        env:
+          PYTHONPATH: runner
+
+      - name: Persist results for next job
+        uses: actions/upload-artifact@v4
+        with:
+          name: dry-run-results
+          path: benchmarks/results/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Job 3 — Validate results structure
+  # ---------------------------------------------------------------------------
+  validate:
+    name: "3. Validate results schema"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: dry-run
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download dry-run results
+        uses: actions/download-artifact@v4
+        with:
+          name: dry-run-results
+          path: benchmarks/results/
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install benchmark dependencies
+        working-directory: benchmarks
+        run: pip install -r requirements.txt
+
+      - name: Validate index.csv exists and has data rows
+        working-directory: benchmarks
+        run: |
+          python - <<'EOF'
+          import csv, sys
+          from pathlib import Path
+
+          index = Path("results/index.csv")
+          if not index.exists():
+              print("FAIL: results/index.csv not found", file=sys.stderr)
+              sys.exit(1)
+
+          with open(index) as f:
+              rows = list(csv.DictReader(f))
+
+          required = {"run_id", "config_name", "avg_latency_ms", "success_rate", "total_trials"}
+          missing = required - set(rows[0].keys()) if rows else required
+          if missing:
+              print(f"FAIL: index.csv missing columns: {missing}", file=sys.stderr)
+              sys.exit(1)
+
+          if len(rows) < 2:
+              print(f"FAIL: expected >= 2 rows in index.csv, got {len(rows)}", file=sys.stderr)
+              sys.exit(1)
+
+          print(f"OK: index.csv has {len(rows)} run(s)")
+          for r in rows:
+              print(f"  run_id={r['run_id']} config={r['config_name']} "
+                    f"avg_latency_ms={r['avg_latency_ms']} success_rate={r['success_rate']}")
+          EOF
+
+      - name: Validate results.jsonl schema for each run
+        working-directory: benchmarks
+        run: |
+          python - <<'EOF'
+          import json, sys
+          from pathlib import Path
+
+          required_fields = {"run_id", "timestamp", "trial_index", "metrics", "environment"}
+          metric_fields   = {"latency_ms", "component_latencies", "token_usage", "success", "throughput", "system_metrics"}
+          errors = []
+
+          for jsonl in Path("results").rglob("results.jsonl"):
+              with open(jsonl) as f:
+                  for i, line in enumerate(f):
+                      if not line.strip():
+                          continue
+                      try:
+                          obj = json.loads(line)
+                      except json.JSONDecodeError as e:
+                          errors.append(f"{jsonl}:{i+1}: invalid JSON — {e}")
+                          continue
+
+                      missing = required_fields - obj.keys()
+                      if missing:
+                          errors.append(f"{jsonl}:{i+1}: missing fields {missing}")
+                      metric_missing = metric_fields - obj.get("metrics", {}).keys()
+                      if metric_missing:
+                          errors.append(f"{jsonl}:{i+1}: metrics missing {metric_missing}")
+                      if not isinstance(obj.get("metrics", {}).get("system_metrics", {}), dict):
+                          errors.append(f"{jsonl}:{i+1}: system_metrics must be a dict")
+                      if not obj.get("environment", {}).get("python_version"):
+                          errors.append(f"{jsonl}:{i+1}: environment.python_version missing")
+
+          if errors:
+              for e in errors:
+                  print(f"FAIL: {e}", file=sys.stderr)
+              sys.exit(1)
+
+          print(f"OK: all results.jsonl files pass schema validation")
+          EOF
+
+      - name: Generate comparison CSV
+        working-directory: benchmarks
+        run: |
+          python runner/compare.py \
+            --results-dir results \
+            --output-csv results/comparison.csv
+          echo "--- comparison.csv ---"
+          cat results/comparison.csv
+        env:
+          PYTHONPATH: runner
+
+  # ---------------------------------------------------------------------------
+  # Job 4 — Upload final artifacts
+  # ---------------------------------------------------------------------------
+  upload:
+    name: "4. Upload benchmark artifacts"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: validate
+    steps:
+      - name: Download validated results
+        uses: actions/download-artifact@v4
+        with:
+          name: dry-run-results
+          path: benchmarks/results/
+
+      - name: Upload results directory as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.run_id }}
+          path: benchmarks/results/
+          retention-days: 30

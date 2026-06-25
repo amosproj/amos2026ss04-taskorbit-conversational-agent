@@ -25,6 +25,7 @@ def agent_config_from_stored_blob(blob: dict[str, Any]) -> AgentConfig:
         "persona": blob.get("persona") or blob.get("instructions") or "",
         "greeting": greeting,
         "workflow_dependencies": blob.get("workflow_dependencies") or [],
+        "workflow_rules": blob.get("workflow_rules") or [],
         "allowed_handoffs": blob.get("allowed_handoffs") or [],
     }
 
