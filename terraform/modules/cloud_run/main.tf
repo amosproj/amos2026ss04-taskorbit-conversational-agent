@@ -112,8 +112,6 @@ resource "google_cloud_run_v2_service" "backend" {
           GOOGLE_MODEL        = "google-model"
           OPENROUTER_API_KEY  = "openrouter-api-key"
           OPENROUTER_MODEL    = "openrouter-model"
-          AUTH_ENABLED        = "auth-enabled"
-          SECRET_KEY          = "secret-key"
         }
         content {
           name = env.key
@@ -258,8 +256,6 @@ resource "google_cloud_run_v2_service" "worker" {
           GOOGLE_MODEL        = "google-model"
           OPENROUTER_API_KEY  = "openrouter-api-key"
           OPENROUTER_MODEL    = "openrouter-model"
-          AUTH_ENABLED        = "auth-enabled"
-          SECRET_KEY          = "secret-key"
         }
         content {
           name = env.key
