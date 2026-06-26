@@ -12,6 +12,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -64,6 +65,21 @@ class Settings(BaseSettings):
 
     # --- LLM ---
     llm_timeout_seconds: float = 10.0
+    # Feature flag: set ENABLE_SCOPE_SHORTCIRCUIT=true|false to force on/off.
+    # When unset, short-circuit is enabled only in development (safe production rollout).
+    enable_scope_shortcircuit_override: bool | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "ENABLE_SCOPE_SHORTCIRCUIT",
+            "enable_scope_shortcircuit_override",
+        ),
+    )
+
+    @property
+    def enable_scope_shortcircuit(self) -> bool:
+        if self.enable_scope_shortcircuit_override is not None:
+            return self.enable_scope_shortcircuit_override
+        return self.app_env == "development"
 
     # --- LLM providers ---
     openai_api_key: str = ""

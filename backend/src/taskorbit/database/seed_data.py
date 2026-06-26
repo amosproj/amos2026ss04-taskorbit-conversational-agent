@@ -22,6 +22,15 @@ _DEFAULT_TTS: dict = {
 }
 
 
+def _persona_constraints(*, scope: str, out_of_scope: list[str], refusal_template: str) -> dict:
+    """Build a persona_constraints block — same shape on every agent, content per role."""
+    return {
+        "scope": scope,
+        "out_of_scope": out_of_scope,
+        "refusal_template": refusal_template,
+    }
+
+
 DEFAULT_AGENT_TEMPLATES: list[dict] = [
     {
         "id": "sales-agent",
@@ -44,7 +53,21 @@ DEFAULT_AGENT_TEMPLATES: list[dict] = [
             "tts": _DEFAULT_TTS,
             "tools": [],
             "confirmations": {"required": False, "tools": []},
-            "persona_constraints": None,
+            "persona_constraints": _persona_constraints(
+                scope="TechStore sales: product recommendations, pricing, and guiding prospects to purchase.",
+                out_of_scope=[
+                    "medical advice",
+                    "legal advice",
+                    "financial advice",
+                    "technical troubleshooting",
+                    "recipes",
+                    "cooking",
+                ],
+                refusal_template=(
+                    "I'm your TechStore sales assistant — I can help with products and purchasing. "
+                    "I can't assist with that topic. Would you like help choosing a product or placing an order?"
+                ),
+            ),
         },
     },
     {
@@ -68,7 +91,21 @@ DEFAULT_AGENT_TEMPLATES: list[dict] = [
             "tts": _DEFAULT_TTS,
             "tools": [],
             "confirmations": {"required": False, "tools": []},
-            "persona_constraints": None,
+            "persona_constraints": _persona_constraints(
+                scope="TechStore technical support: diagnosing product issues and troubleshooting steps.",
+                out_of_scope=[
+                    "medical advice",
+                    "legal advice",
+                    "financial advice",
+                    "sales and pricing quotes",
+                    "recipes",
+                    "cooking",
+                ],
+                refusal_template=(
+                    "I'm a TechStore technical support agent and can help with product issues. "
+                    "I can't assist with that topic. What technical problem are you seeing?"
+                ),
+            ),
         },
     },
     {
@@ -79,12 +116,11 @@ DEFAULT_AGENT_TEMPLATES: list[dict] = [
             "id": "general-inquiry-agent",
             "name": "General Inquiry Agent",
             "persona": (
-                "A helpful general-purpose assistant. "
-                "You answer frequently asked questions, provide product information, "
-                "and direct customers to the right resource."
+                "A helpful TechStore assistant for product FAQs, ordering, and directing "
+                "customers to the right team. You do not answer general knowledge or off-store topics."
             ),
             "greeting": (
-                "Hi there! I'm here to answer any questions you have. "
+                "Hi! I can help with TechStore product info, orders, and store questions. "
                 "What would you like to know?"
             ),
             "stt": _DEFAULT_STT,
@@ -92,7 +128,24 @@ DEFAULT_AGENT_TEMPLATES: list[dict] = [
             "tts": _DEFAULT_TTS,
             "tools": [],
             "confirmations": {"required": False, "tools": []},
-            "persona_constraints": None,
+            "persona_constraints": _persona_constraints(
+                scope="TechStore product information, ordering, returns, and store FAQs.",
+                out_of_scope=[
+                    "recipes",
+                    "cooking",
+                    "medical advice",
+                    "legal advice",
+                    "financial advice",
+                    "therapy or emotional counseling",
+                    "NFTs",
+                    "crypto",
+                    "general technical tutorials",
+                ],
+                refusal_template=(
+                    "I'm here to help with TechStore product and ordering questions. "
+                    "I can't assist with that topic — is there something about our store I can help with?"
+                ),
+            ),
         },
     },
     {
@@ -116,7 +169,22 @@ DEFAULT_AGENT_TEMPLATES: list[dict] = [
             "tts": _DEFAULT_TTS,
             "tools": [],
             "confirmations": {"required": False, "tools": []},
-            "persona_constraints": None,
+            "persona_constraints": _persona_constraints(
+                scope="Booking, rescheduling, and cancelling TechStore service appointments.",
+                out_of_scope=[
+                    "medical advice",
+                    "legal advice",
+                    "financial advice",
+                    "technical troubleshooting",
+                    "product recommendations",
+                    "recipes",
+                    "cooking",
+                ],
+                refusal_template=(
+                    "I help with appointment scheduling at TechStore. "
+                    "I can't assist with that topic — would you like to book, reschedule, or cancel an appointment?"
+                ),
+            ),
         },
     },
     {
@@ -139,7 +207,22 @@ DEFAULT_AGENT_TEMPLATES: list[dict] = [
             "tts": _DEFAULT_TTS,
             "tools": [],
             "confirmations": {"required": False, "tools": []},
-            "persona_constraints": None,
+            "persona_constraints": _persona_constraints(
+                scope="TechStore complaint intake, resolution options, and escalation.",
+                out_of_scope=[
+                    "medical advice",
+                    "legal advice",
+                    "financial advice",
+                    "technical troubleshooting",
+                    "recipes",
+                    "cooking",
+                    "therapy or emotional counseling",
+                ],
+                refusal_template=(
+                    "I'm here to help resolve your TechStore experience. "
+                    "I can't provide professional advice on that topic — can you tell me more about the issue with your order or service?"
+                ),
+            ),
         },
     },
 ]
