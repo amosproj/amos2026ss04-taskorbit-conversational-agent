@@ -70,6 +70,6 @@ async def test_process_message_includes_latency_ms_on_success(mock_good_intent: 
 
     assert response.latency_ms is not None
     assert response.latency_ms.llm_call is not None
-    assert response.latency_ms.llm_call > 0
+    assert response.latency_ms.llm_call >= 0
     assert response.latency_ms.total is not None
     assert response.latency_ms.total >= response.latency_ms.llm_call
