@@ -48,9 +48,9 @@ from taskorbit.types import (
     LLMConfig,
     Message,
     MessageRole,
+    PipelineLatencyMs,
     ToolDefinition,
     ToolType,
-    PipelineLatencyMs,
 )
 from taskorbit.workflow_rules import (
     expand_workflow_dependencies,

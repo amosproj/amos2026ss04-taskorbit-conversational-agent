@@ -63,7 +63,9 @@ async def test_dispatch_tool_records_latency_and_metric() -> None:
 async def test_process_message_includes_latency_ms_on_success(mock_good_intent: Any) -> None:
     orch = ConversationOrchestrator()
 
-    with patch.object(ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"):
+    with patch.object(
+        ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+    ):
         response = await orch.process_message(_make_request("Hello there"))
 
     assert response.latency_ms is not None
