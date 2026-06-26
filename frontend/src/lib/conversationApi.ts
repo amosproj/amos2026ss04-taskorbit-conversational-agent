@@ -53,7 +53,19 @@ type BackendAgentConfig = {
   persona_constraints?: BackendPersonaConstraints;
   context_limit?: BackendContextLimit;
   workflow_dependencies: string[];
+  workflow_rules?: WorkflowRule[];
   allowed_handoffs: string[];
+};
+
+type WorkflowRuleWhen = {
+  intent?: string;
+  agent_name?: string;
+  else?: boolean;
+};
+
+type WorkflowRule = {
+  when: WorkflowRuleWhen;
+  dependencies: string[];
 };
 
 type BackendMessage = { role: "user" | "assistant" | "system"; content: string };
@@ -119,6 +131,8 @@ export type StreamEvent =
       tool_invoked: BackendTool | null;
       completed_workflow_steps: string[];
       confirmation?: { confirmation_id: string; action: string; description: string } | null;
+      /** Full assistant reply when no stream chunks were sent (e.g. workflow confirmation). */
+      reply?: string | null;
     }
   | { type: "error"; message: string };
 
@@ -218,6 +232,9 @@ function adaptAgentConfig(agent: AgentConfig): BackendAgentConfig {
     workflow_dependencies: agent.workflow_dependencies,
     allowed_handoffs: agent.allowed_handoffs,
   };
+  if (agent.workflow_rules?.length) {
+    out.workflow_rules = agent.workflow_rules;
+  }
   if (agent.persona_constraints) {
     out.persona_constraints = agent.persona_constraints;
   }

@@ -23,7 +23,9 @@ from taskorbit.livekit_agent.llm import OrchestratorAgent, _voice_confirmation_d
 from taskorbit.livekit_agent.session import build_agent_session
 from taskorbit.types import (
     AgentConfig,
+    ConfirmationResponsePayload,
     ConversationResponse,
+    ConversationStatus,
     Message,
     MessageRole,
 )
@@ -125,9 +127,13 @@ def _patch_async_session() -> Any:
         yield
 
 
-def _make_agent(reply: str) -> tuple[OrchestratorAgent, MagicMock]:
+def _make_agent(
+    reply: str,
+    *,
+    response: ConversationResponse | None = None,
+) -> tuple[OrchestratorAgent, MagicMock]:
     orchestrator = MagicMock()
-    response = ConversationResponse(
+    response = response or ConversationResponse(
         conversation_id="test-conv",
         reply=Message(role=MessageRole.ASSISTANT, content=reply),
     )
@@ -431,7 +437,42 @@ def test_voice_confirmation_matches_explicit_confirm_and_reject() -> None:
     assert _voice_confirmation_decision("ok") == "confirm"
     assert _voice_confirmation_decision("Yes, proceed") == "confirm"
     assert _voice_confirmation_decision("go ahead please") == "confirm"
+    assert _voice_confirmation_decision("Continue") == "confirm"
+    assert _voice_confirmation_decision("Continúa") == "confirm"
     assert _voice_confirmation_decision("cancel") == "reject"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "confirmation_id"),
+    [
+        (ConversationStatus.CONFIRMATION_REQUIRED, "tool-confirm"),
+        (ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED, "workflow_agent-c"),
+    ],
+)
+async def test_llm_node_tracks_pending_confirmation_for_both_confirmation_statuses(
+    status: ConversationStatus,
+    confirmation_id: str,
+) -> None:
+    response = ConversationResponse(
+        conversation_id="test-conv",
+        reply=Message(role=MessageRole.ASSISTANT, content="Please confirm."),
+        status=status,
+        confirmation=ConfirmationResponsePayload(
+            confirmation_id=confirmation_id,
+            action="Do the thing",
+            description="Needs confirmation",
+        ),
+    )
+    agent, orchestrator = _make_agent("Please confirm.", response=response)
+    chat_ctx = _make_chat_ctx([("user", "Do it")])
+
+    agent.request_reply()
+    chunks = [c async for c in agent.llm_node(chat_ctx, [], MagicMock())]
+
+    assert chunks == ["Please confirm."]
+    assert agent._pending_confirmation_id == confirmation_id
+    assert len(orchestrator._captured) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -462,3 +503,22 @@ def test_vad_silence_duration_prevents_premature_bubble_splits(
         "min_silence_duration was reduced below 1.5s — see issue #102: "
         "lower values cause mid-utterance pauses to split into multiple bubbles"
     )
+
+
+def test_sync_workflow_state_updates_routed_agent_and_completed_steps() -> None:
+    """workflow_state data-channel payloads must update voice-path workflow fields."""
+    agent, _ = _make_agent("ok")
+    agent.sync_workflow_state(
+        selected_agent=" agent-b ",
+        completed_workflow_steps=["agent-c"],
+        clear_pending_confirmation=False,
+    )
+    assert agent._current_routed_agent == "agent-b"
+    assert agent._completed_workflow_steps == ["agent-c"]
+
+
+def test_sync_workflow_state_clears_empty_selected_agent() -> None:
+    agent, _ = _make_agent("ok")
+    agent._current_routed_agent = "agent-a"
+    agent.sync_workflow_state(selected_agent="   ")
+    assert agent._current_routed_agent is None

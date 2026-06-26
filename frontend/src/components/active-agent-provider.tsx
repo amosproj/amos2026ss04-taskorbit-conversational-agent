@@ -50,6 +50,7 @@ function normalizeStoredAgent(agent: AgentConfig): AgentConfig {
     variables: agent.variables ?? {},
     engine: agent.engine ?? {},
     workflow_dependencies: agent.workflow_dependencies ?? [],
+    workflow_rules: agent.workflow_rules ?? [],
     allowed_handoffs: agent.allowed_handoffs ?? [],
   };
 }

@@ -72,6 +72,10 @@ export function TranscriptBubble({ turn, history = false }: Props) {
     return <SystemMarker text={turn.text} />;
   }
 
+  if (!turn.text.trim()) {
+    return null;
+  }
+
   const displayText = (() => {
     if (isUser || history) return turn.text;
     // History turns (isFinal undefined) and streaming turns: show as-is.
