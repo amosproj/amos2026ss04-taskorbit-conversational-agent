@@ -45,6 +45,7 @@ class ComponentBenchmarkConfig:
     concurrency: int
     timeout_seconds: int
     configs: list[PipelineComponentConfig]
+    paths: list[str]
     tags: dict[str, str] | None = None
 
     @classmethod
@@ -75,6 +76,11 @@ class ComponentBenchmarkConfig:
                 )
             )
 
+        raw_paths = data.get("paths", ["text"])
+        if isinstance(raw_paths, str):
+            raw_paths = [p.strip() for p in raw_paths.split(",") if p.strip()]
+        paths = [str(p) for p in raw_paths]
+
         return cls(
             name=data["name"],
             description=data.get("description", ""),
@@ -83,6 +89,7 @@ class ComponentBenchmarkConfig:
             concurrency=data.get("concurrency", 1),
             timeout_seconds=data.get("timeout_seconds", 120),
             configs=configs,
+            paths=paths,
             tags=data.get("tags"),
         )
 
@@ -95,4 +102,10 @@ class ComponentBenchmarkConfig:
             return False, "timeout_seconds must be >= 1"
         if len(self.configs) < 2:
             return False, "configs must include at least two pipeline combinations"
+        valid_paths = {"text", "voice"}
+        if not self.paths:
+            return False, "paths must include at least one of: text, voice"
+        invalid = set(self.paths) - valid_paths
+        if invalid:
+            return False, f"unsupported paths: {sorted(invalid)}"
         return True, ""

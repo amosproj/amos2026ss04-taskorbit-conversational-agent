@@ -42,12 +42,32 @@ _BASE_PERSONA = (
 def load_prompt_set(path: Path | str) -> list[dict[str, Any]]:
     """Load the JSON prompt definitions used by the component benchmark harness."""
     prompt_path = Path(path)
-    if not prompt_path.exists():
+    candidates = [prompt_path]
+    if not prompt_path.is_absolute():
+        bench_root = Path(__file__).resolve().parent.parent
+        repo_root = bench_root.parent
+        candidates.extend(
+            [
+                bench_root / prompt_path.name,
+                repo_root / prompt_path,
+                bench_root / prompt_path,
+            ]
+        )
+        if prompt_path.parts and prompt_path.parts[0] == "benchmarks":
+            candidates.append(repo_root / prompt_path)
+            candidates.append(bench_root / Path(*prompt_path.parts[1:]))
+
+    resolved: Path | None = None
+    for candidate in candidates:
+        if candidate.exists():
+            resolved = candidate
+            break
+    if resolved is None:
         raise FileNotFoundError(f"Prompt set not found: {prompt_path}")
-    with open(prompt_path) as handle:
+    with open(resolved) as handle:
         data = json.load(handle)
     if not isinstance(data, list):
-        raise ValueError(f"Prompt set must be a JSON array: {prompt_path}")
+        raise ValueError(f"Prompt set must be a JSON array: {resolved}")
     return data
 
 

@@ -13,9 +13,15 @@ description: "Compare cloud OpenAI vs OpenRouter OSS models across #68 prompt ca
 
 prompt_set: benchmarks/prompts/component_prompts.json
 
-repetitions: 3
+repetitions: 5
 concurrency: 1
 timeout_seconds: 120
+
+# text = LLM + tool latency via REST API
+# voice = text path + direct STT/TTS provider timing (requires DEEPGRAM_API_KEY, ELEVENLABS_API_KEY)
+paths:
+  - text
+  - voice
 
 configs:
   - name: cloud-openai-deepgram-elevenlabs

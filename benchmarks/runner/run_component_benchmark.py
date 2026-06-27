@@ -33,6 +33,11 @@ async def main() -> int:
         help="Directory for JSONL output",
     )
     parser.add_argument("--dry-run", action="store_true", help="Write mock rows without API calls")
+    parser.add_argument(
+        "--paths",
+        default=None,
+        help="Comma-separated paths to run (text, voice). Overrides config YAML paths.",
+    )
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
 
@@ -46,6 +51,8 @@ async def main() -> int:
 
     try:
         config = ComponentBenchmarkConfig.from_yaml(config_path)
+        if args.paths:
+            config.paths = [p.strip() for p in args.paths.split(",") if p.strip()]
         is_valid, error_msg = config.validate()
         if not is_valid:
             logger.error("Config validation failed: %s", error_msg)

@@ -14,6 +14,7 @@ import httpx
 
 from benchmark_schema import (
     BenchmarkConfigRow,
+    BenchmarkLatencyMs,
     BenchmarkPromptRow,
     BenchmarkResultRow,
     evaluate_tool_reliability,
@@ -22,6 +23,7 @@ from benchmark_schema import (
 )
 from component_config import ComponentBenchmarkConfig, PipelineComponentConfig
 from prompts import build_agent_config, load_prompt_set
+from voice_stages import measure_stt_latency_ms, measure_tts_latency_ms, merge_voice_latency, voice_api_keys
 
 logger = logging.getLogger(__name__)
 
@@ -69,29 +71,32 @@ class ComponentBenchmarkRunner:
         if self.dry_run:
             for run_number in range(1, config.repetitions + 1):
                 for pipeline in config.configs:
-                    for prompt_def in prompts:
-                        row = self._mock_row(config, pipeline, prompt_def, run_number)
-                        self.writer.append(row)
-                        summary["total_rows"] += 1
-                        summary["success_rows"] += 1
+                    for path in config.paths:
+                        for prompt_def in prompts:
+                            row = self._mock_row(config, pipeline, prompt_def, run_number, path)
+                            self.writer.append(row)
+                            summary["total_rows"] += 1
+                            summary["success_rows"] += 1
             return self.writer.session_file, summary
 
         for run_number in range(1, config.repetitions + 1):
             for pipeline in config.configs:
-                for prompt_def in prompts:
-                    rows = await self._run_prompt_case(
-                        config,
-                        pipeline,
-                        prompt_def,
-                        run_number,
-                    )
-                    for row in rows:
-                        self.writer.append(row)
-                        summary["total_rows"] += 1
-                        if row.status == "success" or row.status == "ended":
-                            summary["success_rows"] += 1
-                        else:
-                            summary["failure_rows"] += 1
+                for path in config.paths:
+                    for prompt_def in prompts:
+                        rows = await self._run_prompt_case(
+                            config,
+                            pipeline,
+                            prompt_def,
+                            run_number,
+                            path,
+                        )
+                        for row in rows:
+                            self.writer.append(row)
+                            summary["total_rows"] += 1
+                            if row.status == "success" or row.status == "ended":
+                                summary["success_rows"] += 1
+                            else:
+                                summary["failure_rows"] += 1
 
         return self.writer.session_file, summary
 
@@ -101,12 +106,15 @@ class ComponentBenchmarkRunner:
         pipeline: PipelineComponentConfig,
         prompt_def: dict[str, Any],
         run_number: int,
+        path: str,
     ) -> list[BenchmarkResultRow]:
         api_url = os.environ.get("BENCHMARK_API_URL", "http://localhost:8000").rstrip("/")
         api_token = os.environ.get("BENCHMARK_API_TOKEN", "")
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if api_token:
             headers["Authorization"] = f"Bearer {api_token}"
+
+        keys = voice_api_keys()
 
         agent_config = build_agent_config(
             prompt_def["agent_template"],
@@ -136,6 +144,15 @@ class ComponentBenchmarkRunner:
                 }
 
                 try:
+                    stt_ms: float | None = None
+                    if path == "voice":
+                        stt_ms = await measure_stt_latency_ms(
+                            provider=pipeline.stt_provider,
+                            model=pipeline.stt_model,
+                            api_key=keys.get("deepgram"),
+                            timeout=float(config.timeout_seconds),
+                        )
+
                     t_start = time.perf_counter()
                     response = await client.post(
                         f"{api_url}/v1/conversations/process",
@@ -156,6 +173,7 @@ class ComponentBenchmarkRunner:
                                 len(turns),
                                 turn_text,
                                 f"HTTP {response.status_code}: {response.text[:300]}",
+                                path,
                             )
                         )
                         break
@@ -175,6 +193,25 @@ class ComponentBenchmarkRunner:
                         expected_tool_type=prompt_def.get("expected_tool_type"),
                     )
                     latency = latency_from_response(data, cumulative_ms=cumulative_ms)
+
+                    reply_content = (data.get("reply") or {}).get("content", "")
+                    tts_ms: float | None = None
+                    if path == "voice" and reply_content:
+                        tts_ms = await measure_tts_latency_ms(
+                            provider=pipeline.tts_provider,
+                            voice_id=pipeline.tts_voice_id,
+                            model=pipeline.tts_model,
+                            text=reply_content,
+                            elevenlabs_api_key=keys.get("elevenlabs"),
+                            deepgram_api_key=keys.get("deepgram"),
+                            timeout=float(config.timeout_seconds),
+                        )
+                        latency_dict = merge_voice_latency(
+                            latency.to_dict(),
+                            stt_ms=stt_ms,
+                            tts_ms=tts_ms,
+                        )
+                        latency = BenchmarkLatencyMs(**latency_dict)
 
                     rows.append(
                         BenchmarkResultRow(
@@ -198,7 +235,7 @@ class ComponentBenchmarkRunner:
                                 expects_tool=bool(prompt_def.get("expects_tool")),
                                 expected_tool_type=prompt_def.get("expected_tool_type"),
                             ),
-                            path="text",
+                            path=path,
                             turn_index=turn_index,
                             turn_count=len(turns),
                             latency_ms=latency,
@@ -208,7 +245,6 @@ class ComponentBenchmarkRunner:
                         )
                     )
 
-                    reply_content = (data.get("reply") or {}).get("content", "")
                     if reply_content:
                         messages.append({"role": "assistant", "content": reply_content})
 
@@ -224,6 +260,7 @@ class ComponentBenchmarkRunner:
                             len(turns),
                             turn_text,
                             f"Request timed out after {config.timeout_seconds}s",
+                            path,
                         )
                     )
                     break
@@ -239,6 +276,7 @@ class ComponentBenchmarkRunner:
                             len(turns),
                             turn_text,
                             f"Could not connect to {api_url}: {exc}",
+                            path,
                         )
                     )
                     break
@@ -256,6 +294,7 @@ class ComponentBenchmarkRunner:
         turn_count: int,
         turn_text: str,
         error: str,
+        path: str = "text",
     ) -> BenchmarkResultRow:
         return BenchmarkResultRow(
             run_id=run_id,
@@ -278,7 +317,7 @@ class ComponentBenchmarkRunner:
                 expects_tool=bool(prompt_def.get("expects_tool")),
                 expected_tool_type=prompt_def.get("expected_tool_type"),
             ),
-            path="text",
+            path=path,
             turn_index=turn_index,
             turn_count=turn_count,
             latency_ms=latency_from_response({}),
@@ -297,8 +336,23 @@ class ComponentBenchmarkRunner:
         pipeline: PipelineComponentConfig,
         prompt_def: dict[str, Any],
         run_number: int,
+        path: str = "text",
     ) -> BenchmarkResultRow:
         turn_text = prompt_def["turns"][0]
+        mock_latency: dict[str, float | None] = {
+            "llm_call": 120.0,
+            "tool_call": 5.0,
+            "total": 150.0,
+        }
+        if path == "voice":
+            mock_latency.update(
+                {
+                    "stt_processing": 80.0,
+                    "tts_synthesis": 200.0,
+                    "voice_turn": 405.0,
+                    "total": 405.0,
+                }
+            )
         return BenchmarkResultRow(
             run_id=f"dry-run_run{run_number}",
             timestamp=utc_now_iso(),
@@ -320,12 +374,10 @@ class ComponentBenchmarkRunner:
                 expects_tool=bool(prompt_def.get("expects_tool")),
                 expected_tool_type=prompt_def.get("expected_tool_type"),
             ),
-            path="text",
+            path=path,
             turn_index=0,
             turn_count=len(prompt_def["turns"]),
-            latency_ms=latency_from_response(
-                {"latency_ms": {"llm_call": 120.0, "total": 150.0, "tool_call": 5.0}}
-            ),
+            latency_ms=latency_from_response({"latency_ms": mock_latency}),
             tool_reliability=evaluate_tool_reliability(
                 {},
                 expects_tool=bool(prompt_def.get("expects_tool")),

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from reliability import summarize_reliability
+from recommendation import format_recommendation_section
 
 logger = logging.getLogger(__name__)
 
@@ -283,9 +284,26 @@ class BenchmarkAggregator:
 
         return lines
 
-    def print_report(self, rows: list[dict[str, Any]] | None = None) -> None:
+    def generate_full_report(
+        self, rows: list[dict[str, Any]] | None = None, *, include_recommendation: bool = True
+    ) -> str:
+        """Component report plus optional default-config recommendation per path."""
+        if rows is None:
+            rows = self.load_jsonl_rows()
+        parts = [self.generate_component_report(rows)]
+        if include_recommendation:
+            for path in ("text", "voice"):
+                path_rows = [r for r in rows if r.get("path", "text") == path]
+                if path_rows:
+                    parts.append("")
+                    parts.append(format_recommendation_section(rows, path=path))
+        return "\n".join(parts)
+
+    def print_report(
+        self, rows: list[dict[str, Any]] | None = None, *, include_recommendation: bool = True
+    ) -> None:
         """Print the component report to stdout."""
-        print(self.generate_component_report(rows))
+        print(self.generate_full_report(rows, include_recommendation=include_recommendation))
 
 
 # ------------------------------------------------------------------
@@ -314,6 +332,17 @@ def main() -> int:
         action="store_true",
         help="Skip writing index.csv (useful when only --report is needed)",
     )
+    parser.add_argument(
+        "--recommend",
+        action="store_true",
+        help="Print default configuration recommendation (included in --report)",
+    )
+    parser.add_argument(
+        "--write-report",
+        type=str,
+        metavar="PATH",
+        help="Write full report (with recommendation) to a markdown/text file",
+    )
     args = parser.parse_args()
 
     aggregator = BenchmarkAggregator(results_dir=args.results_dir)
@@ -323,8 +352,14 @@ def main() -> int:
         index_path = aggregator.write_index_csv(rows)
         print(f"Wrote index.csv → {index_path}")
 
-    if args.report:
-        aggregator.print_report(rows)
+    if args.report or args.recommend:
+        aggregator.print_report(rows, include_recommendation=True)
+
+    if args.write_report:
+        report_path = Path(args.write_report)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(aggregator.generate_full_report(rows), encoding="utf-8")
+        print(f"Wrote report → {report_path}")
 
     return 0
 

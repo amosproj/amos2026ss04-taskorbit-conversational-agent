@@ -25,6 +25,7 @@ def test_component_config_loads_yaml() -> None:
     config = ComponentBenchmarkConfig.from_yaml(config_path)
     assert config.name == "component-benchmark"
     assert len(config.configs) >= 2
+    assert "text" in config.paths
     is_valid, msg = config.validate()
     assert is_valid, msg
 

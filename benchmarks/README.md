@@ -20,20 +20,29 @@ python runner/run_benchmark.py --config configs/baseline-cloud.yaml
 ### Component Benchmarks (#68)
 
 Compare STT / LLM / TTS pipeline combinations across the four AC prompt categories
-(short/long, with/without tool calls):
+(short/long, with/without tool calls). Supports `text` and `voice` paths:
 
 ```bash
 # Dry-run (no backend required — validates config + schema output)
 python runner/run_component_benchmark.py --config configs/component-benchmark.yaml --dry-run
 
-# Live run against a running backend
+# Live run — text only (fast smoke)
 export BENCHMARK_API_URL=http://localhost:8000
 export BENCHMARK_API_TOKEN=<your-jwt>
+python runner/run_component_benchmark.py --config configs/component-benchmark.yaml --paths text
+
+# Live run — text + voice (needs DEEPGRAM_API_KEY, ELEVENLABS_API_KEY)
+export DEEPGRAM_API_KEY=<key>
+export ELEVENLABS_API_KEY=<key>
 python runner/run_component_benchmark.py --config configs/component-benchmark.yaml
+
+# Aggregate + default config recommendation
+python runner/aggregate.py --results-dir results --report
 ```
 
-Results are written as JSONL to `benchmarks/results/component/` using the harness
-schema in `runner/benchmark_schema.py` (consumed by Endri's aggregator).
+GPC standardized run: `./scripts/run-gpc-benchmark.sh`
+
+See `Documentation/component-benchmarking.md` for full details.
 
 ### View Results
 
