@@ -12,6 +12,10 @@ name: Deploy to GCP
 # TODO: switch GCP_SA_KEY to Workload Identity (OIDC) after Step 3 IAM is applied.
 
 on:
+  # Direct push trigger — deploy immediately on every push to this branch.
+  push:
+    branches:
+      - feature/self-hosted-llm-inference-on-gcp
   # Deploy only after the smoke-test workflow passes on prod.
   # "Start Web Service" runs after linting — if it succeeds, all quality
   # gates have passed. Listening to a single workflow avoids 3 duplicate
@@ -20,8 +24,7 @@ on:
     workflows: ["Start Web Service"]
     types: [completed]
     branches:
-      # - prod
-      - feature/self-hosted-llm-inference-on-gcp
+      - prod
   # Manual trigger for hotfixes or re-deploys without a code push.
   workflow_dispatch:
 
