@@ -107,7 +107,7 @@ python runner/aggregate.py --results-dir ../results --report
 ```
 
 This produces:
-- `benchmarks/results/index.csv` — one row per (run_id, config_label, path) with pipeline models and latency stats
+- `benchmarks/results/index.csv` — one row per (run_id, config_label) with latency stats and success rate (text path only)
 - A text report with per-config per-stage latency averages and authoritative reliability summary per category
 - A **default configuration recommendation** (lowest avg latency; reliability tie-break within 10%)
 

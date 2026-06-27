@@ -114,7 +114,7 @@ def _fixture_rows() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def test_index_csv_has_all_columns() -> None:
+def test_index_csv_has_all_ten_columns() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         results_dir = Path(tmp)
         _write_jsonl(results_dir / "component", _fixture_rows())
@@ -125,46 +125,6 @@ def test_index_csv_has_all_columns() -> None:
         with open(results_dir / "index.csv") as fh:
             reader = csv.DictReader(fh)
             assert reader.fieldnames == _INDEX_COLUMNS
-
-
-def test_index_csv_includes_model_and_path_columns() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
-        results_dir = Path(tmp)
-        _write_jsonl(results_dir / "component", _fixture_rows())
-
-        aggregator = BenchmarkAggregator(results_dir=results_dir)
-        aggregator.write_index_csv()
-
-        with open(results_dir / "index.csv") as fh:
-            row = next(csv.DictReader(fh))
-
-        assert row["path"] == "text"
-        assert row["stt_model"] == "nova-3"
-        assert row["llm_model"] == "gpt-4o-mini"
-        assert row["tts_model"] == "eleven_multilingual_v2"
-
-
-def test_index_csv_separates_text_and_voice_paths() -> None:
-    rows = [
-        _make_row("run-1", "cfg-alpha", "short_no_tool", "success", 100.0,
-                  False, None, False, None, path="text"),
-        _make_row("run-1", "cfg-alpha", "short_no_tool", "success", 400.0,
-                  False, None, False, None, path="voice"),
-    ]
-    with tempfile.TemporaryDirectory() as tmp:
-        results_dir = Path(tmp)
-        _write_jsonl(results_dir / "component", rows)
-        aggregator = BenchmarkAggregator(results_dir=results_dir)
-        aggregator.write_index_csv()
-
-        with open(results_dir / "index.csv") as fh:
-            csv_rows = list(csv.DictReader(fh))
-
-        assert len(csv_rows) == 2
-        paths = {r["path"] for r in csv_rows}
-        assert paths == {"text", "voice"}
-        voice_row = next(r for r in csv_rows if r["path"] == "voice")
-        assert float(voice_row["avg_latency_ms"]) == 400.0
 
 
 def test_index_csv_has_one_row_per_config() -> None:

@@ -33,19 +33,10 @@ _LATENCY_STAGES = (
     "voice_turn",
 )
 
-# index.csv columns. The first 10 are consumed by compare.py (#86); component
-# fields (path + per-stage models) are appended so exports are self-describing.
+# Exact 10 columns compare.py reads from index.csv — order matters for DictWriter.
 _INDEX_COLUMNS = [
     "run_id",
     "config_name",
-    "path",
-    "stt_provider",
-    "stt_model",
-    "llm_provider",
-    "llm_model",
-    "tts_provider",
-    "tts_model",
-    "tts_voice_id",
     "timestamp",
     "avg_latency_ms",
     "min_latency_ms",
@@ -116,29 +107,13 @@ class BenchmarkAggregator:
     # index.csv
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _config_index_fields(row: dict[str, Any]) -> dict[str, str]:
-        """Extract pipeline provider/model identifiers for index.csv."""
-        cfg = row.get("config") or {}
-        return {
-            "path": str(row.get("path", "text")),
-            "stt_provider": str(cfg.get("stt_provider", "")),
-            "stt_model": str(cfg.get("stt_model", "")),
-            "llm_provider": str(cfg.get("llm_provider", "")),
-            "llm_model": str(cfg.get("llm_model", "")),
-            "tts_provider": str(cfg.get("tts_provider", "")),
-            "tts_model": str(cfg.get("tts_model", "")),
-            "tts_voice_id": str(cfg.get("tts_voice_id", "")),
-        }
-
     def _aggregate_group(
         self,
         rows: list[dict[str, Any]],
         run_id: str,
         config_label: str,
-        path: str,
     ) -> dict[str, Any]:
-        """Compute index.csv fields for one (run_id, config_label, path) group."""
+        """Compute the 10 index.csv fields for one (run_id, config_label) group."""
         totals = self._latency_totals(rows)
 
         success_count = sum(1 for r in rows if r.get("status") in _SUCCESS_STATUSES)
@@ -159,7 +134,7 @@ class BenchmarkAggregator:
 
         timestamp = rows[0].get("timestamp", "") if rows else ""
 
-        result: dict[str, Any] = {
+        return {
             "run_id": run_id,
             "config_name": config_label,
             "timestamp": timestamp,
@@ -171,35 +146,31 @@ class BenchmarkAggregator:
             "total_trials": total_trials,
             "throughput_avg": round(throughput_avg, 6),
         }
-        if rows:
-            result.update(self._config_index_fields(rows[0]))
-        else:
-            result["path"] = path
-        return result
 
     def write_index_csv(
         self, rows: list[dict[str, Any]] | None = None
     ) -> Path:
-        """Read JSONL, aggregate per (run_id, config_label, path), write index.csv.
+        """Read JSONL, aggregate per (run_id, config_label), write index.csv.
 
-        Text and voice path rows are written as separate index rows so latency
-        averages are never mixed across paths.
+        Only "text" path rows are included.  Voice path rows are kept separate
+        so pipeline types are never mixed in latency averages.
         """
         if rows is None:
             rows = self.load_jsonl_rows()
 
-        groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
-        for row in rows:
+        text_rows = [r for r in rows if r.get("path", "text") == "text"]
+
+        groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for row in text_rows:
             key = (
                 row.get("run_id") or "unknown",
                 row.get("config_label") or "unknown",
-                row.get("path", "text"),
             )
             groups.setdefault(key, []).append(row)
 
         index_rows = [
-            self._aggregate_group(group_rows, run_id, config_label, path)
-            for (run_id, config_label, path), group_rows in sorted(groups.items())
+            self._aggregate_group(group_rows, run_id, config_label)
+            for (run_id, config_label), group_rows in sorted(groups.items())
         ]
 
         self.results_dir.mkdir(parents=True, exist_ok=True)
@@ -260,14 +231,6 @@ class BenchmarkAggregator:
         lines: list[str] = []
         for config_label, config_rows in sorted(by_config.items()):
             lines.append(f"Config: {config_label}  ({len(config_rows)} rows)")
-            cfg = (config_rows[0].get("config") or {}) if config_rows else {}
-            if cfg:
-                lines.append(
-                    "  Pipeline:"
-                    f" STT {cfg.get('stt_provider', '?')}/{cfg.get('stt_model', '?')}"
-                    f" | LLM {cfg.get('llm_provider', '?')}/{cfg.get('llm_model', '?')}"
-                    f" | TTS {cfg.get('tts_provider', '?')}/{cfg.get('tts_model', '?')}"
-                )
 
             # Per-stage latency averages; skip stages where every value is null.
             lines.append("  Stage Latency Averages (ms):")
