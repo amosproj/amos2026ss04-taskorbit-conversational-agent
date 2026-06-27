@@ -3,12 +3,12 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from taskorbit.agent_config_util import agent_config_from_stored_blob, logical_id_from_stored_blob
+from taskorbit.agent_config_util import agent_config_from_stored_blob
 from taskorbit.logging.setup import get_logger
 from taskorbit.types import AgentConfig, ConversationRequest
 
@@ -23,6 +23,52 @@ from .models import (
 )
 
 logger = get_logger(__name__)
+
+
+def _config_logical_id_matches(logical_id: str):
+    """Match workflow logical ids stored in the JSON config blob (agent_id or id)."""
+    return or_(
+        AgentConfiguration.config["agent_id"].as_string() == logical_id,
+        AgentConfiguration.config["id"].as_string() == logical_id,
+    )
+
+
+async def _find_agent_config_by_logical_id(
+    db: AsyncSession,
+    logical_id: str,
+    user_id: int,
+) -> AgentConfiguration | None:
+    """Look up a saved agent row by logical id, preferring the user's copy."""
+    try:
+        user_result = await db.execute(
+            select(AgentConfiguration)
+            .where(
+                AgentConfiguration.user_id == user_id,
+                _config_logical_id_matches(logical_id),
+            )
+            .limit(1)
+        )
+        row = user_result.scalar_one_or_none()
+        if row is not None:
+            return row
+
+        admin_result = await db.execute(
+            select(AgentConfiguration)
+            .where(
+                AgentConfiguration.user_id.is_(None),
+                _config_logical_id_matches(logical_id),
+            )
+            .limit(1)
+        )
+        return admin_result.scalar_one_or_none()
+    except SQLAlchemyError as e:
+        logger.error(
+            "find_agent_config_by_logical_id_failed",
+            logical_id=logical_id,
+            user_id=user_id,
+            error=str(e),
+        )
+        return None
 
 
 # ============ USER CRUD ============
@@ -669,27 +715,10 @@ async def resolve_dependency_agent_config(
         return agent_config_from_stored_blob(row.config)
 
     try:
-        result = await db.execute(
-            select(AgentConfiguration).where(
-                (AgentConfiguration.user_id == user_id) | (AgentConfiguration.user_id.is_(None))
-            )
-        )
-        user_blob: dict | None = None
-        admin_blob: dict | None = None
-        for candidate in result.scalars().all():
-            blob = candidate.config or {}
-            if logical_id_from_stored_blob(blob) != logical_id:
-                continue
-            if candidate.user_id == user_id:
-                user_blob = blob
-                break
-            if candidate.user_id is None and admin_blob is None:
-                admin_blob = blob
-
-        chosen = user_blob or admin_blob
-        if chosen is None:
+        matched = await _find_agent_config_by_logical_id(db, logical_id, user_id)
+        if matched is None:
             return None
-        return agent_config_from_stored_blob(chosen)
+        return agent_config_from_stored_blob(matched.config or {})
     except SQLAlchemyError as e:
         logger.error(
             "resolve_dependency_agent_config_failed",
@@ -783,7 +812,7 @@ async def update_user_agent(
             agent.config = config
         if is_default is not None:
             agent.is_default = is_default
-        agent.updated_at = datetime.now()
+        agent.updated_at = datetime.now(UTC)
         await db.commit()
         await db.refresh(agent)
         return agent

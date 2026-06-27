@@ -76,10 +76,11 @@ def expand_workflow_dependencies(
         config = dependency_configs.get(agent_id)
         if config:
             logger.debug("expand_dependency_visiting", id=agent_id, name=config.name)
-            # Recursively visit children (prerequisites) first
-            # Note: We only expand static dependencies here as branching rules
-            # are intent-dependent and only evaluated for the active entry agent.
-            for prereq_id in config.workflow_dependencies:
+            # Recursively visit ALL prereqs of this intermediate agent — both its
+            # static workflow_dependencies AND every dep listed in workflow_rules
+            # branches. collect_workflow_dependency_ids unions both without needing
+            # intent context (all branches are potential prerequisites).
+            for prereq_id in collect_workflow_dependency_ids(config):
                 visit(prereq_id)
         else:
             logger.debug("expand_dependency_config_missing", id=agent_id)

@@ -356,6 +356,14 @@ class ConversationOrchestrator:
             # Resolve workflow dependencies BEFORE enforcing handoff rules.
             # This ensures DEMO-1 (prerequisite flow) is offered even when a
             # requested handoff would otherwise be blocked.
+            #
+            # Note: _resolve_missing_dependencies may also have been called inside
+            # _is_executing_workflow_prerequisite (via the clarification gate above)
+            # with the *pre-gate* intent. We cannot reuse that result here because
+            # _resolve_intent_after_clarification_gate can return a *different* intent
+            # (from _KNOWN_INTENTS[current_intent_name]) — making the two calls
+            # operate on different intents. Correctness requires recomputing here with
+            # the post-gate intent that the rest of this pipeline actually uses.
             direct_dependencies, effective_dependencies, missing_dependencies = (
                 _resolve_missing_dependencies(request, intent)
             )
@@ -424,7 +432,9 @@ class ConversationOrchestrator:
                         return ConversationResponse(
                             conversation_id=request.conversation_id,
                             reply=self._make_assistant_message(
-                                f"Before we proceed with {request.agent_config.name}, I'll need to complete some prerequisite steps regarding {dep_name}. Shall I start with that?"
+                                _workflow_prereq_confirmation_message(
+                                    request.agent_config.name, dep_name
+                                )
                             ),
                             status=ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED,
                             confirmation=ConfirmationResponsePayload(
@@ -464,9 +474,7 @@ class ConversationOrchestrator:
                     )
                     return ConversationResponse(
                         conversation_id=request.conversation_id,
-                        reply=self._make_assistant_message(
-                            f"Understood. Let's start with the {next_dep.replace('-', ' ')} steps."
-                        ),
+                        reply=self._make_assistant_message(_workflow_prereq_start_ack(next_dep)),
                         status=ConversationStatus.SUCCESS,
                         selected_agent=next_dep,
                         selected_intent=intent.name,
@@ -886,6 +894,10 @@ class ConversationOrchestrator:
                     ]
 
             # Resolve workflow dependencies BEFORE enforcing handoff rules.
+            # See the equivalent block in process_message for why this cannot
+            # reuse the result computed inside the clarification gate: the gate
+            # may return a different intent (from _KNOWN_INTENTS), so the two
+            # calls can operate on different intents and must stay separate.
             direct_dependencies, effective_dependencies, missing_dependencies = (
                 _resolve_missing_dependencies(request, intent)
             )
@@ -944,7 +956,9 @@ class ConversationOrchestrator:
                         yield ConversationResponse(
                             conversation_id=request.conversation_id,
                             reply=self._make_assistant_message(
-                                f"Before we proceed with {request.agent_config.name}, I'll need to complete some prerequisite steps regarding {dep_name}. Shall I start with that?"
+                                _workflow_prereq_confirmation_message(
+                                    request.agent_config.name, dep_name
+                                )
                             ),
                             status=ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED,
                             confirmation=ConfirmationResponsePayload(
@@ -986,9 +1000,7 @@ class ConversationOrchestrator:
                     )
                     yield ConversationResponse(
                         conversation_id=request.conversation_id,
-                        reply=self._make_assistant_message(
-                            f"Understood. Let's start with the {next_dep.replace('-', ' ')} steps."
-                        ),
+                        reply=self._make_assistant_message(_workflow_prereq_start_ack(next_dep)),
                         status=ConversationStatus.SUCCESS,
                         selected_agent=next_dep,
                         selected_intent=intent.name,
