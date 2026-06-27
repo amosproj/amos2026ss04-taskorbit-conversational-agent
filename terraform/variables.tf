@@ -343,3 +343,29 @@ variable "inactivity_timeout_minutes" {
   type        = number
   default     = 7
 }
+
+# ── Self-hosted GPU inference (Ollama on Cloud Run) ───────────────────────────
+
+variable "enable_gpu_inference" {
+  description = "Deploy the Ollama Cloud Run GPU service and GCS model bucket. Disabled by default — enable when self-hosted inference is needed."
+  type        = bool
+  default     = false
+}
+
+variable "ollama_min_instances" {
+  description = "Minimum Cloud Run instances for Ollama. 0 = scale to zero ($0 when idle); 1 = always warm (avoids 60-120s GPU cold start)."
+  type        = number
+  default     = 0
+}
+
+variable "ollama_version" {
+  description = "Ollama Docker image tag. Pin to a specific version for reproducible deploys (e.g. '0.7.0')."
+  type        = string
+  default     = "latest"
+}
+
+variable "gpu_inference_models" {
+  description = "Ollama model tags to document in tfvars. Pre-populate the GCS bucket manually before first deploy."
+  type        = list(string)
+  default     = ["gemma4:e4b", "gemma4:26b", "qwen3.6:27b"]
+}

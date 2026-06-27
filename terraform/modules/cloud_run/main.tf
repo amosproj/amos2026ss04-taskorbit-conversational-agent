@@ -405,7 +405,7 @@ resource "google_cloud_run_v2_service_iam_member" "worker_metrics_invoker" {
   location = var.region
   name     = google_cloud_run_v2_service.worker.name
   role     = "roles/run.invoker"
-  member   = "serviceAccount:${var.observability_sa_email}"
+  member   = "allUsers"
 }
 
 # ── Global HTTPS Load Balancer ────────────────────────────────────────────────

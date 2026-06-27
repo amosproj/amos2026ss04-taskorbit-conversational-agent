@@ -209,7 +209,33 @@ module "observability" {
   depends_on = [module.cloud_run, module.iam, google_project_service.apis]
 }
 
-# ── STEP 10 (FINAL): Full apply ───────────────────────────────────────────────
+# ── STEP 10 (OPTIONAL): Self-Hosted GPU Inference (Ollama on Cloud Run) ───────
+# Deploys an Ollama Cloud Run service with NVIDIA L4 GPU + GCS model bucket.
+# Disabled by default (enable_gpu_inference = false).
+#
+# Pre-requisites before enabling:
+#   1. Pre-populate GCS bucket with model weights (see plan.md Phase 1 § 7)
+#   2. Set enable_gpu_inference = true in terraform.tfvars
+#   3. Run: terraform apply -target=module.gpu_inference
+#
+# After apply: set OLLAMA_BASE_URL = module.gpu_inference.ollama_service_url
+# in the backend/worker Cloud Run env (via terraform apply -target=module.cloud_run)
+
+module "gpu_inference" {
+  source = "./modules/gpu_inference"
+
+  enable_gpu_inference          = var.enable_gpu_inference
+  min_instances                 = var.ollama_min_instances
+  ollama_version                = var.ollama_version
+  gpu_inference_models          = var.gpu_inference_models
+  region                        = var.region
+  project_id                    = var.project_id
+  backend_service_account_email = module.iam.backend_sa_email
+
+  depends_on = [module.iam, google_project_service.apis]
+}
+
+# ── STEP 11 (FINAL): Full apply ───────────────────────────────────────────────
 # After all steps above are done and DNS is verified, run a bare apply
 # to catch any inter-module dependencies that were missed above.
 # Expect: 0 changes (or only minor computed-value refreshes).

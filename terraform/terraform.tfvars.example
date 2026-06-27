@@ -71,3 +71,13 @@ worker_min_instances   = 1
 worker_max_instances   = 5
 frontend_min_instances = 1
 frontend_max_instances = 5
+
+# ── Self-hosted GPU inference (Ollama on Cloud Run) ───────────────────────────
+# Disabled by default. Enable when self-hosted inference is needed.
+# Before setting enable_gpu_inference = true, pre-populate the GCS bucket:
+#   ollama pull gemma4:e4b && ollama pull gemma4:26b && ollama pull qwen3.6:27b
+#   gsutil cp -r ~/.ollama/models gs://<project_id>-ollama-models/
+enable_gpu_inference = false
+ollama_min_instances = 0              # set to 1 during active dev to avoid cold starts
+ollama_version       = "latest"       # pin to e.g. "0.7.0" for reproducibility
+gpu_inference_models = ["gemma4:e4b", "gemma4:26b", "qwen3.6:27b"]
