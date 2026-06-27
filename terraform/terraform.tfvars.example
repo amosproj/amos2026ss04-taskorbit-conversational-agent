@@ -80,4 +80,5 @@ frontend_max_instances = 5
 enable_gpu_inference = false
 ollama_min_instances = 0              # set to 1 during active dev to avoid cold starts
 ollama_version       = "latest"       # pin to e.g. "0.7.0" for reproducibility
+ollama_model         = "gemma4:26b"   # active model — change here to swap without code changes
 gpu_inference_models = ["gemma4:e4b", "gemma4:26b", "qwen3.6:27b"]

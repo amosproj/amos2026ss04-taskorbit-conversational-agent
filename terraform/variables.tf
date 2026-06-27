@@ -369,3 +369,9 @@ variable "gpu_inference_models" {
   type        = list(string)
   default     = ["gemma4:e4b", "gemma4:26b", "qwen3.6:27b"]
 }
+
+variable "ollama_model" {
+  description = "Active Ollama model tag injected as OLLAMA_MODEL into backend and worker Cloud Run services. Change here to swap models without touching code."
+  type        = string
+  default     = "gemma4:26b"
+}

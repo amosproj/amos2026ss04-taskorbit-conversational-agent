@@ -116,8 +116,10 @@ module "secrets" {
   database_url           = module.database.connection_string
   grafana_admin_password = var.grafana_admin_password
   grafana_admin_user     = var.grafana_admin_user
+  ollama_base_url        = module.gpu_inference.ollama_service_url
+  ollama_model           = var.ollama_model
 
-  depends_on = [module.database, google_project_service.apis]
+  depends_on = [module.database, module.gpu_inference, google_project_service.apis]
 }
 
 # ── STEP 7 (ACTIVE): Cloud Run Services + Load Balancer ──────────────────────

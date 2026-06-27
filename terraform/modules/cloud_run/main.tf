@@ -112,6 +112,8 @@ resource "google_cloud_run_v2_service" "backend" {
           GOOGLE_MODEL        = "google-model"
           OPENROUTER_API_KEY  = "openrouter-api-key"
           OPENROUTER_MODEL    = "openrouter-model"
+          OLLAMA_BASE_URL     = "ollama-base-url"
+          OLLAMA_MODEL        = "ollama-model"
         }
         content {
           name = env.key
@@ -256,6 +258,8 @@ resource "google_cloud_run_v2_service" "worker" {
           GOOGLE_MODEL        = "google-model"
           OPENROUTER_API_KEY  = "openrouter-api-key"
           OPENROUTER_MODEL    = "openrouter-model"
+          OLLAMA_BASE_URL     = "ollama-base-url"
+          OLLAMA_MODEL        = "ollama-model"
         }
         content {
           name = env.key
