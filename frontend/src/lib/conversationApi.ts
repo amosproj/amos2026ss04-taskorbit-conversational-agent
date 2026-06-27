@@ -199,13 +199,15 @@ function adaptTool(
 
 function adaptAgentConfig(agent: AgentConfig): BackendAgentConfig {
   // Map FE provider id to backend LLMProvider enum value.
-  // "gemini" → "google", "openrouter" → "openrouter", "openai" → "openai".
+  // "gemini" → "google", "openrouter" → "openrouter", "ollama" → "ollama", "openai" → "openai".
   const llmProvider =
     agent.llm.provider === "gemini"
       ? "google"
       : agent.llm.provider === "openrouter"
         ? "openrouter"
-        : "openai";
+        : agent.llm.provider === "ollama"
+          ? "ollama"
+          : "openai";
   const out: BackendAgentConfig = {
     id: agent.agent_id,
     name: agent.name,

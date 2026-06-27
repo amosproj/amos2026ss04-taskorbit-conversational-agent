@@ -20,7 +20,8 @@ on:
     workflows: ["Start Web Service"]
     types: [completed]
     branches:
-      - prod
+      # - prod
+      - feature/self-hosted-llm-inference-on-gcp
   # Manual trigger for hotfixes or re-deploys without a code push.
   workflow_dispatch:
 
