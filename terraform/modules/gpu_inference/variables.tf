@@ -23,8 +23,16 @@ variable "ollama_version" {
 }
 
 variable "region" {
-  description = "GCP region for the Cloud Run service and GCS bucket."
+  description = "GCP region for the Ollama Cloud Run service and GCS model bucket. Must be one of the regions that support NVIDIA L4: asia-southeast1, europe-west1, europe-west4, us-central1, us-east4. Defaults to europe-west4 (Netherlands) when the main stack is in europe-west3."
   type        = string
+
+  validation {
+    condition = contains(
+      ["asia-southeast1", "europe-west1", "europe-west4", "us-central1", "us-east4"],
+      var.region
+    )
+    error_message = "NVIDIA L4 GPU is only supported in: asia-southeast1, europe-west1, europe-west4, us-central1, us-east4."
+  }
 }
 
 variable "project_id" {

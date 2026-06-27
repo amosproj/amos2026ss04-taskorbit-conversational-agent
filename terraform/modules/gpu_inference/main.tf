@@ -62,6 +62,11 @@ resource "google_cloud_run_v2_service" "ollama" {
     timeout         = "600s"
     max_instance_request_concurrency = 4
 
+    # Deploy without GPU zonal redundancy. Redundant GPUs require a separate
+    # quota (g.co/cloudrun/gpu-quota) that this project does not have, and they
+    # cost more. Non-redundant GPUs are cheaper and sufficient for this workload.
+    gpu_zonal_redundancy_disabled = true
+
     containers {
       image = "ollama/ollama:${var.ollama_version}"
 
@@ -141,11 +146,18 @@ resource "google_cloud_run_v2_service" "ollama" {
       }
     }
 
+    annotations = {
+      # Explicitly disable zonal redundancy — required when the project does not
+      # have GPU zonal-redundancy quota. Without this, Cloud Run requires
+      # max_instance_count >= 2 AND the matching quota, which most projects lack.
+      "run.googleapis.com/gpu-zonal-redundancy-disabled" = "true"
+    }
+
     scaling {
       # 0 = scale to zero (cheapest); set to 1 during active development
       # to avoid 60-120s cold start penalty on every request
       min_instance_count = var.min_instances
-      max_instance_count = 2
+      max_instance_count = 1
     }
 
     node_selector {

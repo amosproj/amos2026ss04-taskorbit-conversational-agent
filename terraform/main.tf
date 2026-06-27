@@ -230,7 +230,8 @@ module "gpu_inference" {
   min_instances                 = var.ollama_min_instances
   ollama_version                = var.ollama_version
   gpu_inference_models          = var.gpu_inference_models
-  region                        = var.region
+  # L4 GPU is not available in europe-west3 — use europe-west4 (Netherlands) by default.
+  region                        = var.gpu_inference_region
   project_id                    = var.project_id
   backend_service_account_email = module.iam.backend_sa_email
 

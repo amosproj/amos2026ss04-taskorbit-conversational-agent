@@ -17,7 +17,7 @@ set -euo pipefail
 # ── Config ────────────────────────────────────────────────────────────────────
 
 PROJECT_ID="${GCP_PROJECT_ID:-amos-taskorbit}"
-REGION="${GCP_REGION:-europe-west3}"
+REGION="${GCP_REGION:-europe-west4}"  # L4 GPU not available in europe-west3
 SERVICE_NAME="taskorbit-ollama-inference"
 EXPECTED_MODELS=("gemma4:26b" "qwen3.6:27b")
 VALIDATION_MODEL="gemma4:26b"
