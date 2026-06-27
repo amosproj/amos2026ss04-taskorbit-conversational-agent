@@ -269,7 +269,7 @@ class ConversationOrchestrator:
                 fresh = await self._intent_router.detect(
                     last_user.content,
                     request.messages,
-                    self._call_llm,
+                    self._call_llm_json,
                     request.agent_config.llm,
                 )
                 if (
@@ -298,7 +298,7 @@ class ConversationOrchestrator:
                 intent = await self._intent_router.detect(
                     last_user.content,
                     request.messages,
-                    self._call_llm,
+                    self._call_llm_json,
                     request.agent_config.llm,
                 )
                 logger.info(
@@ -807,7 +807,7 @@ class ConversationOrchestrator:
                 fresh = await self._intent_router.detect(
                     last_user.content,
                     request.messages,
-                    self._call_llm,
+                    self._call_llm_json,
                     request.agent_config.llm,
                 )
                 if (
@@ -836,7 +836,7 @@ class ConversationOrchestrator:
                 intent = await self._intent_router.detect(
                     last_user.content,
                     request.messages,
-                    self._call_llm,
+                    self._call_llm_json,
                     request.agent_config.llm,
                 )
                 logger.info(
@@ -1446,7 +1446,7 @@ class ConversationOrchestrator:
         if not required_inputs:
             return SlotExtractionResult()
         try:
-            extractor = SlotExtractor(llm_fn=self._call_llm, llm_config=llm_config)
+            extractor = SlotExtractor(llm_fn=self._call_llm_json, llm_config=llm_config)
             return await extractor.extract(messages, required_inputs)
         except Exception as exc:
             logger.warning(
@@ -1489,6 +1489,23 @@ class ConversationOrchestrator:
         augmented_prompt = with_same_language_instruction(system_prompt)
         client = get_llm_client(llm_config, settings=self._settings)
         return await client.generate(augmented_prompt, messages, llm_config)
+
+    async def _call_llm_json(
+        self,
+        system_prompt: str,
+        messages: list[Message],
+        llm_config: LLMConfig,
+    ) -> str:
+        """Call the LLM and return its text WITHOUT the same-language instruction.
+
+        Use this for structured JSON calls (intent classification, slot extraction)
+        where the language instruction conflicts with 'Respond ONLY with valid JSON'
+        and causes models like Gemini to produce natural-language output instead.
+        """
+        from taskorbit.integrations.llm.factory import get_llm_client
+
+        client = get_llm_client(llm_config, settings=self._settings)
+        return await client.generate(system_prompt, messages, llm_config)
 
     async def _call_llm_stream(
         self,

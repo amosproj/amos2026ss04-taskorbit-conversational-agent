@@ -397,13 +397,15 @@ resource "google_cloud_run_v2_service_iam_member" "frontend_public" {
   member   = "allUsers"
 }
 
-# Allow Prometheus to scrape /metrics without auth (metrics contain no sensitive data)
-resource "google_cloud_run_v2_service_iam_member" "worker_public" {
+# Worker only exposes /metrics — restrict to the observability SA (Prometheus).
+# When the observability SA has run.invoker on this service, Prometheus scrapes
+# succeed via authenticated Cloud Run invocations using the SA identity token.
+resource "google_cloud_run_v2_service_iam_member" "worker_metrics_invoker" {
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_service.worker.name
   role     = "roles/run.invoker"
-  member   = "allUsers"
+  member   = "serviceAccount:${var.observability_sa_email}"
 }
 
 # ── Global HTTPS Load Balancer ────────────────────────────────────────────────

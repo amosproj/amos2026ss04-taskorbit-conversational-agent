@@ -1,3 +1,18 @@
+locals {
+  # Secrets needed by the backend and worker (excludes grafana credentials).
+  app_secret_keys = [
+    "livekit-url", "livekit-api-key", "livekit-api-secret",
+    "deepgram-api-key", "deepgram-model", "deepgram-language",
+    "elevenlabs-api-key", "elevenlabs-voice-id", "elevenlabs-model",
+    "openai-api-key", "openai-model",
+    "google-api-key", "google-model",
+    "openrouter-api-key", "openrouter-model",
+    "database-url",
+  ]
+  # Secrets needed only by the observability stack.
+  grafana_secret_keys = ["grafana-admin-user", "grafana-admin-password"]
+}
+
 # ── Service accounts ──────────────────────────────────────────────────────────
 
 resource "google_service_account" "backend" {
@@ -33,10 +48,13 @@ resource "google_service_account" "cicd" {
 
 # ── Backend IAM bindings ──────────────────────────────────────────────────────
 
-resource "google_project_iam_member" "backend_secret_accessor" {
-  project = var.project_id
-  role    = "roles/secretmanager.secretAccessor"
-  member  = "serviceAccount:${google_service_account.backend.email}"
+# Resource-scoped: backend can only read the secrets it actually mounts.
+resource "google_secret_manager_secret_iam_member" "backend_secret_accessor" {
+  for_each  = toset(local.app_secret_keys)
+  project   = var.project_id
+  secret_id = var.secret_ids[each.key]
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.backend.email}"
 }
 
 resource "google_project_iam_member" "backend_cloudsql_client" {
@@ -47,10 +65,13 @@ resource "google_project_iam_member" "backend_cloudsql_client" {
 
 # ── Worker IAM bindings ───────────────────────────────────────────────────────
 
-resource "google_project_iam_member" "worker_secret_accessor" {
-  project = var.project_id
-  role    = "roles/secretmanager.secretAccessor"
-  member  = "serviceAccount:${google_service_account.worker.email}"
+# Resource-scoped: worker can only read the secrets it actually mounts.
+resource "google_secret_manager_secret_iam_member" "worker_secret_accessor" {
+  for_each  = toset(local.app_secret_keys)
+  project   = var.project_id
+  secret_id = var.secret_ids[each.key]
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.worker.email}"
 }
 
 resource "google_project_iam_member" "worker_cloudsql_client" {
@@ -59,19 +80,15 @@ resource "google_project_iam_member" "worker_cloudsql_client" {
   member  = "serviceAccount:${google_service_account.worker.email}"
 }
 
-# Worker needs GCS write access for prometheus multiprocess dir
-resource "google_project_iam_member" "worker_storage_object_admin" {
-  project = var.project_id
-  role    = "roles/storage.objectAdmin"
-  member  = "serviceAccount:${google_service_account.worker.email}"
-}
-
 # ── Observability IAM bindings ────────────────────────────────────────────────
 
-resource "google_project_iam_member" "observability_secret_accessor" {
-  project = var.project_id
-  role    = "roles/secretmanager.secretAccessor"
-  member  = "serviceAccount:${google_service_account.observability.email}"
+# Resource-scoped: observability SA only reads Grafana credentials.
+resource "google_secret_manager_secret_iam_member" "observability_secret_accessor" {
+  for_each  = toset(local.grafana_secret_keys)
+  project   = var.project_id
+  secret_id = var.secret_ids[each.key]
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.observability.email}"
 }
 
 resource "google_project_iam_member" "observability_storage_object_admin" {
@@ -80,7 +97,7 @@ resource "google_project_iam_member" "observability_storage_object_admin" {
   member  = "serviceAccount:${google_service_account.observability.email}"
 }
 
-# Prometheus needs to invoke backend/worker Cloud Run to scrape /metrics
+# Prometheus invokes backend/worker Cloud Run services to scrape /metrics.
 resource "google_project_iam_member" "observability_run_invoker" {
   project = var.project_id
   role    = "roles/run.invoker"
@@ -107,51 +124,69 @@ resource "google_project_iam_member" "cicd_sa_user" {
   member  = "serviceAccount:${google_service_account.cicd.email}"
 }
 
+# ── Terraform deployer bindings (cicd SA used for terraform plan/apply) ───────
+
 resource "google_project_iam_member" "cicd_secret_accessor" {
   project = var.project_id
   role    = "roles/secretmanager.secretAccessor"
   member  = "serviceAccount:${google_service_account.cicd.email}"
 }
 
-# terraform-deployer SA transitional bindings — remove after switching
-# GitHub Actions to taskorbit-cicd SA key (see CLAUDE.md).
-resource "google_project_iam_member" "deployer_artifact_registry_writer" {
+resource "google_project_iam_member" "cicd_secret_admin" {
   project = var.project_id
-  role    = "roles/artifactregistry.writer"
-  member  = "serviceAccount:terraform-deployer@${var.project_id}.iam.gserviceaccount.com"
+  role    = "roles/secretmanager.admin"
+  member  = "serviceAccount:${google_service_account.cicd.email}"
 }
 
-resource "google_project_iam_member" "deployer_run_admin" {
+resource "google_project_iam_member" "cicd_sql_admin" {
   project = var.project_id
-  role    = "roles/run.admin"
-  member  = "serviceAccount:terraform-deployer@${var.project_id}.iam.gserviceaccount.com"
+  role    = "roles/cloudsql.admin"
+  member  = "serviceAccount:${google_service_account.cicd.email}"
 }
 
-resource "google_project_iam_member" "deployer_pubsub_admin" {
+resource "google_project_iam_member" "cicd_network_admin" {
+  project = var.project_id
+  role    = "roles/compute.networkAdmin"
+  member  = "serviceAccount:${google_service_account.cicd.email}"
+}
+
+resource "google_project_iam_member" "cicd_security_admin" {
+  project = var.project_id
+  role    = "roles/iam.securityAdmin"
+  member  = "serviceAccount:${google_service_account.cicd.email}"
+}
+
+resource "google_project_iam_member" "cicd_storage_admin" {
+  project = var.project_id
+  role    = "roles/storage.admin"
+  member  = "serviceAccount:${google_service_account.cicd.email}"
+}
+
+resource "google_project_iam_member" "cicd_pubsub_admin" {
   project = var.project_id
   role    = "roles/pubsub.admin"
-  member  = "serviceAccount:terraform-deployer@${var.project_id}.iam.gserviceaccount.com"
+  member  = "serviceAccount:${google_service_account.cicd.email}"
 }
 
-# terraform-deployer must be able to actAs each Cloud Run service account
-# when deploying services (iam.serviceaccounts.actAs required by Cloud Run).
-resource "google_service_account_iam_member" "deployer_actAs_backend" {
-  service_account_id = google_service_account.backend.name
-  role               = "roles/iam.serviceAccountUser"
-  member             = "serviceAccount:terraform-deployer@${var.project_id}.iam.gserviceaccount.com"
+resource "google_project_iam_member" "cicd_logging_admin" {
+  project = var.project_id
+  role    = "roles/logging.admin"
+  member  = "serviceAccount:${google_service_account.cicd.email}"
 }
 
-resource "google_service_account_iam_member" "deployer_actAs_worker" {
-  service_account_id = google_service_account.worker.name
-  role               = "roles/iam.serviceAccountUser"
-  member             = "serviceAccount:terraform-deployer@${var.project_id}.iam.gserviceaccount.com"
+resource "google_project_iam_member" "cicd_scheduler_admin" {
+  project = var.project_id
+  role    = "roles/cloudscheduler.admin"
+  member  = "serviceAccount:${google_service_account.cicd.email}"
 }
 
-resource "google_service_account_iam_member" "deployer_actAs_frontend" {
-  service_account_id = google_service_account.frontend.name
-  role               = "roles/iam.serviceAccountUser"
-  member             = "serviceAccount:terraform-deployer@${var.project_id}.iam.gserviceaccount.com"
+resource "google_project_iam_member" "cicd_service_usage" {
+  project = var.project_id
+  role    = "roles/serviceusage.serviceUsageAdmin"
+  member  = "serviceAccount:${google_service_account.cicd.email}"
 }
+
+# cicd SA does not need secretAccessor — it deploys images, not secret values.
 
 # ── Workload Identity (GitHub Actions OIDC — no long-lived key) ───────────────
 
