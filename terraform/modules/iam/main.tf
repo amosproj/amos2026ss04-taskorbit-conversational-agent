@@ -7,7 +7,6 @@ locals {
     "openai-api-key", "openai-model",
     "google-api-key", "google-model",
     "openrouter-api-key", "openrouter-model",
-    "ollama-base-url", "ollama-model",
     "database-url",
   ]
   # Secrets needed only by the observability stack.

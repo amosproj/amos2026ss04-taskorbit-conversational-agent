@@ -21,9 +21,6 @@ locals {
     "database-url"          = var.database_url
     "grafana-admin-password" = var.grafana_admin_password
     "grafana-admin-user"     = var.grafana_admin_user
-    # Ollama self-hosted inference — empty when gpu_inference is disabled
-    "ollama-base-url"        = var.ollama_base_url
-    "ollama-model"           = var.ollama_model
   }
 }
 

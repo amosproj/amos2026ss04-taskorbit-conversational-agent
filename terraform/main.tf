@@ -116,10 +116,8 @@ module "secrets" {
   database_url           = module.database.connection_string
   grafana_admin_password = var.grafana_admin_password
   grafana_admin_user     = var.grafana_admin_user
-  ollama_base_url        = module.gpu_inference.ollama_service_url
-  ollama_model           = var.ollama_model
 
-  depends_on = [module.database, module.gpu_inference, google_project_service.apis]
+  depends_on = [module.database, google_project_service.apis]
 }
 
 # ── STEP 7 (ACTIVE): Cloud Run Services + Load Balancer ──────────────────────
@@ -163,7 +161,12 @@ module "cloud_run" {
   session_max_minutes        = var.session_max_minutes
   inactivity_timeout_minutes = var.inactivity_timeout_minutes
 
-  depends_on = [module.iam, module.secrets, module.database, module.network]
+  # Ollama config passed as plain env vars — not through secrets — to avoid the
+  # cycle: module.secrets → module.gpu_inference → module.iam → module.secrets.
+  ollama_base_url = module.gpu_inference.ollama_service_url
+  ollama_model    = var.ollama_model
+
+  depends_on = [module.iam, module.secrets, module.database, module.network, module.gpu_inference]
 }
 
 # ── STEP 8 (ACTIVE): Auto-shutdown Scheduler ─────────────────────────────────
@@ -220,9 +223,6 @@ module "observability" {
 #   2. Set enable_gpu_inference = true in terraform.tfvars
 #   3. Run: terraform apply -target=module.gpu_inference
 #
-# After apply: set OLLAMA_BASE_URL = module.gpu_inference.ollama_service_url
-# in the backend/worker Cloud Run env (via terraform apply -target=module.cloud_run)
-
 module "gpu_inference" {
   source = "./modules/gpu_inference"
 

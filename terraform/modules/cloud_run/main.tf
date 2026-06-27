@@ -112,8 +112,6 @@ resource "google_cloud_run_v2_service" "backend" {
           GOOGLE_MODEL        = "google-model"
           OPENROUTER_API_KEY  = "openrouter-api-key"
           OPENROUTER_MODEL    = "openrouter-model"
-          OLLAMA_BASE_URL     = "ollama-base-url"
-          OLLAMA_MODEL        = "ollama-model"
         }
         content {
           name = env.key
@@ -124,6 +122,18 @@ resource "google_cloud_run_v2_service" "backend" {
             }
           }
         }
+      }
+
+      # Ollama config — not sensitive; passed as plain env vars to avoid a
+      # circular dependency between module.secrets and module.gpu_inference.
+      env {
+        name  = "OLLAMA_BASE_URL"
+        value = var.ollama_base_url
+      }
+
+      env {
+        name  = "OLLAMA_MODEL"
+        value = var.ollama_model
       }
 
       volume_mounts {
@@ -258,8 +268,6 @@ resource "google_cloud_run_v2_service" "worker" {
           GOOGLE_MODEL        = "google-model"
           OPENROUTER_API_KEY  = "openrouter-api-key"
           OPENROUTER_MODEL    = "openrouter-model"
-          OLLAMA_BASE_URL     = "ollama-base-url"
-          OLLAMA_MODEL        = "ollama-model"
         }
         content {
           name = env.key
@@ -270,6 +278,16 @@ resource "google_cloud_run_v2_service" "worker" {
             }
           }
         }
+      }
+
+      env {
+        name  = "OLLAMA_BASE_URL"
+        value = var.ollama_base_url
+      }
+
+      env {
+        name  = "OLLAMA_MODEL"
+        value = var.ollama_model
       }
 
       volume_mounts {

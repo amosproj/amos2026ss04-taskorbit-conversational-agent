@@ -54,6 +54,7 @@ class LLMProvider(str, Enum):
     OPENAI = "openai"
     GOOGLE = "google"
     OPENROUTER = "openrouter"
+    OLLAMA = "ollama"
 
 
 class TTSProvider(str, Enum):

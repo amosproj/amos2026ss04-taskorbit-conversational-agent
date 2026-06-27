@@ -90,15 +90,3 @@ variable "grafana_admin_user" {
   type      = string
   sensitive = true
 }
-
-variable "ollama_base_url" {
-  description = "HTTPS URL of the Ollama Cloud Run service. Empty string when gpu_inference is disabled."
-  type        = string
-  default     = ""
-}
-
-variable "ollama_model" {
-  description = "Default Ollama model tag served to the backend. Override via Cloud Run env var to swap models without redeployment."
-  type        = string
-  default     = "gemma4:26b"
-}
