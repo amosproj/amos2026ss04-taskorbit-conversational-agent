@@ -51,7 +51,7 @@ async def _get_identity_token(audience: str) -> str:
         return google.oauth2.id_token.fetch_id_token(request, audience)
 
     try:
-        return await asyncio.get_event_loop().run_in_executor(None, _fetch)
+        return await asyncio.to_thread(_fetch)
     except Exception as exc:
         raise LLMAuthError(
             f"Failed to fetch GCP identity token for Ollama at {audience!r}. "
