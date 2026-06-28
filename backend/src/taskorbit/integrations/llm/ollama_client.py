@@ -22,7 +22,7 @@ from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import get_metrics
 from taskorbit.types import LLMConfig, Message
 
-from .errors import LLMAPIError, LLMAuthError, LLMTimeoutError
+from .errors import LLMAPIError, LLMAuthError, LLMConfigError, LLMTimeoutError
 from .messages import to_openai_messages
 
 _REQUEST_TIMEOUT_SECONDS = 60.0  # GPU cold start + inference can take ~30 s on first token
@@ -89,6 +89,39 @@ class OllamaClient:
             return {}
         token = await _get_identity_token(self._base_url)
         return {"Authorization": f"Bearer {token}"}
+
+    async def verify_model_available(self) -> list[str]:
+        """Verify the configured model tag actually exists on the endpoint.
+
+        Lists the models the Ollama service is serving (OpenAI-compatible
+        /v1/models) and checks the active model tag is among them. Raises
+        LLMConfigError naming the available tags otherwise — this turns an
+        otherwise silent per-request 404 (typo'd or un-pulled model tag) into
+        a clear, actionable preflight error. Returns the available tags on
+        success. Intended for startup/deploy-time validation, not per request.
+        """
+        model = self._llm_config.model
+        extra_headers = await self._auth_headers()
+        try:
+            listing = await self._client.models.list(extra_headers=extra_headers)
+        except openai.AuthenticationError as exc:
+            raise LLMAuthError(
+                f"Ollama authentication failed while verifying models at {self._base_url}: {exc}"
+            ) from exc
+        except openai.APIError as exc:
+            raise LLMAPIError(
+                f"Failed to list models at Ollama endpoint {self._base_url}: {exc}"
+            ) from exc
+
+        available = [m.id for m in listing.data]
+        if model not in available:
+            raise LLMConfigError(
+                f"Ollama model {model!r} is not available at {self._base_url}. "
+                f"Available models: {available or '[none]'}. "
+                f"Pull it and copy the weights to the model bucket, e.g. "
+                f"`ollama pull {model}`."
+            )
+        return available
 
     async def generate(
         self,
