@@ -8,6 +8,7 @@ variable "frontend_image" { type = string }
 variable "backend_sa_email" { type = string }
 variable "worker_sa_email" { type = string }
 variable "frontend_sa_email" { type = string }
+variable "observability_sa_email" { type = string }
 
 variable "vpc_connector_id" { type = string }
 variable "cloud_sql_connection_name" { type = string }
@@ -68,4 +69,16 @@ variable "inactivity_timeout_minutes" {
   description = "Minutes of silence before the session is auto-closed. Maps to VITE_INACTIVITY_TIMEOUT_MINUTES in the frontend bundle."
   type        = number
   default     = 7
+}
+
+variable "ollama_base_url" {
+  description = "HTTPS URL of the Ollama Cloud Run service. Empty string when gpu_inference is disabled. Not sensitive — passed as plain env var to avoid a circular dependency with module.secrets."
+  type        = string
+  default     = ""
+}
+
+variable "ollama_model" {
+  description = "Active Ollama model tag (e.g. gemma4:26b). Not sensitive — passed as plain env var."
+  type        = string
+  default     = "gemma4:26b"
 }

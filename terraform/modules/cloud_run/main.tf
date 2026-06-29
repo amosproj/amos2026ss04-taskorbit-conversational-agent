@@ -110,6 +110,8 @@ resource "google_cloud_run_v2_service" "backend" {
           OPENAI_MODEL        = "openai-model"
           GOOGLE_API_KEY      = "google-api-key"
           GOOGLE_MODEL        = "google-model"
+          OPENROUTER_API_KEY  = "openrouter-api-key"
+          OPENROUTER_MODEL    = "openrouter-model"
         }
         content {
           name = env.key
@@ -120,6 +122,18 @@ resource "google_cloud_run_v2_service" "backend" {
             }
           }
         }
+      }
+
+      # Ollama config — not sensitive; passed as plain env vars to avoid a
+      # circular dependency between module.secrets and module.gpu_inference.
+      env {
+        name  = "OLLAMA_BASE_URL"
+        value = var.ollama_base_url
+      }
+
+      env {
+        name  = "OLLAMA_MODEL"
+        value = var.ollama_model
       }
 
       volume_mounts {
@@ -252,6 +266,8 @@ resource "google_cloud_run_v2_service" "worker" {
           OPENAI_MODEL        = "openai-model"
           GOOGLE_API_KEY      = "google-api-key"
           GOOGLE_MODEL        = "google-model"
+          OPENROUTER_API_KEY  = "openrouter-api-key"
+          OPENROUTER_MODEL    = "openrouter-model"
         }
         content {
           name = env.key
@@ -262,6 +278,16 @@ resource "google_cloud_run_v2_service" "worker" {
             }
           }
         }
+      }
+
+      env {
+        name  = "OLLAMA_BASE_URL"
+        value = var.ollama_base_url
+      }
+
+      env {
+        name  = "OLLAMA_MODEL"
+        value = var.ollama_model
       }
 
       volume_mounts {
@@ -393,8 +419,10 @@ resource "google_cloud_run_v2_service_iam_member" "frontend_public" {
   member   = "allUsers"
 }
 
-# Allow Prometheus to scrape /metrics without auth (metrics contain no sensitive data)
-resource "google_cloud_run_v2_service_iam_member" "worker_public" {
+# Worker only exposes /metrics — restrict to the observability SA (Prometheus).
+# When the observability SA has run.invoker on this service, Prometheus scrapes
+# succeed via authenticated Cloud Run invocations using the SA identity token.
+resource "google_cloud_run_v2_service_iam_member" "worker_metrics_invoker" {
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_service.worker.name

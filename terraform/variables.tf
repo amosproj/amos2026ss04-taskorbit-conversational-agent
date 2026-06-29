@@ -267,6 +267,22 @@ variable "google_model" {
   }
 }
 
+variable "openrouter_api_key" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "openrouter_model" {
+  type    = string
+  default = "meta-llama/llama-3.1-8b-instruct:free"
+
+  validation {
+    condition     = length(var.openrouter_model) > 0
+    error_message = "openrouter_model must not be empty."
+  }
+}
+
 variable "grafana_admin_password" {
   description = "Grafana admin password stored in Secret Manager."
   type        = string
@@ -326,4 +342,42 @@ variable "inactivity_timeout_minutes" {
   description = "Minutes of silence before auto-closing the session (VITE_INACTIVITY_TIMEOUT_MINUTES). Default 7."
   type        = number
   default     = 7
+}
+
+# ── Self-hosted GPU inference (Ollama on Cloud Run) ───────────────────────────
+
+variable "enable_gpu_inference" {
+  description = "Deploy the Ollama Cloud Run GPU service and GCS model bucket. Disabled by default — enable when self-hosted inference is needed."
+  type        = bool
+  default     = false
+}
+
+variable "gpu_inference_region" {
+  description = "GCP region for the Ollama GCE VM. Must have NVIDIA L4 available — see: gcloud compute accelerator-types list --filter='name=nvidia-l4'."
+  type        = string
+  default     = "us-east1"
+}
+
+variable "gpu_inference_zone" {
+  description = "GCP zone for the Ollama GCE VM. Must be inside gpu_inference_region and support NVIDIA L4."
+  type        = string
+  default     = "us-east1-b"
+}
+
+variable "ollama_version" {
+  description = "Ollama Docker image tag. Pin to a specific version for reproducible deploys (e.g. '0.7.0')."
+  type        = string
+  default     = "latest"
+}
+
+variable "gpu_inference_models" {
+  description = "Ollama model tags to document in tfvars. Pre-populate the GCS bucket manually before first deploy."
+  type        = list(string)
+  default     = ["gemma4:e4b", "gemma4:26b", "qwen3.6:27b", "qwen3.5:9b"]
+}
+
+variable "ollama_model" {
+  description = "Active Ollama model tag injected as OLLAMA_MODEL into backend and worker Cloud Run services. Change here to swap models without touching code."
+  type        = string
+  default     = "gemma4:26b"
 }

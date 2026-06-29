@@ -71,7 +71,9 @@ export function buildLiveKitWorkerMetadata(agent: AgentConfig): Record<string, u
       ? "google"
       : agent.llm.provider === "openrouter"
         ? "openrouter"
-        : "openai";
+        : agent.llm.provider === "ollama"
+          ? "ollama"
+          : "openai";
   const out: Record<string, unknown> = {
     id: agent.agent_id,
     name: agent.name,

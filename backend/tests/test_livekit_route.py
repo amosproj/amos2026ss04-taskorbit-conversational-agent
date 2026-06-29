@@ -17,6 +17,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
+from taskorbit.api.deps import get_current_user_id
 from taskorbit.api.main import create_app
 from taskorbit.config import get_settings
 
@@ -55,7 +56,9 @@ def empty_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 
 def _client() -> TestClient:
-    return TestClient(create_app())
+    app = create_app()
+    app.dependency_overrides[get_current_user_id] = lambda: 1
+    return TestClient(app)
 
 
 def test_token_success_returns_jwt_url_room_identity(
