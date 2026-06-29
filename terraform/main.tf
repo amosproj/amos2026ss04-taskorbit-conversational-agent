@@ -161,7 +161,12 @@ module "cloud_run" {
   session_max_minutes        = var.session_max_minutes
   inactivity_timeout_minutes = var.inactivity_timeout_minutes
 
-  depends_on = [module.iam, module.secrets, module.database, module.network]
+  # Ollama config passed as plain env vars — not through secrets — to avoid the
+  # cycle: module.secrets → module.gpu_inference → module.iam → module.secrets.
+  ollama_base_url = module.gpu_inference.ollama_service_url
+  ollama_model    = var.ollama_model
+
+  depends_on = [module.iam, module.secrets, module.database, module.network, module.gpu_inference]
 }
 
 # ── STEP 8 (ACTIVE): Auto-shutdown Scheduler ─────────────────────────────────
@@ -209,7 +214,30 @@ module "observability" {
   depends_on = [module.cloud_run, module.iam, google_project_service.apis]
 }
 
-# ── STEP 10 (FINAL): Full apply ───────────────────────────────────────────────
+# ── STEP 10 (OPTIONAL): Self-Hosted GPU Inference (Ollama on Cloud Run) ───────
+# Deploys an Ollama Cloud Run service with NVIDIA L4 GPU + GCS model bucket.
+# Disabled by default (enable_gpu_inference = false).
+#
+# Pre-requisites before enabling:
+#   1. Pre-populate GCS bucket with model weights (see plan.md Phase 1 § 7)
+#   2. Set enable_gpu_inference = true in terraform.tfvars
+#   3. Run: terraform apply -target=module.gpu_inference
+#
+module "gpu_inference" {
+  source = "./modules/gpu_inference"
+
+  enable_gpu_inference = var.enable_gpu_inference
+  ollama_version       = var.ollama_version
+  gpu_inference_models = var.gpu_inference_models
+  region               = var.gpu_inference_region
+  zone                 = var.gpu_inference_zone
+  bucket_location      = "europe-west4"  # bucket stays in europe-west4 regardless of GPU region
+  project_id           = var.project_id
+
+  depends_on = [module.iam, google_project_service.apis]
+}
+
+# ── STEP 11 (FINAL): Full apply ───────────────────────────────────────────────
 # After all steps above are done and DNS is verified, run a bare apply
 # to catch any inter-module dependencies that were missed above.
 # Expect: 0 changes (or only minor computed-value refreshes).

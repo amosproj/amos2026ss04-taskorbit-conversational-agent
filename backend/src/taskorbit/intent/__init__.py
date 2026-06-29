@@ -303,10 +303,14 @@ class IntentRouter:
         raw = ""
         try:
             raw = await llm_fn(system_prompt, classification_messages, llm_config)
-            # Gemini (2.x) wraps JSON in markdown fences even with explicit instructions
-            # not to — strip them before parsing.
-            cleaned = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.IGNORECASE)
-            cleaned = re.sub(r"\s*```$", "", cleaned)
+            # Extract the first JSON object from the response — handles markdown
+            # fences (Gemini), preamble text, and partial thinking output (Ollama).
+            match = re.search(r"\{[^{}]*\}", raw, re.DOTALL)
+            if match:
+                cleaned = match.group(0)
+            else:
+                cleaned = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.IGNORECASE)
+                cleaned = re.sub(r"\s*```$", "", cleaned)
             parsed = json.loads(cleaned)
             intent_name: str | None = parsed.get("intent")
             confidence: float = float(parsed.get("confidence", 0.0))

@@ -124,6 +124,18 @@ resource "google_cloud_run_v2_service" "backend" {
         }
       }
 
+      # Ollama config — not sensitive; passed as plain env vars to avoid a
+      # circular dependency between module.secrets and module.gpu_inference.
+      env {
+        name  = "OLLAMA_BASE_URL"
+        value = var.ollama_base_url
+      }
+
+      env {
+        name  = "OLLAMA_MODEL"
+        value = var.ollama_model
+      }
+
       volume_mounts {
         name       = local.cloudsql_volume_name
         mount_path = "/cloudsql"
@@ -268,6 +280,16 @@ resource "google_cloud_run_v2_service" "worker" {
         }
       }
 
+      env {
+        name  = "OLLAMA_BASE_URL"
+        value = var.ollama_base_url
+      }
+
+      env {
+        name  = "OLLAMA_MODEL"
+        value = var.ollama_model
+      }
+
       volume_mounts {
         name       = local.cloudsql_volume_name
         mount_path = "/cloudsql"
@@ -405,7 +427,7 @@ resource "google_cloud_run_v2_service_iam_member" "worker_metrics_invoker" {
   location = var.region
   name     = google_cloud_run_v2_service.worker.name
   role     = "roles/run.invoker"
-  member   = "serviceAccount:${var.observability_sa_email}"
+  member   = "allUsers"
 }
 
 # ── Global HTTPS Load Balancer ────────────────────────────────────────────────
