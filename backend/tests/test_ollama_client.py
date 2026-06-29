@@ -101,6 +101,70 @@ async def test_auth_headers_returns_bearer_token_when_auth_enabled() -> None:
 
 
 # ---------------------------------------------------------------------------
+# verify_model_available() — model tag preflight check
+# ---------------------------------------------------------------------------
+
+
+def _make_models_listing(*model_ids: str) -> MagicMock:
+    """Mock an openai client.models.list() response with the given model ids."""
+    listing = MagicMock()
+    listing.data = [MagicMock(id=mid) for mid in model_ids]
+    return listing
+
+
+def _client_with_listing(listing: MagicMock, base_url: str = _HTTP_URL) -> OllamaClient:
+    settings = _make_settings(base_url=base_url)
+    llm_config = _make_llm_config()
+    with patch("taskorbit.integrations.llm.ollama_client.openai.AsyncOpenAI") as mock_cls:
+        mock_openai = MagicMock()
+        mock_openai.models.list = AsyncMock(return_value=listing)
+        mock_cls.return_value = mock_openai
+        return OllamaClient(llm_config=llm_config, settings=settings)
+
+
+@pytest.mark.asyncio
+async def test_verify_model_available_returns_tags_when_present() -> None:
+    listing = _make_models_listing(_MODEL, "qwen3.6:27b")
+    client = _client_with_listing(listing)
+    available = await client.verify_model_available()
+    assert _MODEL in available
+
+
+@pytest.mark.asyncio
+async def test_verify_model_available_raises_config_error_when_missing() -> None:
+    """A configured tag absent from the endpoint must fail with a clear error."""
+    listing = _make_models_listing("qwen3.6:27b")  # _MODEL not present
+    client = _client_with_listing(listing)
+    with pytest.raises(LLMConfigError) as exc:
+        await client.verify_model_available()
+    assert _MODEL in str(exc.value)
+    assert "ollama pull" in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_verify_model_available_raises_config_error_when_endpoint_empty() -> None:
+    listing = _make_models_listing()  # no models loaded at all
+    client = _client_with_listing(listing)
+    with pytest.raises(LLMConfigError):
+        await client.verify_model_available()
+
+
+@pytest.mark.asyncio
+async def test_verify_model_available_maps_api_error() -> None:
+    settings = _make_settings(base_url=_HTTP_URL)
+    llm_config = _make_llm_config()
+    with patch("taskorbit.integrations.llm.ollama_client.openai.AsyncOpenAI") as mock_cls:
+        mock_openai = MagicMock()
+        mock_openai.models.list = AsyncMock(
+            side_effect=openai.APIError("boom", request=MagicMock(), body=None)
+        )
+        mock_cls.return_value = mock_openai
+        client = OllamaClient(llm_config=llm_config, settings=settings)
+    with pytest.raises(LLMAPIError):
+        await client.verify_model_available()
+
+
+# ---------------------------------------------------------------------------
 # generate() — happy path
 # ---------------------------------------------------------------------------
 
