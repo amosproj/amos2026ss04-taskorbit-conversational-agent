@@ -134,35 +134,42 @@ class OllamaClient:
         return {"Authorization": f"Bearer {token}"}
 
     async def verify_model_available(self) -> list[str]:
-        """Verify the configured model tag actually exists on the endpoint.
+        """Verify the configured model tag exists on the Ollama endpoint.
 
-        Lists the models the Ollama service is serving (OpenAI-compatible
-        /v1/models) and checks the active model tag is among them. Raises
-        LLMConfigError naming the available tags otherwise — this turns an
-        otherwise silent per-request 404 (typo'd or un-pulled model tag) into
-        a clear, actionable preflight error. Returns the available tags on
-        success. Intended for startup/deploy-time validation, not per request.
+        Calls the native GET /api/tags endpoint and checks the active model tag
+        is among them. Raises LLMConfigError naming the available tags otherwise.
+        Returns the available tags on success. Intended for startup validation.
         """
         model = self._llm_config.model
         extra_headers = await self._auth_headers()
         try:
-            listing = await self._client.models.list(extra_headers=extra_headers)
-        except openai.AuthenticationError as exc:
-            raise LLMAuthError(
-                f"Ollama authentication failed while verifying models at {self._base_url}: {exc}"
+            response = await self._http.get(
+                f"{self._base_url}/api/tags",
+                headers=extra_headers,
+            )
+            response.raise_for_status()
+            data = response.json()
+        except httpx.TimeoutException as exc:
+            raise LLMAPIError(f"Timed out listing models at {self._base_url}: {exc}") from exc
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 401:
+                raise LLMAuthError(
+                    f"Ollama authentication failed while verifying models at {self._base_url}: {exc}"
+                ) from exc
+            raise LLMAPIError(
+                f"Failed to list models at Ollama endpoint {self._base_url}: {exc}"
             ) from exc
-        except openai.APIError as exc:
+        except httpx.HTTPError as exc:
             raise LLMAPIError(
                 f"Failed to list models at Ollama endpoint {self._base_url}: {exc}"
             ) from exc
 
-        available = [m.id for m in listing.data]
+        available = [m.get("name", "") for m in data.get("models", [])]
         if model not in available:
             raise LLMConfigError(
                 f"Ollama model {model!r} is not available at {self._base_url}. "
                 f"Available models: {available or '[none]'}. "
-                f"Pull it and copy the weights to the model bucket, e.g. "
-                f"`ollama pull {model}`."
+                f"Pull it with `ollama pull {model}`."
             )
         return available
 
