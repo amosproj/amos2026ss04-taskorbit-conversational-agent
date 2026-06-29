@@ -73,7 +73,15 @@ def configure_default_metrics() -> None:
     # Pre-initialize known label combinations so counters appear as 0 in /metrics
     # from startup rather than being absent until the first LLM call completes.
     m = get_metrics()
-    _providers = [("openai", "gpt-4o-mini"), ("google", "gemini-2.5-flash")]
+    _providers = [
+        ("openai", "gpt-4o-mini"),
+        ("google", "gemini-2.5-flash"),
+        # Open-source providers — pre-initialize with representative default models
+        # so Grafana shows 0 from startup rather than "No data" until first request.
+        # Add a new tuple here when onboarding a new OS provider.
+        ("openrouter", "qwen/qwen3-next-80b-a3b-instruct:free"),
+        ("ollama", "gemma4:26b"),
+    ]
     _llm_statuses = ["success", "auth", "rate_limit", "timeout", "api", "empty_response", "client"]
     for provider, model in _providers:
         for token_type in ("prompt", "completion"):
@@ -85,6 +93,8 @@ def configure_default_metrics() -> None:
         "llm_call",
         "llm_api_openai",
         "llm_api_google",
+        "llm_api_openrouter",
+        "llm_api_ollama",
         "tts_synthesis",
         "tts_ttfb",
         "worker_turn",
