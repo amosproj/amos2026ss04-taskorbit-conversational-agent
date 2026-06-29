@@ -71,3 +71,18 @@ worker_min_instances   = 1
 worker_max_instances   = 5
 frontend_min_instances = 1
 frontend_max_instances = 5
+
+# ── Self-hosted GPU inference (Ollama on GCE VM with NVIDIA L4) ───────────────
+# Deploys a g2-standard-8 GCE VM with NVIDIA L4 GPU running Ollama.
+# Models are downloaded on first use and stored on the VM's local SSD.
+# Disabled by default. Set enable_gpu_inference = true to deploy.
+#
+# NVIDIA L4 availability — check before choosing a zone:
+#   gcloud compute accelerator-types list --filter="name=nvidia-l4" --format="table(zone)"
+# Confirmed available: us-east1-b, us-central1-a, europe-west4-a
+enable_gpu_inference = false
+gpu_inference_region = "us-east1"
+gpu_inference_zone   = "us-east1-b"
+ollama_version       = "latest"
+ollama_model         = "gemma4:26b"   # active model injected as OLLAMA_MODEL env var
+gpu_inference_models = ["gemma4:e4b", "gemma4:26b", "qwen3.6:27b", "qwen3.5:9b"]

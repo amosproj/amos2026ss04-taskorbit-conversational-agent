@@ -101,3 +101,4 @@ terraform/*.json
 *.json.key
 *-credentials.json
 gha-creds-*.json
+amos-taskorbit-*.json
