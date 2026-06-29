@@ -1,20 +1,20 @@
-"""Tests for OllamaClient and factory wiring for LLMProvider.OLLAMA.
+"""Tests for OllamaClient — native Ollama /api/chat endpoint via httpx.
 
 Covers:
-- _is_https() utility
-- Client construction: base_url and api_key forwarded to the SDK
-- HTTPS URL triggers GCP identity token auth; HTTP skips it
+- Client construction
+- Auth headers: empty for HTTP, Bearer token for HTTPS
 - generate() happy path and error mapping (auth, timeout, API, empty)
-- generate_stream() happy path and auth error
+- generate_stream() happy path and error mapping
 - Factory: returns OllamaClient when OLLAMA_BASE_URL is set
 - Factory: raises LLMConfigError when OLLAMA_BASE_URL is absent
 """
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import openai
+import httpx
 import pytest
 
 from taskorbit.config import Settings, get_settings
@@ -25,7 +25,7 @@ from taskorbit.integrations.llm.errors import (
     LLMTimeoutError,
 )
 from taskorbit.integrations.llm.factory import get_llm_client
-from taskorbit.integrations.llm.ollama_client import OllamaClient, _is_https
+from taskorbit.integrations.llm.ollama_client import OllamaClient
 from taskorbit.types import LLMConfig, LLMProvider
 
 # ---------------------------------------------------------------------------
@@ -45,41 +45,20 @@ def _make_llm_config(model: str = _MODEL) -> LLMConfig:
     return LLMConfig(provider=LLMProvider.OLLAMA, model=model)
 
 
-def _make_sdk_response(text: str) -> MagicMock:
-    choice = MagicMock()
-    choice.message.content = text
-    resp = MagicMock()
-    resp.choices = [choice]
-    resp.usage.prompt_tokens = 15
-    resp.usage.completion_tokens = 30
+def _make_httpx_response(content: str, status_code: int = 200) -> MagicMock:
+    """Return a mock httpx.Response with native Ollama /api/chat JSON body."""
+    body = {"message": {"role": "assistant", "content": content}, "done": True}
+    resp = MagicMock(spec=httpx.Response)
+    resp.status_code = status_code
+    resp.json.return_value = body
+    resp.raise_for_status = MagicMock()
     return resp
 
 
-def _make_stream_chunk(text: str | None) -> MagicMock:
-    chunk = MagicMock()
-    if text is not None:
-        chunk.choices = [MagicMock()]
-        chunk.choices[0].delta.content = text
-    else:
-        chunk.choices = []
-    return chunk
-
-
-# ---------------------------------------------------------------------------
-# _is_https utility
-# ---------------------------------------------------------------------------
-
-
-def test_is_https_returns_true_for_https_url() -> None:
-    assert _is_https("https://example.a.run.app") is True
-
-
-def test_is_https_returns_false_for_http_url() -> None:
-    assert _is_https("http://localhost:11434") is False
-
-
-def test_is_https_returns_false_for_empty_string() -> None:
-    assert _is_https("") is False
+def _make_httpx_error_response(status_code: int) -> httpx.HTTPStatusError:
+    req = httpx.Request("POST", _HTTP_URL)
+    resp = httpx.Response(status_code=status_code, request=req)
+    return httpx.HTTPStatusError("error", request=req, response=resp)
 
 
 # ---------------------------------------------------------------------------
@@ -87,46 +66,15 @@ def test_is_https_returns_false_for_empty_string() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_ollama_client_sets_base_url_with_v1_suffix() -> None:
-    settings = _make_settings(base_url=_HTTP_URL)
-    llm_config = _make_llm_config()
-    with patch("taskorbit.integrations.llm.ollama_client.openai.AsyncOpenAI") as mock_cls:
-        OllamaClient(llm_config=llm_config, settings=settings)
-    mock_cls.assert_called_once()
-    assert mock_cls.call_args.kwargs["base_url"] == f"{_HTTP_URL}/v1"
-
-
-def test_ollama_client_uses_placeholder_api_key() -> None:
-    """Ollama ignores the api_key; we use "ollama" to satisfy the SDK."""
-    settings = _make_settings()
-    llm_config = _make_llm_config()
-    with patch("taskorbit.integrations.llm.ollama_client.openai.AsyncOpenAI") as mock_cls:
-        OllamaClient(llm_config=llm_config, settings=settings)
-    assert mock_cls.call_args.kwargs["api_key"] == "ollama"
-
-
-def test_ollama_client_strips_trailing_slash_from_base_url() -> None:
+def test_ollama_client_strips_trailing_slash() -> None:
     settings = _make_settings(base_url="http://localhost:11434/")
-    llm_config = _make_llm_config()
-    with patch("taskorbit.integrations.llm.ollama_client.openai.AsyncOpenAI") as mock_cls:
-        OllamaClient(llm_config=llm_config, settings=settings)
-    assert mock_cls.call_args.kwargs["base_url"] == "http://localhost:11434/v1"
+    client = OllamaClient(llm_config=_make_llm_config(), settings=settings)
+    assert client._base_url == "http://localhost:11434"
 
 
-def test_ollama_client_needs_auth_false_for_http() -> None:
-    settings = _make_settings(base_url=_HTTP_URL)
-    llm_config = _make_llm_config()
-    with patch("taskorbit.integrations.llm.ollama_client.openai.AsyncOpenAI"):
-        client = OllamaClient(llm_config=llm_config, settings=settings)
+def test_ollama_client_needs_auth_false_by_default() -> None:
+    client = OllamaClient(llm_config=_make_llm_config(), settings=_make_settings())
     assert client._needs_auth is False
-
-
-def test_ollama_client_needs_auth_true_for_https() -> None:
-    settings = _make_settings(base_url=_HTTPS_URL)
-    llm_config = _make_llm_config()
-    with patch("taskorbit.integrations.llm.ollama_client.openai.AsyncOpenAI"):
-        client = OllamaClient(llm_config=llm_config, settings=settings)
-    assert client._needs_auth is True
 
 
 # ---------------------------------------------------------------------------
@@ -135,41 +83,21 @@ def test_ollama_client_needs_auth_true_for_https() -> None:
 
 
 @pytest.mark.asyncio
-async def test_auth_headers_empty_for_http_url() -> None:
-    settings = _make_settings(base_url=_HTTP_URL)
-    llm_config = _make_llm_config()
-    with patch("taskorbit.integrations.llm.ollama_client.openai.AsyncOpenAI"):
-        client = OllamaClient(llm_config=llm_config, settings=settings)
-    headers = await client._auth_headers()
-    assert headers == {}
+async def test_auth_headers_empty_when_needs_auth_false() -> None:
+    client = OllamaClient(llm_config=_make_llm_config(), settings=_make_settings())
+    assert await client._auth_headers() == {}
 
 
 @pytest.mark.asyncio
-async def test_auth_headers_returns_bearer_token_for_https() -> None:
-    settings = _make_settings(base_url=_HTTPS_URL)
-    llm_config = _make_llm_config()
-    with patch("taskorbit.integrations.llm.ollama_client.openai.AsyncOpenAI"):
-        client = OllamaClient(llm_config=llm_config, settings=settings)
-
+async def test_auth_headers_returns_bearer_token_when_auth_enabled() -> None:
+    client = OllamaClient(llm_config=_make_llm_config(), settings=_make_settings())
+    client._needs_auth = True
     with patch(
         "taskorbit.integrations.llm.ollama_client._get_identity_token",
         new=AsyncMock(return_value="id-token-xyz"),
     ):
         headers = await client._auth_headers()
-
     assert headers == {"Authorization": "Bearer id-token-xyz"}
-
-
-@pytest.mark.asyncio
-async def test_get_identity_token_raises_llm_auth_error_when_not_on_gcp() -> None:
-    from taskorbit.integrations.llm.ollama_client import _get_identity_token
-
-    with patch(
-        "taskorbit.integrations.llm.ollama_client._get_identity_token",
-        new=AsyncMock(side_effect=LLMAuthError("metadata server unreachable")),
-    ):
-        with pytest.raises(LLMAuthError):
-            await _get_identity_token("https://example.a.run.app")
 
 
 # ---------------------------------------------------------------------------
@@ -178,63 +106,46 @@ async def test_get_identity_token_raises_llm_auth_error_when_not_on_gcp() -> Non
 
 
 @pytest.mark.asyncio
-async def test_generate_returns_text_for_http_url() -> None:
-    settings = _make_settings(base_url=_HTTP_URL)
+async def test_generate_returns_text() -> None:
+    settings = _make_settings()
     llm_config = _make_llm_config()
+    client = OllamaClient(llm_config=llm_config, settings=settings)
+    client._http = AsyncMock()
+    client._http.post = AsyncMock(return_value=_make_httpx_response("Gemma says hello"))
 
-    with patch("taskorbit.integrations.llm.ollama_client.openai.AsyncOpenAI") as mock_cls:
-        mock_openai = MagicMock()
-        mock_openai.chat.completions.create = AsyncMock(
-            return_value=_make_sdk_response("Gemma says hello")
-        )
-        mock_cls.return_value = mock_openai
-
-        client = OllamaClient(llm_config=llm_config, settings=settings)
-        result = await client.generate("You are helpful.", [], llm_config)
-
+    result = await client.generate("You are helpful.", [], llm_config)
     assert result == "Gemma says hello"
 
 
 @pytest.mark.asyncio
-async def test_generate_passes_model_from_llm_config() -> None:
-    settings = _make_settings(base_url=_HTTP_URL)
+async def test_generate_passes_model_and_think_false() -> None:
+    settings = _make_settings()
     llm_config = _make_llm_config(model="qwen3.6:27b")
+    client = OllamaClient(llm_config=llm_config, settings=settings)
+    client._http = AsyncMock()
+    client._http.post = AsyncMock(return_value=_make_httpx_response("Qwen reply"))
 
-    with patch("taskorbit.integrations.llm.ollama_client.openai.AsyncOpenAI") as mock_cls:
-        mock_openai = MagicMock()
-        mock_openai.chat.completions.create = AsyncMock(
-            return_value=_make_sdk_response("Qwen reply")
-        )
-        mock_cls.return_value = mock_openai
+    await client.generate("sys", [], llm_config)
 
-        client = OllamaClient(llm_config=llm_config, settings=settings)
-        await client.generate("sys", [], llm_config)
-
-    call_kwargs = mock_openai.chat.completions.create.call_args.kwargs
-    assert call_kwargs["model"] == "qwen3.6:27b"
+    call_kwargs = client._http.post.call_args.kwargs
+    assert call_kwargs["json"]["model"] == "qwen3.6:27b"
+    assert call_kwargs["json"]["think"] is False
+    assert call_kwargs["json"]["stream"] is False
 
 
 @pytest.mark.asyncio
-async def test_generate_sends_auth_header_for_https_url() -> None:
-    settings = _make_settings(base_url=_HTTPS_URL)
+async def test_generate_sends_system_prompt_as_first_message() -> None:
+    settings = _make_settings()
     llm_config = _make_llm_config()
+    client = OllamaClient(llm_config=llm_config, settings=settings)
+    client._http = AsyncMock()
+    client._http.post = AsyncMock(return_value=_make_httpx_response("ok"))
 
-    with patch("taskorbit.integrations.llm.ollama_client.openai.AsyncOpenAI") as mock_cls:
-        mock_openai = MagicMock()
-        mock_openai.chat.completions.create = AsyncMock(
-            return_value=_make_sdk_response("secure reply")
-        )
-        mock_cls.return_value = mock_openai
+    await client.generate("Be concise.", [], llm_config)
 
-        with patch(
-            "taskorbit.integrations.llm.ollama_client._get_identity_token",
-            new=AsyncMock(return_value="my-gcp-token"),
-        ):
-            client = OllamaClient(llm_config=llm_config, settings=settings)
-            await client.generate("sys", [], llm_config)
-
-    call_kwargs = mock_openai.chat.completions.create.call_args.kwargs
-    assert call_kwargs["extra_headers"] == {"Authorization": "Bearer my-gcp-token"}
+    messages = client._http.post.call_args.kwargs["json"]["messages"]
+    assert messages[0]["role"] == "system"
+    assert messages[0]["content"] == "Be concise."
 
 
 # ---------------------------------------------------------------------------
@@ -244,71 +155,45 @@ async def test_generate_sends_auth_header_for_https_url() -> None:
 
 @pytest.mark.asyncio
 async def test_generate_raises_llm_auth_error_on_401() -> None:
-    settings = _make_settings()
-    llm_config = _make_llm_config()
+    client = OllamaClient(llm_config=_make_llm_config(), settings=_make_settings())
+    client._http = AsyncMock()
+    client._http.post = AsyncMock(side_effect=_make_httpx_error_response(401))
 
-    with patch("taskorbit.integrations.llm.ollama_client.openai.AsyncOpenAI") as mock_cls:
-        mock_openai = MagicMock()
-        mock_openai.chat.completions.create = AsyncMock(
-            side_effect=openai.AuthenticationError("bad key", response=MagicMock(), body={})
-        )
-        mock_cls.return_value = mock_openai
+    with pytest.raises(LLMAuthError):
+        await client.generate("sys", [], _make_llm_config())
 
-        client = OllamaClient(llm_config=llm_config, settings=settings)
-        with pytest.raises(LLMAuthError):
-            await client.generate("sys", [], llm_config)
+
+@pytest.mark.asyncio
+async def test_generate_raises_llm_api_error_on_500() -> None:
+    client = OllamaClient(llm_config=_make_llm_config(), settings=_make_settings())
+    client._http = AsyncMock()
+    client._http.post = AsyncMock(side_effect=_make_httpx_error_response(500))
+
+    with pytest.raises(LLMAPIError):
+        await client.generate("sys", [], _make_llm_config())
 
 
 @pytest.mark.asyncio
 async def test_generate_raises_llm_timeout_error() -> None:
-    settings = _make_settings()
-    llm_config = _make_llm_config()
+    client = OllamaClient(llm_config=_make_llm_config(), settings=_make_settings())
+    client._http = AsyncMock()
+    client._http.post = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
 
-    with patch("taskorbit.integrations.llm.ollama_client.openai.AsyncOpenAI") as mock_cls:
-        mock_openai = MagicMock()
-        mock_openai.chat.completions.create = AsyncMock(
-            side_effect=openai.APITimeoutError(request=MagicMock())
-        )
-        mock_cls.return_value = mock_openai
-
-        client = OllamaClient(llm_config=llm_config, settings=settings)
-        with pytest.raises(LLMTimeoutError):
-            await client.generate("sys", [], llm_config)
+    with pytest.raises(LLMTimeoutError):
+        await client.generate("sys", [], _make_llm_config())
 
 
 @pytest.mark.asyncio
-async def test_generate_raises_llm_api_error_on_generic_api_error() -> None:
-    settings = _make_settings()
-    llm_config = _make_llm_config()
+async def test_generate_raises_llm_api_error_on_empty_content() -> None:
+    client = OllamaClient(llm_config=_make_llm_config(), settings=_make_settings())
+    client._http = AsyncMock()
+    empty_resp = MagicMock(spec=httpx.Response)
+    empty_resp.json.return_value = {"message": {"role": "assistant", "content": ""}, "done": True}
+    empty_resp.raise_for_status = MagicMock()
+    client._http.post = AsyncMock(return_value=empty_resp)
 
-    with patch("taskorbit.integrations.llm.ollama_client.openai.AsyncOpenAI") as mock_cls:
-        mock_openai = MagicMock()
-        mock_openai.chat.completions.create = AsyncMock(
-            side_effect=openai.APIError("server error", request=MagicMock(), body={})
-        )
-        mock_cls.return_value = mock_openai
-
-        client = OllamaClient(llm_config=llm_config, settings=settings)
-        with pytest.raises(LLMAPIError):
-            await client.generate("sys", [], llm_config)
-
-
-@pytest.mark.asyncio
-async def test_generate_raises_llm_api_error_on_empty_response() -> None:
-    settings = _make_settings()
-    llm_config = _make_llm_config()
-
-    empty = MagicMock()
-    empty.choices = []
-
-    with patch("taskorbit.integrations.llm.ollama_client.openai.AsyncOpenAI") as mock_cls:
-        mock_openai = MagicMock()
-        mock_openai.chat.completions.create = AsyncMock(return_value=empty)
-        mock_cls.return_value = mock_openai
-
-        client = OllamaClient(llm_config=llm_config, settings=settings)
-        with pytest.raises(LLMAPIError, match="empty response"):
-            await client.generate("sys", [], llm_config)
+    with pytest.raises(LLMAPIError, match="empty response"):
+        await client.generate("sys", [], _make_llm_config())
 
 
 # ---------------------------------------------------------------------------
@@ -316,59 +201,63 @@ async def test_generate_raises_llm_api_error_on_empty_response() -> None:
 # ---------------------------------------------------------------------------
 
 
-class _FakeStream:
-    """Minimal async iterable with a close() method matching the openai SDK's AsyncStream."""
+class _FakeStreamContext:
+    """Minimal async context manager + line iterator for httpx streaming."""
 
-    def __init__(self, chunks: list) -> None:
-        self._chunks = chunks
+    def __init__(self, lines: list[str]) -> None:
+        self._lines = lines
 
-    def __aiter__(self):
-        return self._iterate()
+    async def __aenter__(self):
+        return self
 
-    async def _iterate(self):
-        for c in self._chunks:
-            yield c
-
-    async def close(self) -> None:
+    async def __aexit__(self, *args):
         pass
+
+    def raise_for_status(self):
+        pass
+
+    async def aiter_lines(self):
+        for line in self._lines:
+            yield line
 
 
 @pytest.mark.asyncio
 async def test_generate_stream_yields_tokens() -> None:
-    settings = _make_settings(base_url=_HTTP_URL)
-    llm_config = _make_llm_config()
+    client = OllamaClient(llm_config=_make_llm_config(), settings=_make_settings())
 
-    chunks = [_make_stream_chunk("Hello"), _make_stream_chunk(" world"), _make_stream_chunk(None)]
+    lines = [
+        json.dumps({"message": {"content": "Hello"}, "done": False}),
+        json.dumps({"message": {"content": " world"}, "done": False}),
+        json.dumps({"message": {"content": ""}, "done": True}),
+    ]
+    fake_ctx = _FakeStreamContext(lines)
+    client._http = MagicMock()
+    client._http.stream = MagicMock(return_value=fake_ctx)
 
-    with patch("taskorbit.integrations.llm.ollama_client.openai.AsyncOpenAI") as mock_cls:
-        mock_openai = MagicMock()
-        mock_openai.chat.completions.create = AsyncMock(return_value=_FakeStream(chunks))
-        mock_cls.return_value = mock_openai
-
-        client = OllamaClient(llm_config=llm_config, settings=settings)
-        tokens = []
-        async for token in client.generate_stream("sys", [], llm_config):
-            tokens.append(token)
+    tokens = []
+    async for token in client.generate_stream("sys", [], _make_llm_config()):
+        tokens.append(token)
 
     assert tokens == ["Hello", " world"]
 
 
 @pytest.mark.asyncio
-async def test_generate_stream_raises_auth_error_on_connection_failure() -> None:
-    settings = _make_settings(base_url=_HTTP_URL)
-    llm_config = _make_llm_config()
+async def test_generate_stream_raises_timeout_error() -> None:
+    client = OllamaClient(llm_config=_make_llm_config(), settings=_make_settings())
 
-    with patch("taskorbit.integrations.llm.ollama_client.openai.AsyncOpenAI") as mock_cls:
-        mock_openai = MagicMock()
-        mock_openai.chat.completions.create = AsyncMock(
-            side_effect=openai.AuthenticationError("bad key", response=MagicMock(), body={})
-        )
-        mock_cls.return_value = mock_openai
+    class _TimeoutCtx:
+        async def __aenter__(self):
+            raise httpx.TimeoutException("timed out")
 
-        client = OllamaClient(llm_config=llm_config, settings=settings)
-        with pytest.raises(LLMAuthError):
-            async for _ in client.generate_stream("sys", [], llm_config):
-                pass
+        async def __aexit__(self, *args):
+            pass
+
+    client._http = MagicMock()
+    client._http.stream = MagicMock(return_value=_TimeoutCtx())
+
+    with pytest.raises(LLMTimeoutError):
+        async for _ in client.generate_stream("sys", [], _make_llm_config()):
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -382,9 +271,7 @@ def test_get_llm_client_returns_ollama_client(monkeypatch: pytest.MonkeyPatch) -
     get_settings.cache_clear()
     try:
         settings = get_settings()
-        llm_config = _make_llm_config()
-        with patch("taskorbit.integrations.llm.ollama_client.openai.AsyncOpenAI"):
-            client = get_llm_client(llm_config, settings=settings)
+        client = get_llm_client(_make_llm_config(), settings=settings)
         assert isinstance(client, OllamaClient)
     finally:
         get_settings.cache_clear()
@@ -397,8 +284,7 @@ def test_get_llm_client_raises_when_ollama_base_url_missing(
     get_settings.cache_clear()
     try:
         settings = get_settings()
-        llm_config = _make_llm_config()
         with pytest.raises(LLMConfigError, match="OLLAMA_BASE_URL"):
-            get_llm_client(llm_config, settings=settings)
+            get_llm_client(_make_llm_config(), settings=settings)
     finally:
         get_settings.cache_clear()

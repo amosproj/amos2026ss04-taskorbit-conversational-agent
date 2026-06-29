@@ -353,23 +353,15 @@ variable "enable_gpu_inference" {
 }
 
 variable "gpu_inference_region" {
-  description = "GCP region for the Ollama Cloud Run GPU service. Must support NVIDIA L4: asia-southeast1, europe-west1, europe-west4, us-central1, us-east4. Defaults to europe-west4 (Netherlands) when the main stack is in europe-west3 which does not have L4 GPUs."
+  description = "GCP region for the Ollama GCE VM. Must have NVIDIA L4 available — see: gcloud compute accelerator-types list --filter='name=nvidia-l4'."
   type        = string
-  default     = "europe-west4"
-
-  validation {
-    condition = contains(
-      ["asia-southeast1", "europe-west1", "europe-west4", "us-central1", "us-east4"],
-      var.gpu_inference_region
-    )
-    error_message = "NVIDIA L4 GPU is only supported in: asia-southeast1, europe-west1, europe-west4, us-central1, us-east4."
-  }
+  default     = "us-east1"
 }
 
-variable "ollama_min_instances" {
-  description = "Minimum Cloud Run instances for Ollama. 0 = scale to zero ($0 when idle); 1 = always warm (avoids 60-120s GPU cold start)."
-  type        = number
-  default     = 0
+variable "gpu_inference_zone" {
+  description = "GCP zone for the Ollama GCE VM. Must be inside gpu_inference_region and support NVIDIA L4."
+  type        = string
+  default     = "us-east1-b"
 }
 
 variable "ollama_version" {
@@ -381,7 +373,7 @@ variable "ollama_version" {
 variable "gpu_inference_models" {
   description = "Ollama model tags to document in tfvars. Pre-populate the GCS bucket manually before first deploy."
   type        = list(string)
-  default     = ["gemma4:e4b", "gemma4:26b", "qwen3.6:27b"]
+  default     = ["gemma4:e4b", "gemma4:26b", "qwen3.6:27b", "qwen3.5:9b"]
 }
 
 variable "ollama_model" {

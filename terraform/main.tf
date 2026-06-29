@@ -226,14 +226,13 @@ module "observability" {
 module "gpu_inference" {
   source = "./modules/gpu_inference"
 
-  enable_gpu_inference          = var.enable_gpu_inference
-  min_instances                 = var.ollama_min_instances
-  ollama_version                = var.ollama_version
-  gpu_inference_models          = var.gpu_inference_models
-  # L4 GPU is not available in europe-west3 — use europe-west4 (Netherlands) by default.
-  region                        = var.gpu_inference_region
-  project_id                    = var.project_id
-  backend_service_account_email = module.iam.backend_sa_email
+  enable_gpu_inference = var.enable_gpu_inference
+  ollama_version       = var.ollama_version
+  gpu_inference_models = var.gpu_inference_models
+  region               = var.gpu_inference_region
+  zone                 = var.gpu_inference_zone
+  bucket_location      = "europe-west4"  # bucket stays in europe-west4 regardless of GPU region
+  project_id           = var.project_id
 
   depends_on = [module.iam, google_project_service.apis]
 }

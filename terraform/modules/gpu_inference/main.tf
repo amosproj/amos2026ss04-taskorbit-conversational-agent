@@ -21,25 +21,25 @@ resource "google_project_iam_member" "ollama_sa_roles" {
 
 # ── GCS bucket for persistent model storage ───────────────────────────────────
 #
-# IMPORTANT: Before first deploy, pre-populate the bucket with model weights:
-#   1. Install Ollama locally
-#   2. ollama pull gemma4:e4b && ollama pull gemma4:26b && ollama pull qwen3.6:27b
-#   3. gsutil cp -r ~/.ollama/models gs://<project_id>-ollama-models/
-#
-# The Cloud Run container mounts this bucket at /models via GCSFuse.
-# To add a new model later, copy weights to the bucket and update
-# OLLAMA_MODEL in Cloud Run — no Terraform or code changes needed.
+# The GCS bucket serves as persistent backup for model weights.
+# Models are pulled on first use via `docker exec ollama ollama pull <model>`
+# and stored on the VM's local SSD at /opt/ollama-models.
+# To pre-populate: gsutil cp -r gs://<project_id>-ollama-models/ /opt/ollama-models/
 
 resource "google_storage_bucket" "ollama_models" {
   count    = var.enable_gpu_inference ? 1 : 0
   name     = "${var.project_id}-ollama-models"
-  location = var.region
+  location = var.bucket_location  # independent of GPU inference region so region changes don't recreate the bucket
   project  = var.project_id
 
   uniform_bucket_level_access = true
 
   # Hierarchical namespace speeds up large LLM file access patterns
   hierarchical_namespace { enabled = true }
+
+  lifecycle {
+    prevent_destroy = true  # bucket holds 48+ GiB of model weights — never auto-delete
+  }
 }
 
 resource "google_storage_bucket_iam_member" "ollama_sa_gcs" {
@@ -49,139 +49,127 @@ resource "google_storage_bucket_iam_member" "ollama_sa_gcs" {
   member = "serviceAccount:${google_service_account.ollama_sa[0].email}"
 }
 
-# ── Cloud Run GPU service ──────────────────────────────────────────────────────
+# ── GCE VM GPU instance ────────────────────────────────────────────────────────
+#
+# Uses a GCP Deep Learning VM image which ships with NVIDIA driver 550+ and
+# CUDA 12.4 pre-installed — no reboot or driver install needed in the startup
+# script. Cloud Run GPU nodes are locked to NVIDIA driver 535 which is too old
+# for Ollama 0.30+ (requires driver 550+), so a GCE VM is used instead.
+#
+# Machine: g2-standard-8 (8 vCPU, 32 GB RAM) + 1x NVIDIA L4 GPU.
+# Models are read from the GCS bucket via gcsfuse at /models.
 
-resource "google_cloud_run_v2_service" "ollama" {
-  count    = var.enable_gpu_inference ? 1 : 0
-  name     = "taskorbit-ollama-inference"
-  location = var.region
-  project  = var.project_id
-
-  template {
-    service_account = google_service_account.ollama_sa[0].email
-    timeout         = "600s"
-    max_instance_request_concurrency = 4
-
-    # Deploy without GPU zonal redundancy. Redundant GPUs require a separate
-    # quota (g.co/cloudrun/gpu-quota) that this project does not have, and they
-    # cost more. Non-redundant GPUs are cheaper and sufficient for this workload.
-    gpu_zonal_redundancy_disabled = true
-
-    containers {
-      image = "ollama/ollama:${var.ollama_version}"
-
-      ports {
-        container_port = 8080
-      }
-
-      env {
-        name  = "OLLAMA_HOST"
-        value = "0.0.0.0:8080"
-      }
-      env {
-        # Keep model loaded in VRAM indefinitely — avoids re-load latency between requests
-        name  = "OLLAMA_KEEP_ALIVE"
-        value = "-1"
-      }
-      env {
-        name  = "OLLAMA_MODELS"
-        value = "/models"
-      }
-      env {
-        name  = "OLLAMA_DEBUG"
-        value = "false"
-      }
-      env {
-        name  = "OLLAMA_NUM_PARALLEL"
-        value = "4"
-      }
-      env {
-        # Override Ollama's default 4K context window. 32K is a safe baseline
-        # for most tasks; increase per-request for long-context workloads.
-        name  = "OLLAMA_NUM_CTX"
-        value = "32768"
-      }
-
-      resources {
-        limits = {
-          cpu              = "8"
-          memory           = "32Gi"
-          "nvidia.com/gpu" = "1"
-        }
-        startup_cpu_boost = true
-      }
-
-      volume_mounts {
-        name       = "models"
-        mount_path = "/models"
-      }
-
-      # GPU containers take 60-120s to initialise — generous startup probe
-      startup_probe {
-        tcp_socket {
-          port = 8080
-        }
-        initial_delay_seconds = 60
-        failure_threshold     = 5
-        period_seconds        = 30
-        timeout_seconds       = 10
-      }
-
-      liveness_probe {
-        http_get {
-          path = "/api/tags"
-          port = 8080
-        }
-        period_seconds    = 60
-        failure_threshold = 3
-        timeout_seconds   = 10
-      }
-    }
-
-    volumes {
-      name = "models"
-      gcs {
-        bucket    = google_storage_bucket.ollama_models[0].name
-        read_only = false
-      }
-    }
-
-    annotations = {
-      # Explicitly disable zonal redundancy — required when the project does not
-      # have GPU zonal-redundancy quota. Without this, Cloud Run requires
-      # max_instance_count >= 2 AND the matching quota, which most projects lack.
-      "run.googleapis.com/gpu-zonal-redundancy-disabled" = "true"
-    }
-
-    scaling {
-      # 0 = scale to zero (cheapest); set to 1 during active development
-      # to avoid 60-120s cold start penalty on every request
-      min_instance_count = var.min_instances
-      max_instance_count = 1
-    }
-
-    node_selector {
-      # Request NVIDIA L4 GPU — most cost-efficient GPU available on Cloud Run
-      accelerator = "nvidia-l4"
-    }
-  }
-
-  traffic {
-    type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
-    percent = 100
-  }
+resource "google_compute_address" "ollama_ip" {
+  count   = var.enable_gpu_inference ? 1 : 0
+  name    = "taskorbit-ollama-ip"
+  region  = var.region
+  project = var.project_id
 }
 
-# ── IAM: only the backend SA can invoke the Ollama service ────────────────────
-#
-# --no-allow-unauthenticated is the Cloud Run default.
-# The backend OllamaClient fetches a GCP identity token per request.
+resource "google_compute_firewall" "ollama_api" {
+  count   = var.enable_gpu_inference ? 1 : 0
+  name    = "taskorbit-ollama-api"
+  network = "default"
+  project = var.project_id
 
-resource "google_cloud_run_v2_service_iam_member" "backend_invoker" {
-  count    = var.enable_gpu_inference ? 1 : 0
-  project  = var.project_id
-  location = var.region
-  name     = google_cloud_run_v2_service.ollama[0].name
-  role     = "roles/run.invoker"
-  member   = "serviceAccount:${var.backend_service_account_email}"
+  allow {
+    protocol = "tcp"
+    ports    = ["11434"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["taskorbit-ollama"]
+}
+
+resource "google_compute_instance" "ollama" {
+  count        = var.enable_gpu_inference ? 1 : 0
+  name         = "taskorbit-ollama-inference"
+  machine_type = "g2-standard-8"
+  zone         = var.zone
+  project      = var.project_id
+
+  tags = ["taskorbit-ollama"]
+
+  boot_disk {
+    initialize_params {
+      # Deep Learning VM image — NVIDIA driver 580 and CUDA 12.9 pre-installed.
+      # Docker and nvidia-container-toolkit are also included.
+      image = "projects/deeplearning-platform-release/global/images/family/common-cu129-ubuntu-2204-nvidia-580"
+      size  = 100
+      type  = "pd-ssd"
+    }
+  }
+
+  network_interface {
+    network = "default"
+    access_config {
+      nat_ip = google_compute_address.ollama_ip[0].address
+    }
+  }
+
+  scheduling {
+    on_host_maintenance = "TERMINATE"  # required for GPU instances
+    automatic_restart   = true
+    preemptible         = var.preemptible
+  }
+
+  guest_accelerator {
+    type  = "nvidia-l4"
+    count = 1
+  }
+
+  service_account {
+    email  = google_service_account.ollama_sa[0].email
+    scopes = ["cloud-platform"]
+  }
+
+  metadata = {
+    # install-nvidia-driver = "True" is a GCP metadata flag recognized by the
+    # deep learning image to verify the driver on first boot.
+    install-nvidia-driver = "True"
+
+    startup-script = <<-SCRIPT
+      #!/bin/bash
+      set -euo pipefail
+
+      # Wait for NVIDIA driver (deep learning image installs on first boot)
+      for i in $(seq 1 30); do
+        nvidia-smi &>/dev/null && break || sleep 10
+      done
+
+      # Install Docker if not present (not included in all DL VM images)
+      if ! command -v docker &>/dev/null; then
+        curl -fsSL https://get.docker.com | sh
+      fi
+
+      # Install nvidia-container-toolkit for Docker GPU support
+      if ! dpkg -l nvidia-container-toolkit &>/dev/null 2>&1; then
+        distribution=$(. /etc/os-release; echo $ID$VERSION_ID)
+        curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+          | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+        curl -s -L "https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list" \
+          | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
+          | tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+        apt-get update -y && apt-get install -y nvidia-container-toolkit
+        nvidia-ctk runtime configure --runtime=docker
+        systemctl restart docker
+      fi
+
+      # Run Ollama — models are pulled on first use and stored in /opt/ollama-models
+      mkdir -p /opt/ollama-models
+      if ! docker ps --filter name=ollama --filter status=running | grep -q ollama; then
+        docker rm -f ollama 2>/dev/null || true
+        docker run -d \
+          --name ollama \
+          --gpus all \
+          --restart unless-stopped \
+          -p 11434:11434 \
+          -v /opt/ollama-models:/root/.ollama \
+          -e OLLAMA_HOST=0.0.0.0:11434 \
+          -e OLLAMA_KEEP_ALIVE=-1 \
+          -e OLLAMA_NUM_PARALLEL=4 \
+          ollama/ollama:${var.ollama_version}
+      fi
+    SCRIPT
+  }
 }

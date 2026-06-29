@@ -25,7 +25,7 @@ export const LLM_MODELS: Record<LlmProvider, string[]> = {
   // Self-hosted Ollama on Cloud Run with NVIDIA L4 GPU.
   // Model tags must match what is pre-loaded in the GCS model bucket.
   // OLLAMA_BASE_URL must be set in the backend env; leaving it empty disables this provider.
-  ollama: ["gemma4:26b", "gemma4:e4b", "qwen3.6:27b"],
+  ollama: ["gemma4:26b", "gemma4:e4b", "qwen3.6:27b", "qwen3.5:9b"],
 };
 
 // Index 0 of each provider's list is the default applied on provider switch — reordering changes this.

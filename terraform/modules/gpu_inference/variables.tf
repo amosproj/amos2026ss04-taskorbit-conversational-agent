@@ -1,19 +1,19 @@
 variable "enable_gpu_inference" {
-  description = "Set to true to deploy the Ollama Cloud Run service and GCS model bucket. False is a no-op."
+  description = "Set to true to deploy the Ollama GCE VM (g2-standard-8 + NVIDIA L4) and GCS model bucket. False is a no-op."
   type        = bool
   default     = false
 }
 
-variable "min_instances" {
-  description = "Minimum Cloud Run instances. 0 = scale to zero (cheapest); 1 = always warm (avoids 60-120s GPU cold start)."
-  type        = number
-  default     = 0
+variable "bucket_location" {
+  description = "GCS bucket location for Ollama model weights. Kept separate from region so the bucket survives GPU region changes."
+  type        = string
+  default     = "europe-west4"
 }
 
 variable "gpu_inference_models" {
   description = "List of Ollama model tags to pre-populate in the GCS bucket before first deploy."
   type        = list(string)
-  default     = ["gemma4:e4b", "gemma4:26b", "qwen3.6:27b"]
+  default     = ["gemma4:e4b", "gemma4:26b", "qwen3.6:27b", "qwen3.5:9b"]
 }
 
 variable "ollama_version" {
@@ -23,16 +23,9 @@ variable "ollama_version" {
 }
 
 variable "region" {
-  description = "GCP region for the Ollama Cloud Run service and GCS model bucket. Must be one of the regions that support NVIDIA L4: asia-southeast1, europe-west1, europe-west4, us-central1, us-east4. Defaults to europe-west4 (Netherlands) when the main stack is in europe-west3."
+  description = "GCP region for the Ollama GCE VM. Must have NVIDIA L4 available."
   type        = string
-
-  validation {
-    condition = contains(
-      ["asia-southeast1", "europe-west1", "europe-west4", "us-central1", "us-east4"],
-      var.region
-    )
-    error_message = "NVIDIA L4 GPU is only supported in: asia-southeast1, europe-west1, europe-west4, us-central1, us-east4."
-  }
+  default     = "europe-west3"
 }
 
 variable "project_id" {
@@ -40,7 +33,14 @@ variable "project_id" {
   type        = string
 }
 
-variable "backend_service_account_email" {
-  description = "Email of the backend Cloud Run service account — granted roles/run.invoker on the Ollama service."
+variable "zone" {
+  description = "GCP zone for the Ollama GCE VM. Must be in var.region and support NVIDIA L4."
   type        = string
+  default     = "us-central1-a"
+}
+
+variable "preemptible" {
+  description = "Use a preemptible (spot) VM to reduce cost. May be terminated by GCP at any time. Set false for stable dev environments."
+  type        = bool
+  default     = false
 }
