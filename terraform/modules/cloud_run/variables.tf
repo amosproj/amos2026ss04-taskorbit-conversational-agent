@@ -70,3 +70,15 @@ variable "inactivity_timeout_minutes" {
   type        = number
   default     = 7
 }
+
+variable "ollama_base_url" {
+  description = "HTTPS URL of the Ollama Cloud Run service. Empty string when gpu_inference is disabled. Not sensitive — passed as plain env var to avoid a circular dependency with module.secrets."
+  type        = string
+  default     = ""
+}
+
+variable "ollama_model" {
+  description = "Active Ollama model tag (e.g. gemma4:26b). Not sensitive — passed as plain env var."
+  type        = string
+  default     = "gemma4:26b"
+}

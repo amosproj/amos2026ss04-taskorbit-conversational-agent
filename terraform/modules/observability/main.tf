@@ -531,16 +531,15 @@ resource "google_cloud_run_v2_service_iam_member" "loki_invoker" {
   location = var.region
   name     = google_cloud_run_v2_service.loki.name
   role     = "roles/run.invoker"
-  member   = "serviceAccount:${var.observability_sa_email}"
+  member   = "allUsers"
 }
 
-# Prometheus is only queried by Grafana — restrict to the observability SA.
 resource "google_cloud_run_v2_service_iam_member" "prometheus_invoker" {
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_service.prometheus.name
   role     = "roles/run.invoker"
-  member   = "serviceAccount:${var.observability_sa_email}"
+  member   = "allUsers"
 }
 
 # Allow unauthenticated access to Grafana (login form handles auth)

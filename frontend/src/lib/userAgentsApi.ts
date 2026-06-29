@@ -75,7 +75,7 @@ export function backendToFrontendAgent(entry: UserAgentEntry): AgentConfig {
     first_message: { type: "text", message: c.greeting ?? "", prompt: "" },
     stt: { provider: c.stt.provider as SttProvider, model: c.stt.model },
     llm: {
-      provider: (c.llm.provider ?? "openai") as "openai" | "gemini" | "openrouter",
+      provider: (c.llm.provider ?? "openai") as "openai" | "gemini" | "openrouter" | "ollama",
       model: c.llm.model,
     },
     tts: {
