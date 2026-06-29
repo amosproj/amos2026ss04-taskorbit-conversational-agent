@@ -17,7 +17,7 @@
 // selected independently. Mirrors STTProvider/TTSProvider in backend types.py.
 export type SttProvider = "deepgram" | "elevenlabs";
 export type TtsProvider = "elevenlabs" | "deepgram";
-export type LlmProvider = "openai" | "gemini" | "openrouter";
+export type LlmProvider = "openai" | "gemini" | "openrouter" | "ollama";
 
 export type ParamType = "string" | "number" | "boolean" | "date";
 

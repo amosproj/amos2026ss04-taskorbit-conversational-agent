@@ -92,6 +92,12 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     openrouter_model: str = "meta-llama/llama-3.1-8b-instruct:free"
 
+    # --- Ollama (self-hosted inference on Cloud Run with NVIDIA L4 GPU) ---
+    # Leave ollama_base_url empty to disable; OllamaClient raises LLMConfigError otherwise.
+    # HTTPS URLs trigger GCP identity-token auth automatically; HTTP is unauthenticated (local dev).
+    ollama_base_url: str = ""
+    ollama_model: str = "gemma4:26b"
+
     # --- Observability ---
     metrics_enabled: bool = True
     otel_enabled: bool = False
