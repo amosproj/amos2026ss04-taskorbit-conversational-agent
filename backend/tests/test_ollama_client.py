@@ -204,6 +204,39 @@ async def test_generate_sends_system_prompt_as_first_message() -> None:
     assert messages[0]["content"] == "Be concise."
 
 
+@pytest.mark.asyncio
+async def test_generate_records_token_counts_from_native_fields() -> None:
+    """prompt_eval_count and eval_count (Ollama native fields) are forwarded to metrics.
+
+    Regression guard: the old code read data["usage"]["prompt_tokens"] which does not
+    exist in the Ollama native API, so token counts were always 0.
+    """
+    settings = _make_settings()
+    llm_config = _make_llm_config()
+    client = OllamaClient(llm_config=llm_config, settings=settings)
+
+    resp = MagicMock(spec=httpx.Response)
+    resp.json.return_value = {
+        "message": {"role": "assistant", "content": "hello"},
+        "done": True,
+        "prompt_eval_count": 42,
+        "eval_count": 17,
+    }
+    resp.raise_for_status = MagicMock()
+    client._http = AsyncMock()
+    client._http.post = AsyncMock(return_value=resp)
+
+    mock_metrics = MagicMock()
+    with patch("taskorbit.integrations.llm.ollama_client.get_metrics", return_value=mock_metrics):
+        await client.generate("sys", [], llm_config)
+
+    inc_values = [
+        c.args[0] for c in mock_metrics.tokens_used_total.labels.return_value.inc.call_args_list
+    ]
+    assert 42 in inc_values, f"prompt tokens (42) not recorded; got {inc_values}"
+    assert 17 in inc_values, f"completion tokens (17) not recorded; got {inc_values}"
+
+
 # ---------------------------------------------------------------------------
 # generate() — error mapping
 # ---------------------------------------------------------------------------
@@ -295,6 +328,43 @@ async def test_generate_stream_yields_tokens() -> None:
         tokens.append(token)
 
     assert tokens == ["Hello", " world"]
+
+
+@pytest.mark.asyncio
+async def test_generate_stream_records_token_counts_from_done_chunk() -> None:
+    """Token counts in the final done=True chunk are extracted and recorded.
+
+    Regression guard: the old code broke out of the stream on done=True without
+    reading prompt_eval_count/eval_count, so streaming token counts were always 0.
+    """
+    client = OllamaClient(llm_config=_make_llm_config(), settings=_make_settings())
+
+    lines = [
+        json.dumps({"message": {"content": "Hello"}, "done": False}),
+        json.dumps({"message": {"content": " world"}, "done": False}),
+        json.dumps(
+            {
+                "message": {"content": ""},
+                "done": True,
+                "prompt_eval_count": 55,
+                "eval_count": 22,
+            }
+        ),
+    ]
+    fake_ctx = _FakeStreamContext(lines)
+    client._http = MagicMock()
+    client._http.stream = MagicMock(return_value=fake_ctx)
+
+    mock_metrics = MagicMock()
+    with patch("taskorbit.integrations.llm.ollama_client.get_metrics", return_value=mock_metrics):
+        async for _ in client.generate_stream("sys", [], _make_llm_config()):
+            pass
+
+    inc_values = [
+        c.args[0] for c in mock_metrics.tokens_used_total.labels.return_value.inc.call_args_list
+    ]
+    assert 55 in inc_values, f"prompt tokens (55) not recorded; got {inc_values}"
+    assert 22 in inc_values, f"completion tokens (22) not recorded; got {inc_values}"
 
 
 @pytest.mark.asyncio

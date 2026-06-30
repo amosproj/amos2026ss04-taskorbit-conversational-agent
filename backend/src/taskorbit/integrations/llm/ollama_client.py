@@ -241,9 +241,8 @@ class OllamaClient:
             ).inc()
             raise LLMAPIError("Ollama returned an empty response")
 
-        usage = data.get("usage") or {}
-        prompt_tokens = usage.get("prompt_tokens", 0)
-        completion_tokens = usage.get("completion_tokens", 0)
+        prompt_tokens = data.get("prompt_eval_count", 0)
+        completion_tokens = data.get("eval_count", 0)
 
         _api_elapsed = time.perf_counter() - _api_start
         _log.info(
@@ -299,6 +298,8 @@ class OllamaClient:
         _api_start = time.perf_counter()
         char_count = 0
         completed = False
+        prompt_tokens = 0
+        completion_tokens = 0
         try:
             async with self._http.stream(
                 "POST",
@@ -320,6 +321,9 @@ class OllamaClient:
                         yield delta
                     if chunk.get("done"):
                         completed = True
+                        # Ollama reports token counts in the final done=true chunk
+                        prompt_tokens = chunk.get("prompt_eval_count", 0)
+                        completion_tokens = chunk.get("eval_count", 0)
                         break
         except httpx.TimeoutException as exc:
             _log.error("llm_stream_failed", provider="ollama", error_type="timeout", error=str(exc))
@@ -349,6 +353,12 @@ class OllamaClient:
                 _m.llm_requests_total.labels(
                     provider="ollama", model=llm_config.model, status="success"
                 ).inc()
+                _m.tokens_used_total.labels(
+                    provider="ollama", model=llm_config.model, token_type="prompt"
+                ).inc(prompt_tokens)
+                _m.tokens_used_total.labels(
+                    provider="ollama", model=llm_config.model, token_type="completion"
+                ).inc(completion_tokens)
             _m.pipeline_latency_seconds.labels(stage="llm_api_ollama").observe(_api_elapsed)
             _m.llm_response_chars.labels(provider="ollama", model=llm_config.model).observe(
                 char_count
