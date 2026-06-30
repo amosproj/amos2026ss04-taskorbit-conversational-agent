@@ -225,9 +225,7 @@ export function ConversationalChat() {
   useEffect(() => {
     const greeting = agent.first_message.message?.trim();
     if (!greeting) return;
-    if (
-      call.transcript.some((t) => t.role === "assistant" && t.text.trim() === greeting)
-    ) {
+    if (call.transcript.some((t) => t.role === "assistant" && t.text.trim() === greeting)) {
       greetingEstablishedRef.current = true;
     }
   }, [call.transcript, agent.first_message.message]);

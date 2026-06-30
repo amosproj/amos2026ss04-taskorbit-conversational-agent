@@ -12,10 +12,10 @@ Matching rules (practical default):
 
 Returns: (in_scope: bool, details: dict|None)
 """
+
 from __future__ import annotations
 
 import re
-from typing import Any
 
 from taskorbit.types import PersonaConstraints
 
@@ -28,7 +28,9 @@ def _try_regex_search(pattern: str, text: str) -> re.Match | None:
         return None
 
 
-def is_message_in_scope(message: str, persona_constraints: PersonaConstraints | None) -> tuple[bool, dict | None]:
+def is_message_in_scope(
+    message: str, persona_constraints: PersonaConstraints | None
+) -> tuple[bool, dict | None]:
     """Return (in_scope, details).
 
     in_scope==True means the message is allowed and the LLM may be invoked.

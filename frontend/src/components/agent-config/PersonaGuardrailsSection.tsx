@@ -25,7 +25,8 @@ export function PersonaGuardrailsSection({ value, onChange }: Props) {
   const enabled = !!value;
   const [tagDraft, setTagDraft] = useState("");
 
-  const toggle = (next: boolean) => onChange(next ? value ?? { scope: "", out_of_scope: [], refusal_template: "" } : undefined);
+  const toggle = (next: boolean) =>
+    onChange(next ? (value ?? { scope: "", out_of_scope: [], refusal_template: "" }) : undefined);
 
   const addTag = () => {
     if (!value) return;
@@ -52,13 +53,19 @@ export function PersonaGuardrailsSection({ value, onChange }: Props) {
           Persona guardrails
         </CardTitle>
         <CardDescription>
-          Optional scope and refusal settings keep the agent in role and redirect off-topic requests.
+          Optional scope and refusal settings keep the agent in role and redirect off-topic
+          requests.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">Enable persona guardrails</div>
-          <Switch id={idSwitch} checked={enabled} onCheckedChange={toggle} aria-label="Enable persona guardrails" />
+          <Switch
+            id={idSwitch}
+            checked={enabled}
+            onCheckedChange={toggle}
+            aria-label="Enable persona guardrails"
+          />
         </div>
 
         {enabled && value ? (
@@ -72,7 +79,9 @@ export function PersonaGuardrailsSection({ value, onChange }: Props) {
                   onChange={(e) => onChange({ ...value, scope: e.target.value })}
                   placeholder="E.g., Product & ordering questions for TechStore"
                 />
-                <FieldDescription>Short 1-2 sentence description of what this agent handles.</FieldDescription>
+                <FieldDescription>
+                  Short 1-2 sentence description of what this agent handles.
+                </FieldDescription>
               </Field>
 
               <Field>
@@ -123,7 +132,9 @@ export function PersonaGuardrailsSection({ value, onChange }: Props) {
                   placeholder="I'm here to help with TechStore questions — I can't assist with that topic."
                   rows={3}
                 />
-                <FieldDescription>Exact phrase the agent should use to refuse and redirect.</FieldDescription>
+                <FieldDescription>
+                  Exact phrase the agent should use to refuse and redirect.
+                </FieldDescription>
               </Field>
             </FieldGroup>
           </div>

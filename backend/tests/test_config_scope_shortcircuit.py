@@ -1,4 +1,5 @@
 """Settings tests for the persona guardrails scope short-circuit flag."""
+
 from __future__ import annotations
 
 from taskorbit.config import Settings, get_settings

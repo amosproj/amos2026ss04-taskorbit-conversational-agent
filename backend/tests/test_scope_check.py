@@ -1,8 +1,9 @@
 """Unit tests for the lightweight pre-LLM scope classifier."""
+
 from __future__ import annotations
 
-from taskorbit.types import PersonaConstraints
 from taskorbit.integrations.llm.scope_check import is_message_in_scope
+from taskorbit.types import PersonaConstraints
 
 
 def test_no_constraints_allows_message() -> None:
