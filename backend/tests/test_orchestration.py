@@ -193,7 +193,9 @@ def test_build_system_prompt_includes_persona_constraints() -> None:
     orch = ConversationOrchestrator()
     prompt = orch._build_system_prompt(_agent_with_constraints(constraints), active_tool=None)
 
-    assert prompt.startswith("You are John.\nPersona: TechStore customer support.")
+    # Guardrails now lead the prompt (#168); the persona body is preserved below it.
+    assert prompt.startswith("TOP PRIORITY - STAY IN ROLE:")
+    assert "You are John.\nPersona: TechStore customer support." in prompt
     # Asserting against the new imperative headers
     assert (
         "CORE CONSTRAINT - Authorized Scope: TechStore customer service: orders, returns, accounts."

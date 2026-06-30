@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from taskorbit.agent_config_util import agent_config_from_stored_blob
 from taskorbit.logging.setup import get_logger
-from taskorbit.types import AgentConfig, ConversationRequest
+from taskorbit.types import AgentConfig, ConversationRequest, default_persona_constraints
 
 from .models import (
     AgentConfiguration,
@@ -512,6 +512,24 @@ def list_agent_configurations(
         return []
 
 
+def _ensure_persona_constraints(config: dict) -> dict:
+    """Return ``config`` with a sensible default ``persona_constraints`` when it
+    has none, so a newly created user agent is never left unguarded (#168).
+
+    A creator's own constraints (any of scope / out_of_scope / refusal_template
+    populated) are left untouched; only a missing or fully-empty block is filled.
+    Applied on the "Save as new" user-agent path only; the ``/v1/agent-configs``
+    preset route stores an opaque FE blob verbatim (round-trip contract) and is
+    left untouched.
+    """
+    existing = config.get("persona_constraints")
+    if isinstance(existing, dict) and any(
+        existing.get(k) for k in ("scope", "out_of_scope", "refusal_template")
+    ):
+        return config
+    return {**config, "persona_constraints": default_persona_constraints().model_dump()}
+
+
 def create_agent_configuration(db: Session, name: str, config: dict) -> AgentConfiguration | None:
     try:
         db_config = AgentConfiguration(id=uuid4().hex, name=name, config=config)
@@ -650,6 +668,7 @@ async def create_user_agent(
     caller's currently-loaded agent is never touched.
     """
     try:
+        config = _ensure_persona_constraints(config)
         agent = AgentConfiguration(
             id=uuid4().hex,
             user_id=user_id,

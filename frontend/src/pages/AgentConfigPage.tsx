@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { useActiveAgent } from "@/components/active-agent-provider";
 import { AdvancedSection } from "@/components/agent-config/AdvancedSection";
+import { PersonaGuardrailsSection } from "@/components/agent-config/PersonaGuardrailsSection";
 import { ConfirmationsSection } from "@/components/agent-config/ConfirmationsSection";
 import { IdentitySection } from "@/components/agent-config/IdentitySection";
 import { InstructionsSection } from "@/components/agent-config/InstructionsSection";
@@ -282,6 +283,11 @@ export function AgentConfigPage() {
           value={{ instructions: agent.instructions, first_message: agent.first_message }}
           onChange={(next) => setAgent({ ...agent, ...next })}
           showErrors={showErrors}
+        />
+
+        <PersonaGuardrailsSection
+          value={agent.persona_constraints}
+          onChange={(persona_constraints) => setAgent({ ...agent, persona_constraints })}
         />
 
         <PipelineSection
