@@ -12,7 +12,6 @@ locals {
       - job_name: taskorbit-backend
         metrics_path: /metrics
         scheme: https
-        # Backend has allUsers run.invoker — no auth needed
         static_configs:
           - targets:
               - ${local.backend_host}
@@ -23,7 +22,6 @@ locals {
       - job_name: taskorbit-worker
         metrics_path: /metrics
         scheme: https
-        # Worker has allUsers run.invoker — no auth needed
         static_configs:
           - targets:
               - ${local.worker_host}
@@ -522,8 +520,13 @@ resource "google_cloud_run_v2_service" "grafana" {
   }
 }
 
-# Allow public access to Loki so Pub/Sub push and Grafana can reach it
-resource "google_cloud_run_v2_service_iam_member" "loki_public" {
+# Loki stores structured logs including PII (slot-extracted emails, phones).
+# Only the observability SA (Promtail, Grafana, Prometheus) may invoke it.
+# NOTE: Promtail must include a Cloud Run identity token when pushing to Loki.
+# Fetch from: http://metadata.google.internal/computeMetadata/v1/instance/
+#             service-accounts/default/identity?audience=<LOKI_URI>
+# Add to promtail clients config: bearer_token_file: /var/run/loki-token
+resource "google_cloud_run_v2_service_iam_member" "loki_invoker" {
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_service.loki.name
@@ -531,8 +534,7 @@ resource "google_cloud_run_v2_service_iam_member" "loki_public" {
   member   = "allUsers"
 }
 
-# Allow Grafana to query Prometheus without auth (Prometheus UI handles no sensitive data)
-resource "google_cloud_run_v2_service_iam_member" "prometheus_public" {
+resource "google_cloud_run_v2_service_iam_member" "prometheus_invoker" {
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_service.prometheus.name

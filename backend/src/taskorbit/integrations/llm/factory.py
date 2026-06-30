@@ -99,4 +99,16 @@ def get_llm_client(
             raise LLMConfigError("OpenRouterClient is not yet implemented") from exc
         return OpenRouterClient(llm_config=llm_config, settings=settings)
 
+    if llm_config.provider == LLMProvider.OLLAMA:
+        if not settings.ollama_base_url:
+            raise LLMConfigError(
+                "OLLAMA_BASE_URL is not set; cannot instantiate OllamaClient. "
+                "Set it to the Ollama Cloud Run service URL or http://localhost:11434 for local dev."
+            )
+        try:
+            from .ollama_client import OllamaClient  # type: ignore[import]
+        except ImportError as exc:
+            raise LLMConfigError("OllamaClient is not yet implemented") from exc
+        return OllamaClient(llm_config=llm_config, settings=settings)
+
     raise LLMConfigError(f"Unexpected LLM provider: {llm_config.provider!r}; no client registered")

@@ -34,7 +34,9 @@ _MAX_METADATA_BYTES = 4096
 
 
 @router.post("/token", response_model=LiveKitTokenResponse)
-async def create_livekit_token(body: LiveKitTokenRequest) -> LiveKitTokenResponse:
+async def create_livekit_token(
+    body: LiveKitTokenRequest,
+) -> LiveKitTokenResponse:
     """Return a signed JWT that grants the participant access to the named room.
 
     Requires LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET to be set

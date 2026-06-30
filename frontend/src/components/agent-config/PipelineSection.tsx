@@ -162,6 +162,7 @@ export function PipelineSection({ value, onChange }: Props) {
                     <SelectItem value="openai">OpenAI</SelectItem>
                     <SelectItem value="gemini">Gemini</SelectItem>
                     <SelectItem value="openrouter">OpenRouter</SelectItem>
+                    <SelectItem value="ollama">Ollama (self-hosted)</SelectItem>
                   </SelectGroup>
                 </SelectContent>
               </Select>
