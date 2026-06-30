@@ -49,8 +49,8 @@ def _load_config(path: Path) -> ExperimentConfig:
 
 
 def _run(coro):  # type: ignore[no-untyped-def]
-    """Run a coroutine synchronously (Python 3.11 compatible)."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    """Run a coroutine synchronously."""
+    return asyncio.run(coro)
 
 
 # ---------------------------------------------------------------------------
