@@ -65,8 +65,8 @@ class Settings(BaseSettings):
 
     # --- LLM ---
     llm_timeout_seconds: float = 10.0
-    # Feature flag: set ENABLE_SCOPE_SHORTCIRCUIT=true|false to force on/off.
-    # When unset, short-circuit is enabled only in development (safe production rollout).
+    # Feature flag: set ENABLE_SCOPE_SHORTCIRCUIT=false to disable the pre-LLM
+    # out-of-scope check (prompt-only guardrails remain). Defaults on in all envs.
     enable_scope_shortcircuit_override: bool | None = Field(
         default=None,
         validation_alias=AliasChoices(
@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     def enable_scope_shortcircuit(self) -> bool:
         if self.enable_scope_shortcircuit_override is not None:
             return self.enable_scope_shortcircuit_override
-        return self.app_env == "development"
+        return True
 
     # --- LLM providers ---
     openai_api_key: str = ""

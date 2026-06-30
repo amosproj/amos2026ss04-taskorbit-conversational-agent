@@ -3,6 +3,10 @@
 Provides a deterministic, fast check that can short-circuit the LLM when a
 user message clearly falls into an agent's configured out_of_scope list.
 
+Only ``out_of_scope`` entries are enforced here. The positive ``scope`` field
+stays prompt-only (system-prompt guardrails); an agent with a tight scope but
+no out_of_scope list gets no code-level positive-scope guard.
+
 Matching rules (practical default):
 - If an out_of_scope entry is None/empty, it's ignored.
 - If an entry starts with "re:", the remainder is treated as a raw regex.
@@ -78,10 +82,11 @@ def is_message_in_scope(
         if m:
             return False, {"reason": "phrase", "token": token, "match": m.group(0)}
 
-    # Heuristic: detect recipe/cooking requests when the agent explicitly lists
-    # cooking/recipes as out-of-scope. This catches queries like "How do you make
-    # pizza?" even when the out_of_scope list contains only the abstract terms
-    # ("recipes", "cooking").
+    # Heuristic: detect cooking-instruction requests when the agent explicitly lists
+    # cooking/recipes as out-of-scope. Catches "How do you make pizza?" when the
+    # out_of_scope list contains only abstract terms ("recipes", "cooking").
+    # Intentionally excludes ordering/transaction phrasing ("I want to order pizza")
+    # so agents whose scope includes food ordering are not false-refused.
     try:
         lowered_out = " ".join([str(t).lower() for t in persona_constraints.out_of_scope or []])
     except Exception:
@@ -89,18 +94,10 @@ def is_message_in_scope(
 
     if any(k in lowered_out for k in ("recipe", "recipes", "cook", "cooking", "bake", "prepare")):
         recipe_pattern = (
-            r"\b(how (do )?(you )?make|how to|recipe|recipes|cook|cooking|bake|prepare|"
-            r"what(?:'s| is) the recipe|ingredients)\b"
+            r"\b(how (do )?(you )?make|how to (make|cook|bake|prepare)|"
+            r"recipe|recipes|what(?:'s| is) the recipe|ingredients for)\b"
         )
         m = _try_regex_search(recipe_pattern, text)
-        if m:
-            return False, {"reason": "heuristic", "token": "cooking_recipe", "match": m.group(0)}
-        # Food-ordering / food-prep requests when recipes/cooking are forbidden.
-        food_pattern = (
-            r"\b(?:buy|order|want|get|make|cook|bake)\b.{0,30}\b"
-            r"(?:pizza|pasta|burger|sushi|tacos?|cake|cookies?|bread|ramen|curry)\b"
-        )
-        m = _try_regex_search(food_pattern, text)
         if m:
             return False, {"reason": "heuristic", "token": "cooking_recipe", "match": m.group(0)}
 

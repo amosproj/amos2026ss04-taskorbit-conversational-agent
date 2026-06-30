@@ -40,9 +40,17 @@ def test_regex_prefix_re() -> None:
     assert in_scope is False
 
 
-def test_buy_pizza_heuristic_when_cooking_out_of_scope() -> None:
+def test_order_pizza_in_scope_when_cooking_out_of_scope() -> None:
+    """Ordering food must not be refused when only recipes/cooking are forbidden."""
     pc = PersonaConstraints(out_of_scope=["recipes", "cooking"])
-    in_scope, details = is_message_in_scope("I want to buy a pizza.", pc)
+    in_scope, details = is_message_in_scope("I want to order a pizza.", pc)
+    assert in_scope is True
+    assert details is None
+
+
+def test_how_to_make_pizza_heuristic_when_cooking_out_of_scope() -> None:
+    pc = PersonaConstraints(out_of_scope=["recipes", "cooking"])
+    in_scope, details = is_message_in_scope("How do you make pizza?", pc)
     assert in_scope is False
     assert details is not None
     assert details.get("reason") == "heuristic"

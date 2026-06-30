@@ -129,8 +129,9 @@ def default_persona_constraints() -> PersonaConstraints:
     """Baseline guardrail applied to agents created without their own (#168).
 
     Keeps a brand-new / blank agent from being unguarded: it anchors the agent
-    to the role described by its name and persona, hard-blocks the common
-    off-topic case (recipes/cooking), and gives a generic polite refusal.
+    to the role described by its name and persona and gives a generic polite
+    refusal. ``out_of_scope`` is left empty so domain-specific agents (e.g. a
+    cooking assistant) are not blocked until the creator adds explicit rules.
     Creators can override any of this in the config UI.
     """
     return PersonaConstraints(
@@ -138,7 +139,7 @@ def default_persona_constraints() -> PersonaConstraints:
             "Stay within the role, tasks, and topics described by this agent's "
             "name and persona. Treat clearly unrelated requests as out of scope."
         ),
-        out_of_scope=["recipes", "cooking"],
+        out_of_scope=[],
         refusal_template=(
             "I'm sorry, that's outside what I can help with here. Is there "
             "something related to my role that I can help you with?"

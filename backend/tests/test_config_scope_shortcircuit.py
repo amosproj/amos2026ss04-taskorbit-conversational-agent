@@ -10,9 +10,14 @@ def test_scope_shortcircuit_defaults_on_in_development() -> None:
     assert settings.enable_scope_shortcircuit is True
 
 
-def test_scope_shortcircuit_defaults_off_in_production() -> None:
+def test_scope_shortcircuit_defaults_on_in_production() -> None:
     settings = Settings(app_env="production")
-    assert settings.enable_scope_shortcircuit is False
+    assert settings.enable_scope_shortcircuit is True
+
+
+def test_scope_shortcircuit_defaults_on_in_staging() -> None:
+    settings = Settings(app_env="staging")
+    assert settings.enable_scope_shortcircuit is True
 
 
 def test_scope_shortcircuit_env_override_true(monkeypatch) -> None:

@@ -15,7 +15,7 @@ def test_default_persona_constraints_shape() -> None:
     pc = default_persona_constraints()
     assert pc.scope
     assert pc.refusal_template
-    assert "recipes" in pc.out_of_scope
+    assert pc.out_of_scope == []
 
 
 def test_ensure_injects_default_when_absent() -> None:
@@ -24,7 +24,7 @@ def test_ensure_injects_default_when_absent() -> None:
     pc = out["persona_constraints"]
     assert pc["scope"]
     assert pc["refusal_template"]
-    assert "recipes" in pc["out_of_scope"]
+    assert pc["out_of_scope"] == []
     # original config object is not mutated (a new dict is returned)
     assert "persona_constraints" not in config
 
@@ -36,7 +36,7 @@ def test_ensure_injects_default_when_block_is_empty() -> None:
     }
     out = _ensure_persona_constraints(config)
     assert out["persona_constraints"]["scope"]
-    assert "recipes" in out["persona_constraints"]["out_of_scope"]
+    assert out["persona_constraints"]["out_of_scope"] == []
 
 
 def test_ensure_preserves_creator_constraints() -> None:
