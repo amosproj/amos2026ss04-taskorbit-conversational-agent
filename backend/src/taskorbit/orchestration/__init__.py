@@ -35,10 +35,10 @@ if TYPE_CHECKING:
 from taskorbit.agents import AgentRegistry
 from taskorbit.config import Settings, get_settings
 from taskorbit.integrations.llm.errors import LLMConfigError
+from taskorbit.integrations.llm.scope_check import is_message_in_scope
 from taskorbit.intent import _KNOWN_INTENTS, IntentResult, IntentRouter
 from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import get_metrics
-from taskorbit.integrations.llm.scope_check import is_message_in_scope
 from taskorbit.types import (
     AgentConfig,
     ConfirmationResponsePayload,
@@ -538,29 +538,18 @@ class ConversationOrchestrator:
                 extraction_inputs = _normalize_field_key(active_tool.parameters["params"])
                 intent = dataclass_replace(intent, required_inputs=extraction_inputs)
 
-            # Pre-slot-extraction scope short-circuit: avoid calling the LLM for
-            # slot extraction when the message is clearly out-of-scope.
-            if self._settings.enable_scope_shortcircuit:
-                try:
-                    in_scope, match = is_message_in_scope(last_user.content, active_config.persona_constraints)
-                except Exception as exc:
-                    logger.exception("scope_check_failed_pre_extraction", conversation_id=request.conversation_id, error=str(exc))
-                    in_scope = True
-                if not in_scope:
-                    refusal = (
-                        active_config.persona_constraints.refusal_template
-                        if active_config.persona_constraints and active_config.persona_constraints.refusal_template
-                        else "I'm sorry, I can't assist with that topic."
-                    )
-                    logger.info("message_out_of_scope_pre_extraction", conversation_id=request.conversation_id, match=match)
-                    return ConversationResponse(
-                        conversation_id=request.conversation_id,
-                        reply=self._make_assistant_message(refusal),
-                        status=ConversationStatus.REJECTED,
-                        selected_intent=intent.name,
-                        selected_agent=agent.agent_name,
-                        intent_confidence=intent.confidence,
-                    )
+            # Pre-slot-extraction scope short-circuit: refuse a clearly off-topic
+            # message before any slot-extraction LLM call runs (#168).
+            refusal_response = self._scope_refusal(
+                message=last_user.content,
+                active_config=active_config,
+                intent=intent,
+                agent=agent,
+                conversation_id=request.conversation_id,
+                stage="pre_extraction",
+            )
+            if refusal_response is not None:
+                return refusal_response
 
             slot_result = await self._extract_slots(
                 request.messages, extraction_inputs, active_config.llm
@@ -582,28 +571,17 @@ class ConversationOrchestrator:
                 request.messages, active_config.context_limit
             )
 
-            # Pre-LLM scope short-circuit: refuse clearly off-topic messages before calling the LLM.
-            if self._settings.enable_scope_shortcircuit:
-                try:
-                    in_scope, match = is_message_in_scope(last_user.content, active_config.persona_constraints)
-                except Exception as exc:  # don't fail the whole pipeline on classifier errors
-                    logger.exception("scope_check_failed", conversation_id=request.conversation_id, error=str(exc))
-                    in_scope = True
-                if not in_scope:
-                    refusal = (
-                        active_config.persona_constraints.refusal_template
-                        if active_config.persona_constraints and active_config.persona_constraints.refusal_template
-                        else "I'm sorry, I can't assist with that topic."
-                    )
-                    logger.info("message_out_of_scope", conversation_id=request.conversation_id, match=match)
-                    return ConversationResponse(
-                        conversation_id=request.conversation_id,
-                        reply=self._make_assistant_message(refusal),
-                        status=ConversationStatus.REJECTED,
-                        selected_intent=intent.name,
-                        selected_agent=agent.agent_name,
-                        intent_confidence=intent.confidence,
-                    )
+            # Pre-LLM scope short-circuit: final guard before the LLM call (#168).
+            refusal_response = self._scope_refusal(
+                message=last_user.content,
+                active_config=active_config,
+                intent=intent,
+                agent=agent,
+                conversation_id=request.conversation_id,
+                stage="pre_llm",
+            )
+            if refusal_response is not None:
+                return refusal_response
 
             # 5. Call LLM with a timeout from settings — measure latency
             _llm_start = time.perf_counter()
@@ -1089,6 +1067,22 @@ class ConversationOrchestrator:
                 request.messages, agent, active_tool_id=request.active_tool_id
             )
 
+            # Pre-extraction scope short-circuit (parity with the text path, #168):
+            # refuse a clearly off-topic message before any slot-extraction LLM
+            # call or tool dispatch runs. Without this, an off-topic voice turn
+            # could fire a tool before being refused.
+            refusal_response = self._scope_refusal(
+                message=last_user.content,
+                active_config=active_config,
+                intent=intent,
+                agent=agent,
+                conversation_id=request.conversation_id,
+                stage="pre_extraction",
+            )
+            if refusal_response is not None:
+                yield refusal_response
+                return
+
             # 3b. Extract slots.
             # Prefer the user-configured fields on the active DataExtractionTool over
             # the intent's hardcoded required_inputs so custom fields (email, phone,
@@ -1132,29 +1126,18 @@ class ConversationOrchestrator:
                 yield dispatch.early_response
                 return
 
-            # Pre-LLM scope short-circuit: refuse clearly off-topic messages before streaming tokens.
-            if self._settings.enable_scope_shortcircuit:
-                try:
-                    in_scope, match = is_message_in_scope(last_user.content, active_config.persona_constraints)
-                except Exception as exc:
-                    logger.exception("scope_check_failed", conversation_id=request.conversation_id, error=str(exc))
-                    in_scope = True
-                if not in_scope:
-                    refusal = (
-                        active_config.persona_constraints.refusal_template
-                        if active_config.persona_constraints and active_config.persona_constraints.refusal_template
-                        else "I'm sorry, I can't assist with that topic."
-                    )
-                    logger.info("message_out_of_scope", conversation_id=request.conversation_id, match=match)
-                    yield ConversationResponse(
-                        conversation_id=request.conversation_id,
-                        reply=self._make_assistant_message(refusal),
-                        status=ConversationStatus.REJECTED,
-                        selected_intent=intent.name,
-                        selected_agent=agent.agent_name,
-                        intent_confidence=intent.confidence,
-                    )
-                    return
+            # Pre-LLM scope short-circuit: final guard before streaming tokens (#168).
+            refusal_response = self._scope_refusal(
+                message=last_user.content,
+                active_config=active_config,
+                intent=intent,
+                agent=agent,
+                conversation_id=request.conversation_id,
+                stage="pre_llm",
+            )
+            if refusal_response is not None:
+                yield refusal_response
+                return
 
             # 5. Stream LLM response or use rejection override.
             _llm_start = time.perf_counter()
@@ -1400,6 +1383,59 @@ class ConversationOrchestrator:
             update={"agent_config": target_config, "manual_transfer": None}
         )
         return await self.process_message(updated_request, db, user_id=user_id)
+
+    def _scope_refusal(
+        self,
+        *,
+        message: str,
+        active_config: AgentConfig,
+        intent: IntentResult,
+        agent: Any,
+        conversation_id: str,
+        stage: str,
+    ) -> ConversationResponse | None:
+        """Refuse a clearly out-of-scope message, or return ``None`` to proceed.
+
+        Single source of truth for the guardrail short-circuit so the text and
+        voice/stream paths enforce identically (#168). Gated by
+        ``enable_scope_shortcircuit``; fail-open -- a classifier error allows the
+        turn through rather than hard-failing a live call. ``stage`` labels the
+        call site in logs ("pre_extraction" / "pre_llm").
+        """
+        if not self._settings.enable_scope_shortcircuit:
+            return None
+        try:
+            in_scope, match = is_message_in_scope(message, active_config.persona_constraints)
+        except Exception as exc:  # noqa: BLE001 - never fail a turn on a classifier error
+            logger.exception(
+                "scope_check_failed",
+                conversation_id=conversation_id,
+                stage=stage,
+                error=str(exc),
+            )
+            return None
+        if in_scope:
+            return None
+        refusal = (
+            active_config.persona_constraints.refusal_template
+            if active_config.persona_constraints
+            and active_config.persona_constraints.refusal_template
+            else "I'm sorry, I can't assist with that topic."
+        )
+        logger.info(
+            "message_out_of_scope",
+            conversation_id=conversation_id,
+            stage=stage,
+            match=match,
+        )
+        return ConversationResponse(
+            conversation_id=conversation_id,
+            reply=self._make_assistant_message(refusal),
+            status=ConversationStatus.REJECTED,
+            selected_intent=intent.name,
+            selected_agent=agent.agent_name,
+            intent_confidence=intent.confidence,
+        )
 
     def _build_system_prompt(
         self,
