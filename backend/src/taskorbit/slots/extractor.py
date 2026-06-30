@@ -10,6 +10,8 @@ from typing import Any
 from taskorbit.slots.models import SlotExtractionResult, SlotValue
 from taskorbit.types import LLMConfig, Message, MessageRole
 
+_COMMON_PROVIDERS = r"(?:gmail|yahoo|outlook|hotmail|icloud|googlemail)"
+
 
 def _normalize_email_value(value: str) -> str:
     """Normalize a potentially malformed email string before validation.
@@ -26,6 +28,16 @@ def _normalize_email_value(value: str) -> str:
     - Trailing punctuation (period, comma, semicolon)
     """
     v = value.strip()
+
+    # Deepgram smart_format sometimes partially converts "at the rate" to
+    # "@therate" and fuses it with the next word (e.g. "alice@therategmail.com").
+    # Strip "therate" when immediately followed by a known provider domain.
+    v = re.sub(
+        rf"@therate({_COMMON_PROVIDERS})",
+        lambda m: "@" + m.group(1).lower(),
+        v,
+        flags=re.IGNORECASE,
+    )
 
     # Spoken "at the rate" (common STT output for @)
     v = re.sub(r"\bat\s+the\s+rate\b", "@", v, flags=re.IGNORECASE)

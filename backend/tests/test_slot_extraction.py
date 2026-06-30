@@ -439,8 +439,21 @@ class TestNormalizeEmailValue:
         assert _normalize_email_value("alice @ gmail . com") == "alice@gmail.com"
 
     def test_partial_smart_format_trailing_period(self):
-        # STT emits "@" but leaves trailing period from spoken sentence end
-        assert _normalize_email_value("alice@therategmail.com.") == "alice@therategmail.com"
+        # STT emits "@therate<provider>" plus a trailing period from spoken
+        # sentence end; both the "therate" fusion and the period are stripped.
+        assert _normalize_email_value("alice@therategmail.com.") == "alice@gmail.com"
+
+    def test_therate_fused_with_known_provider(self):
+        assert _normalize_email_value("alice@therategmail.com") == "alice@gmail.com"
+
+    def test_therate_fused_case_insensitive(self):
+        assert _normalize_email_value("alice@TheRateGmail.com") == "alice@gmail.com"
+
+    def test_therate_fused_with_non_provider_unchanged(self):
+        assert _normalize_email_value("user@therategroup.com") == "user@therategroup.com"
+
+    def test_therate_fused_with_yahoo(self):
+        assert _normalize_email_value("user@therateyahoo.com") == "user@yahoo.com"
 
     def test_already_clean_passes_through_unchanged(self):
         assert _normalize_email_value("alice@gmail.com") == "alice@gmail.com"
@@ -517,7 +530,7 @@ class TestSlotExtractorEmailNormalization:
             [{"name": "email_address", "type": "email", "required": True}],
         )
         assert "email_address" in result.filled
-        assert result.filled["email_address"].value == "alice@therategmail.com"
+        assert result.filled["email_address"].value == "alice@gmail.com"
         assert result.missing == []
 
     @pytest.mark.asyncio
