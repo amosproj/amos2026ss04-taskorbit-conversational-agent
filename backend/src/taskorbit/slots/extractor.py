@@ -10,10 +10,49 @@ from typing import Any
 from taskorbit.slots.models import SlotExtractionResult, SlotValue
 from taskorbit.types import LLMConfig, Message, MessageRole
 
+
+def _normalize_email_value(value: str) -> str:
+    """Normalize a potentially malformed email string before validation.
+
+    Speech transcription (STT) often produces email addresses in spoken form
+    or with trailing punctuation that breaks format validation. This function
+    converts those artifacts to a canonical address so the correct value is
+    stored in SlotValue and echoed in confirmation messages.
+
+    Handles:
+    - Spoken "at the rate" / standalone " at " → "@"
+    - " dot " → "."
+    - Stray spaces around "@" and "." (e.g. "alice @ gmail . com")
+    - Trailing punctuation (period, comma, semicolon)
+    """
+    v = value.strip()
+
+    # Spoken "at the rate" (common STT output for @)
+    v = re.sub(r"\bat\s+the\s+rate\b", "@", v, flags=re.IGNORECASE)
+
+    # Standalone " at " between non-space characters → "@"
+    # Requires a word character on each side to avoid replacing "at" in words.
+    v = re.sub(r"(?<=\S)\s+at\s+(?=\S)", "@", v, flags=re.IGNORECASE)
+
+    # Spoken " dot " → "."
+    v = re.sub(r"\s+dot\s+", ".", v, flags=re.IGNORECASE)
+
+    # Collapse spaces around "@" and "."
+    v = re.sub(r"\s*@\s*", "@", v)
+    v = re.sub(r"\s*\.\s*", ".", v)
+
+    # Strip trailing punctuation left over from sentence endings
+    v = v.rstrip(".,;")
+
+    return v
+
+
 # Minimum format checks per slot type — rejects clearly malformed values so the
 # agent asks the user to repeat them rather than silently storing garbage.
+# TLD segment requires alphabetic characters only (2+ chars) so trailing
+# punctuation that survived normalization is caught rather than silently stored.
 _SLOT_VALIDATORS: dict[str, Callable[[Any], bool]] = {
-    "email": lambda v: isinstance(v, str) and bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v)),
+    "email": lambda v: isinstance(v, str) and bool(re.match(r"^[^@\s]+@[^@\s]+\.[a-zA-Z]{2,}$", v)),
     "phone": lambda v: isinstance(v, str) and len(re.sub(r"[^\d]", "", v)) >= 7,
     "date": lambda v: isinstance(v, str) and bool(re.match(r"^\d{4}-\d{2}-\d{2}$", v)),
 }
@@ -70,6 +109,14 @@ class SlotExtractor:
             for f in required_inputs
         )
         field_names = ", ".join(f'"{f["name"]}"' for f in required_inputs)
+        has_email = any(f["type"] == "email" for f in required_inputs)
+        email_hint = (
+            "\n- For email fields: convert spoken forms to standard format "
+            '(e.g. "alice at the rate gmail dot com" → "alice@gmail.com"). '
+            "Strip any trailing punctuation."
+            if has_email
+            else ""
+        )
         return (
             "You are a JSON data extraction function. "
             "Your ONLY output must be a valid JSON object — no prose, no markdown, no conversation.\n\n"
@@ -80,7 +127,7 @@ class SlotExtractor:
             "- Use null for any field not yet provided by the user.\n"
             "- Do NOT infer, guess, or assume values.\n"
             "- Do NOT respond to questions or continue the conversation.\n"
-            "- Output ONLY the JSON object, nothing else."
+            f"- Output ONLY the JSON object, nothing else.{email_hint}"
         )
 
     def _parse_response(
@@ -110,6 +157,8 @@ class SlotExtractor:
             if value is None:
                 continue
             slot_type = type_map[name]
+            if slot_type == "email" and isinstance(value, str):
+                value = _normalize_email_value(value)
             validator = _SLOT_VALIDATORS.get(slot_type)
             if validator is not None and not validator(value):
                 continue
