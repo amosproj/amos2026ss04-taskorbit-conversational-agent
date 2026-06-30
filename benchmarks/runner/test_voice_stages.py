@@ -24,12 +24,25 @@ def test_merge_voice_latency_sums_stages() -> None:
     assert merged["total"] == 410.0
 
 
-def test_merge_voice_latency_handles_missing_stt() -> None:
+def test_merge_voice_latency_preserves_total_when_stt_missing() -> None:
     merged = merge_voice_latency(
         {"llm_call": 100.0, "total": 100.0},
         stt_ms=None,
         tts_ms=50.0,
     )
-    assert "stt_processing" not in merged or merged.get("stt_processing") is None
+    assert "stt_processing" not in merged
     assert merged["tts_synthesis"] == 50.0
-    assert merged["total"] == 150.0
+    assert merged["total"] == 100.0
+    assert "voice_turn" not in merged
+
+
+def test_merge_voice_latency_preserves_total_when_tts_missing() -> None:
+    merged = merge_voice_latency(
+        {"llm_call": 100.0, "total": 100.0},
+        stt_ms=80.0,
+        tts_ms=None,
+    )
+    assert merged["stt_processing"] == 80.0
+    assert "tts_synthesis" not in merged
+    assert merged["total"] == 100.0
+    assert "voice_turn" not in merged

@@ -124,19 +124,19 @@ def merge_voice_latency(
     """Combine conversation latency with measured STT/TTS stages for voice rows."""
     merged = dict(base)
     llm = merged.get("llm_call")
-    tool = merged.get("tool_call") or 0.0
+    tool = merged.get("tool_call")
     llm_val = float(llm) if llm is not None else 0.0
     tool_val = float(tool) if tool is not None else 0.0
-    stt_val = float(stt_ms) if stt_ms is not None else 0.0
-    tts_val = float(tts_ms) if tts_ms is not None else 0.0
 
     if stt_ms is not None:
         merged["stt_processing"] = round(stt_ms, 1)
     if tts_ms is not None:
         merged["tts_synthesis"] = round(tts_ms, 1)
 
-    stage_sum = stt_val + llm_val + tool_val + tts_val
-    if stage_sum > 0:
+    # Only overwrite total when both voice stages were measured; otherwise a
+    # partial config (missing API keys) would rank artificially fast.
+    if stt_ms is not None and tts_ms is not None:
+        stage_sum = stt_ms + llm_val + tool_val + tts_ms
         merged["voice_turn"] = round(stage_sum, 1)
         merged["total"] = round(stage_sum, 1)
 

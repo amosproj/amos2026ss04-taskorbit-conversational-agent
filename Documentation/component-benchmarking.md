@@ -24,7 +24,7 @@ At least **two** provider combinations are compared. The default config (`benchm
 | Label | STT | LLM | TTS |
 |---|---|---|---|
 | `cloud-openai-deepgram-elevenlabs` | Deepgram nova-3 | OpenAI gpt-4o-mini | ElevenLabs multilingual_v2 |
-| `oss-openrouter-deepgram-deepgram` | Deepgram nova-2 | OpenRouter Llama 3.3 70B | Deepgram aura-2-andromeda |
+| `oss-ollama-deepgram-deepgram` | Deepgram nova-2 | Ollama gemma4:26b | Deepgram aura-2-andromeda |
 
 ## How to run
 
@@ -73,7 +73,7 @@ python runner/run_component_benchmark.py \
   --config configs/component-benchmark.yaml \
   --paths text
 
-# Full text + voice matrix (default in component-benchmark.yaml)
+# Full text + voice matrix (default in component-benchmark.yaml; needs DEEPGRAM_API_KEY + ELEVENLABS_API_KEY)
 python runner/run_component_benchmark.py \
   --config configs/component-benchmark.yaml
 ```
@@ -170,14 +170,20 @@ Perform **5 repetitions** per config in the standardized GPC environment. After 
 
 Paste the generated `component-benchmark-report.txt` recommendation section below after your GPC run.
 
+> **AC6 follow-up:** The GPC results table below is filled in a follow-up once the
+> standardized GPC run completes (requires GPC access and provider API keys).
+> The harness, aggregation, and recommendation logic ship in this PR; PO sign-off
+> on documented results can proceed after the GPC run without blocking merge of
+> the measurement infrastructure.
+
 ### GPC results (fill in after standardized run)
 
 | Config | Avg total latency text (ms) | Avg total latency voice (ms) | Tool reliability rate | Recommendation |
 |---|---|---|---|---|
 | `cloud-openai-deepgram-elevenlabs` | — | — | — | — |
-| `oss-openrouter-deepgram-deepgram` | — | — | — | — |
+| `oss-ollama-deepgram-deepgram` | — | — | — | — |
 
-**Recommended default:** _(auto-filled from `aggregate.py --report` after GPC run)_
+**Recommended default:** _Pending GPC run — paste from `aggregate.py --report` output._
 
 ## Related
 

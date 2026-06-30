@@ -10,7 +10,7 @@
 #   python runner/run_component_benchmark.py --config configs/component-benchmark.yaml --dry-run
 
 name: component-benchmark
-description: "Compare cloud OpenAI vs self-hosted Ollama across #68 prompt categories (text path)"
+description: "Compare cloud OpenAI vs self-hosted Ollama across #68 prompt categories (text + voice paths)"
 
 prompt_set: benchmarks/prompts/component_prompts.json
 
@@ -20,6 +20,7 @@ timeout_seconds: 180
 
 paths:
   - text
+  - voice
 
 configs:
   - name: cloud-openai-deepgram-elevenlabs
@@ -42,4 +43,4 @@ configs:
 
 tags:
   ticket: "68"
-  version: v2-text-ollama
+  version: v2-text-voice-ollama

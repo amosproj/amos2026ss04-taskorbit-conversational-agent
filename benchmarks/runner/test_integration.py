@@ -306,12 +306,10 @@ class TestComponentLatencies:
         result = capture_component_latencies(stt_ms=12.5, llm_ms=300.0, tts_ms=85.0)
         assert result == {"stt": 12.5, "llm": 300.0, "tts": 85.0}
 
-    def test_capture_component_latencies_defaults_zero(self) -> None:
-        """All fields default to 0.0 when not provided."""
+    def test_capture_component_latencies_omits_zero_values(self) -> None:
+        """Unmeasured stages are omitted so absent keys stay distinguishable from zero."""
         result = capture_component_latencies()
-        assert result["stt"] == 0.0
-        assert result["llm"] == 0.0
-        assert result["tts"] == 0.0
+        assert result == {}
 
 
 # ---------------------------------------------------------------------------
