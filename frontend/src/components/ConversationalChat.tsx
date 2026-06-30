@@ -167,6 +167,19 @@ export function ConversationalChat() {
   const agentTurnIdRef = useRef<string | null>(null);
   const agentCommittedRef = useRef<string>("");
   const agentActiveSegRef = useRef<string | null>(null);
+  /** Set once the opening greeting is in the transcript; blocks late TTS re-streams. */
+  const greetingEstablishedRef = useRef(false);
+
+  const isGreetingReplay = useCallback(
+    (text: string) => {
+      const greeting = agent.first_message.message?.trim();
+      if (!greeting || !greetingEstablishedRef.current) return false;
+      const t = text.trim();
+      if (!t) return false;
+      return t.length < greeting.length && greeting.startsWith(t);
+    },
+    [agent.first_message.message],
+  );
 
   // Merge consecutive user turns into one bubble (display only — raw state
   // is unchanged). Also applies normaliseUserText so email/digit artefacts
@@ -204,8 +217,20 @@ export function ConversationalChat() {
   useEffect(() => {
     if (call.status === "idle" || call.status === "ended") {
       setAgentMuted(false);
+      greetingEstablishedRef.current = false;
     }
   }, [call.status]);
+
+  // Lock out late greeting TTS transcription replays once the greeting is in the transcript.
+  useEffect(() => {
+    const greeting = agent.first_message.message?.trim();
+    if (!greeting) return;
+    if (
+      call.transcript.some((t) => t.role === "assistant" && t.text.trim() === greeting)
+    ) {
+      greetingEstablishedRef.current = true;
+    }
+  }, [call.transcript, agent.first_message.message]);
 
   // Detect greeting completion: first speaking → idle_in_call transition after
   // a call starts. Unlocks the mic button and triggers continuous mode.
@@ -228,6 +253,19 @@ export function ConversationalChat() {
   const handleSegment = useCallback(
     (segment: TranscriptionSegment) => {
       // console.log("[greeting] handleSegment:", segment.role, segment.id, JSON.stringify(segment.text).slice(0, 60), "final:", segment.isFinal);
+      if (segment.role === "assistant") {
+        const greeting = agent.first_message.message?.trim();
+        if (greeting) {
+          const t = segment.text.trim();
+          if (t === greeting) {
+            greetingEstablishedRef.current = true;
+          }
+          if (isGreetingReplay(t)) {
+            return;
+          }
+        }
+      }
+
       if (segment.role === "user") {
         // A new user turn resets the agent turn context for the next response.
         agentTurnIdRef.current = null;
@@ -268,6 +306,16 @@ export function ConversationalChat() {
       const trimmed = mergedText.trim();
       if (!trimmed) return;
 
+      if (segment.role === "assistant") {
+        const greeting = agent.first_message.message?.trim();
+        if (greeting && trimmed === greeting) {
+          greetingEstablishedRef.current = true;
+        }
+        if (isGreetingReplay(trimmed)) {
+          return;
+        }
+      }
+
       call.upsertTurnById(agentTurnIdRef.current, "assistant", trimmed, segment.isFinal);
 
       // Once this chunk is final, grow the committed base for the next chunk.
@@ -275,7 +323,7 @@ export function ConversationalChat() {
         agentCommittedRef.current = trimmed;
       }
     },
-    [call],
+    [call, agent.first_message.message, isGreetingReplay],
   );
 
   const handleSendText = useCallback(
@@ -283,6 +331,12 @@ export function ConversationalChat() {
       text: string,
       manualTransfer?: { target_agent_id: string; target_agent_name: string } | null,
     ) => {
+      // Voice calls are mic-driven; typing would run a second SSE+TTS path in parallel
+      // with the LiveKit worker and duplicate greetings/audio.
+      if (call.livekitCredentials !== null) {
+        return;
+      }
+
       let convId = call.conversationId;
       // If the user starts a session via the "Use text instead" input rather than the
       // "Start session" button, the UI state is still 'idle'. We must explicitly
@@ -455,7 +509,9 @@ export function ConversationalChat() {
           }
 
           const speakable =
-            replyText.trim().length > 0 && !replyText.startsWith("[Connection error");
+            replyText.trim().length > 0 &&
+            !replyText.startsWith("[Connection error") &&
+            call.livekitCredentials === null;
           if (speakable) {
             call.setPhase("speaking");
             try {
@@ -602,7 +658,9 @@ export function ConversationalChat() {
           const replyText = response.reply.content;
           call.appendAssistantTurn(replyText);
           const speakable =
-            replyText.trim().length > 0 && !replyText.startsWith("[Connection error");
+            replyText.trim().length > 0 &&
+            !replyText.startsWith("[Connection error") &&
+            call.livekitCredentials === null;
           if (speakable) {
             call.setPhase("speaking");
             try {
@@ -652,6 +710,7 @@ export function ConversationalChat() {
     lockedIntentRef.current = null;
     manualRoutingLockRef.current = false;
     pendingConfirmationIdRef.current = null;
+    greetingEstablishedRef.current = false;
     setRoutedAgent(null);
     setCompletedWorkflowSteps([]);
     call.restart();
@@ -661,6 +720,7 @@ export function ConversationalChat() {
     // console.log("[greeting] handleStartSession fired");
     lockedIntentRef.current = null;
     pendingConfirmationIdRef.current = null;
+    greetingEstablishedRef.current = false;
     setRoutedAgent(null);
     setCompletedWorkflowSteps([]);
     call.start({ tokenMetadata: buildLiveKitWorkerMetadata(agent) });
@@ -790,6 +850,7 @@ export function ConversationalChat() {
           <InCallControls
             status={call.status}
             greetingInProgress={!greetingDone}
+            disableTextInput
             onPhase={call.setPhase}
             onEnd={call.end}
             onSendText={handleSendText}

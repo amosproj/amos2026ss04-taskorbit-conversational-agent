@@ -37,6 +37,52 @@ def _make_orchestrator() -> ConversationOrchestrator:
 
 
 @pytest.mark.asyncio
+async def test_off_topic_refuses_on_turn_one_before_intent_clarification() -> None:
+    """Turn-1 off-topic must refuse before intent routing / clarification (#168)."""
+    orchestrator = _make_orchestrator()
+
+    refusal = (
+        "I'm here to help with product and ordering questions. I can't assist with that topic."
+    )
+    agent = AgentConfig(
+        id="demo-agent",
+        name="Demo Agent",
+        persona="Product & ordering assistant",
+        greeting="Hi!",
+        persona_constraints=PersonaConstraints(
+            scope="Product & ordering questions for TechStore",
+            out_of_scope=["recipes", "cooking"],
+            refusal_template=refusal,
+        ),
+    )
+
+    request = ConversationRequest(
+        conversation_id="conv-turn1-off-topic",
+        agent_config=agent,
+        messages=[Message(role=MessageRole.USER, content="How do you make pizza?")],
+    )
+
+    mock_client = MagicMock()
+    mock_client.generate = AsyncMock(
+        return_value='{"intent": "book_service_appointment", "confidence": 0.5}'
+    )
+
+    with (
+        patch("taskorbit.integrations.llm.factory.get_llm_client", return_value=mock_client),
+        patch(
+            "taskorbit.intent.IntentRouter.detect",
+            new_callable=AsyncMock,
+        ) as mock_detect,
+    ):
+        response = await orchestrator.process_message(request)
+
+    mock_detect.assert_not_called()
+    assert response.status == ConversationStatus.REJECTED
+    assert refusal in response.reply.content
+    mock_client.generate.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_off_topic_refuses(mock_good_intent) -> None:
     """Off-topic input should return the refusal template and NOT call the LLM."""
     orchestrator = _make_orchestrator()

@@ -241,6 +241,16 @@ class ConversationOrchestrator:
                     tool_invoked=end_call_tool,
                 )
 
+            # 0b. Pre-intent scope short-circuit: refuse clearly off-topic turns before
+            # intent routing or the clarification gate (#168 follow-up).
+            refusal_response = self._entry_scope_refusal(
+                message=last_user.content,
+                request=request,
+                stage="pre_intent",
+            )
+            if refusal_response is not None:
+                return refusal_response
+
             # 1. Detect intent — reuse locked intent when set, but still run the
             # classifier to allow genuine topic changes to break the lock.
             if request.current_intent_name and request.current_intent_name in _KNOWN_INTENTS:
@@ -803,6 +813,16 @@ class ConversationOrchestrator:
                     selected_agent="",
                     tool_invoked=end_call_tool,
                 )
+                return
+
+            # 0b. Pre-intent scope short-circuit (parity with text path, #168 follow-up).
+            refusal_response = self._entry_scope_refusal(
+                message=last_user.content,
+                request=request,
+                stage="pre_intent",
+            )
+            if refusal_response is not None:
+                yield refusal_response
                 return
 
             # 1. Detect intent.
@@ -1384,6 +1404,32 @@ class ConversationOrchestrator:
         )
         return await self.process_message(updated_request, db, user_id=user_id)
 
+    def _entry_scope_refusal(
+        self,
+        *,
+        message: str,
+        request: ConversationRequest,
+        stage: str = "pre_intent",
+    ) -> ConversationResponse | None:
+        """Refuse using the entry agent's constraints before intent routing."""
+        if not request.agent_config.persona_constraints:
+            return None
+        entry_agent = AgentRegistry.create(request.agent_config, self)
+        placeholder = IntentResult(
+            name="",
+            description="",
+            agent_name=entry_agent.agent_name,
+            confidence=0.0,
+        )
+        return self._scope_refusal(
+            message=message,
+            active_config=request.agent_config,
+            intent=placeholder,
+            agent=entry_agent,
+            conversation_id=request.conversation_id,
+            stage=stage,
+        )
+
     def _scope_refusal(
         self,
         *,
@@ -1400,7 +1446,7 @@ class ConversationOrchestrator:
         voice/stream paths enforce identically (#168). Gated by
         ``enable_scope_shortcircuit``; fail-open -- a classifier error allows the
         turn through rather than hard-failing a live call. ``stage`` labels the
-        call site in logs ("pre_extraction" / "pre_llm").
+        call site in logs ("pre_intent" / "pre_extraction" / "pre_llm").
         """
         if not self._settings.enable_scope_shortcircuit:
             return None

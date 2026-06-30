@@ -86,8 +86,19 @@ def is_message_in_scope(message: str, persona_constraints: PersonaConstraints | 
         lowered_out = ""
 
     if any(k in lowered_out for k in ("recipe", "recipes", "cook", "cooking", "bake", "prepare")):
-        recipe_pattern = r"\b(how (do )?(you )?make|how to|recipe|recipes|cook|cooking|bake|prepare|what(?:'s| is) the recipe|ingredients)\b"
+        recipe_pattern = (
+            r"\b(how (do )?(you )?make|how to|recipe|recipes|cook|cooking|bake|prepare|"
+            r"what(?:'s| is) the recipe|ingredients)\b"
+        )
         m = _try_regex_search(recipe_pattern, text)
+        if m:
+            return False, {"reason": "heuristic", "token": "cooking_recipe", "match": m.group(0)}
+        # Food-ordering / food-prep requests when recipes/cooking are forbidden.
+        food_pattern = (
+            r"\b(?:buy|order|want|get|make|cook|bake)\b.{0,30}\b"
+            r"(?:pizza|pasta|burger|sushi|tacos?|cake|cookies?|bread|ramen|curry)\b"
+        )
+        m = _try_regex_search(food_pattern, text)
         if m:
             return False, {"reason": "heuristic", "token": "cooking_recipe", "match": m.group(0)}
 

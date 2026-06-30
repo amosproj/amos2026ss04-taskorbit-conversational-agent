@@ -37,3 +37,26 @@ def test_regex_prefix_re() -> None:
     pc = PersonaConstraints(out_of_scope=["re:\\bpizza\\b"])
     in_scope, _ = is_message_in_scope("I like pizza a lot", pc)
     assert in_scope is False
+
+
+def test_buy_pizza_heuristic_when_cooking_out_of_scope() -> None:
+    pc = PersonaConstraints(out_of_scope=["recipes", "cooking"])
+    in_scope, details = is_message_in_scope("I want to buy a pizza.", pc)
+    assert in_scope is False
+    assert details is not None
+    assert details.get("reason") == "heuristic"
+
+
+def test_cars_in_scope_for_dealership_agent() -> None:
+    pc = PersonaConstraints(
+        out_of_scope=["recipes", "cooking"],
+        scope="Car sales at AutoDealership.",
+    )
+    in_scope, _ = is_message_in_scope("Can you tell me about cars?", pc)
+    assert in_scope is True
+
+
+def test_buy_car_in_scope_for_dealership_agent() -> None:
+    pc = PersonaConstraints(out_of_scope=["recipes", "cooking"])
+    in_scope, _ = is_message_in_scope("I want to buy a car", pc)
+    assert in_scope is True
