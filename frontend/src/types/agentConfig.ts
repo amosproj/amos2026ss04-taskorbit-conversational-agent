@@ -136,6 +136,17 @@ export type PersonaConstraints = {
  * Mirrors ContextLimitConfig in backend/src/taskorbit/types.py.
  * Default: 50 messages. Allowed range: 10–500.
  */
+export type WorkflowRuleWhen = {
+  intent?: string;
+  agent_name?: string;
+  else?: boolean;
+};
+
+export type WorkflowRule = {
+  when: WorkflowRuleWhen;
+  dependencies: string[];
+};
+
 export type ContextLimitConfig = {
   type: "message_count";
   value: number;
@@ -153,6 +164,7 @@ export type AgentConfig = {
   tools: ToolDefinition[];
   engine: Record<string, unknown>;
   workflow_dependencies: string[];
+  workflow_rules?: WorkflowRule[];
   allowed_handoffs: string[];
 
   // Architecture-driven optional extensions (kept off Preet's wire format
@@ -180,6 +192,7 @@ export function serializeAgent(agent: AgentConfig): Record<string, unknown> {
     workflow_dependencies: agent.workflow_dependencies,
     allowed_handoffs: agent.allowed_handoffs,
   };
+  if (agent.workflow_rules?.length) out.workflow_rules = agent.workflow_rules;
   if (agent.confirmations) out.confirmations = agent.confirmations;
   if (agent.language) out.language = agent.language;
   if (agent.vad) out.vad = agent.vad;

@@ -24,6 +24,7 @@ import asyncio
 import re
 import time
 from dataclasses import dataclass
+from dataclasses import replace as dataclass_replace
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -31,9 +32,11 @@ if TYPE_CHECKING:
 
     from taskorbit.agents import BaseAgent
 
+from taskorbit.agents import AgentRegistry
 from taskorbit.config import Settings, get_settings
 from taskorbit.integrations.llm.errors import LLMConfigError
-from taskorbit.intent import IntentRouter
+from taskorbit.integrations.llm.scope_check import is_message_in_scope
+from taskorbit.intent import _KNOWN_INTENTS, IntentResult, IntentRouter
 from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import get_metrics
 from taskorbit.types import (
@@ -49,18 +52,85 @@ from taskorbit.types import (
     ToolDefinition,
     ToolType,
 )
+from taskorbit.workflow_rules import (
+    expand_workflow_dependencies,
+    resolve_workflow_dependencies,
+)
 
 logger = get_logger(__name__)
+
+
+def _effective_selected_agent(selected_agent: str | None) -> str | None:
+    """Normalize empty strings from the voice path to None."""
+    if selected_agent is None:
+        return None
+    stripped = selected_agent.strip()
+    return stripped if stripped else None
 
 
 def _selected_agent_matches_dep(selected_agent: str | None, dep_id: str) -> bool:
     """True when the session is already executing a prerequisite agent step."""
     if not selected_agent:
         return False
-    from taskorbit.agents import AgentRegistry
-
     dep_registry = AgentRegistry.get_agent_name_for_id(dep_id)
     return selected_agent == dep_id or selected_agent == dep_registry
+
+
+def _resolve_missing_dependencies(
+    request: ConversationRequest,
+    intent: IntentResult,
+) -> tuple[list[str], list[str], list[str]]:
+    """Return (direct_dependencies, effective_dependencies, missing_dependencies)."""
+    direct = resolve_workflow_dependencies(
+        request.agent_config,
+        intent_name=intent.name,
+        intent_agent_name=intent.agent_name,
+    )
+    effective = expand_workflow_dependencies(direct, request.dependency_configs)
+    missing = [dep for dep in effective if dep not in request.completed_workflow_steps]
+    return direct, effective, missing
+
+
+def _workflow_prereq_confirmation_message(entry_name: str, dep_name: str) -> str:
+    return (
+        f"Before we proceed with {entry_name}, I'll need to complete some "
+        f"prerequisite steps regarding {dep_name}. Shall I start with that?"
+    )
+
+
+def _workflow_prereq_start_ack(next_dep: str) -> str:
+    return f"Understood. Let's start with the {next_dep.replace('-', ' ')} steps."
+
+
+def _is_executing_workflow_prerequisite(
+    request: ConversationRequest,
+    intent: IntentResult,
+) -> bool:
+    """True after Proceed when the next missing prerequisite is already selected."""
+    if not request.selected_agent or not request.dependency_configs:
+        return False
+
+    _, _, missing = _resolve_missing_dependencies(request, intent)
+    return bool(missing) and _selected_agent_matches_dep(request.selected_agent, missing[0])
+
+
+def _resolve_intent_after_clarification_gate(
+    request: ConversationRequest,
+    intent: IntentResult,
+) -> IntentResult:
+    """Keep workflow turns moving when follow-ups like ``continue`` fail intent gating."""
+    if not intent.requires_clarification:
+        return intent
+    if not _is_executing_workflow_prerequisite(request, intent):
+        return intent
+    if request.current_intent_name and request.current_intent_name in _KNOWN_INTENTS:
+        return dataclass_replace(_KNOWN_INTENTS[request.current_intent_name], confidence=1.0)
+    return dataclass_replace(intent, requires_clarification=False, confidence=1.0)
+
+
+def _workflow_ui_selected_agent(request: ConversationRequest) -> str | None:
+    """Stable workflow routing id for the UI — never intent registry names like general_inquiry."""
+    return request.selected_agent or request.agent_config.id or None
 
 
 def _normalize_field_key(fields: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -109,6 +179,10 @@ class ConversationOrchestrator:
                 from taskorbit.database.crud import enrich_request_dependency_configs
 
                 request = await enrich_request_dependency_configs(request, db, user_id)
+
+            effective_selected = _effective_selected_agent(request.selected_agent)
+            if effective_selected != request.selected_agent:
+                request = request.model_copy(update={"selected_agent": effective_selected})
 
             last_user = next(
                 (m for m in reversed(request.messages) if m.role == MessageRole.USER),
@@ -167,12 +241,18 @@ class ConversationOrchestrator:
                     tool_invoked=end_call_tool,
                 )
 
+            # 0b. Pre-intent scope short-circuit: refuse clearly off-topic turns before
+            # intent routing or the clarification gate (#168 follow-up).
+            refusal_response = self._entry_scope_refusal(
+                message=last_user.content,
+                request=request,
+                stage="pre_intent",
+            )
+            if refusal_response is not None:
+                return refusal_response
+
             # 1. Detect intent — reuse locked intent when set, but still run the
             # classifier to allow genuine topic changes to break the lock.
-            from dataclasses import replace as _replace
-
-            from taskorbit.intent import _KNOWN_INTENTS
-
             if request.current_intent_name and request.current_intent_name in _KNOWN_INTENTS:
                 fresh = await self._intent_router.detect(
                     last_user.content,
@@ -194,7 +274,9 @@ class ConversationOrchestrator:
                         conversation_id=request.conversation_id,
                     )
                 else:
-                    intent = _replace(_KNOWN_INTENTS[request.current_intent_name], confidence=1.0)
+                    intent = dataclass_replace(
+                        _KNOWN_INTENTS[request.current_intent_name], confidence=1.0
+                    )
                     logger.info(
                         "intent_locked",
                         intent=intent.name,
@@ -214,6 +296,8 @@ class ConversationOrchestrator:
                     conversation_id=request.conversation_id,
                 )
 
+            intent = _resolve_intent_after_clarification_gate(request, intent)
+
             # Short-circuit: ask for clarification instead of guessing
             if intent.requires_clarification:
                 from taskorbit.intent import _CLARIFICATION_REPLY
@@ -228,8 +312,6 @@ class ConversationOrchestrator:
                 )
 
             # 2. Select agent based on detected intent or turn-1 locking
-            from taskorbit.agents import AgentRegistry
-
             handoff_blocked = False
             allowed_agent_names: list[str] = []
             if not request.selected_agent:
@@ -262,13 +344,26 @@ class ConversationOrchestrator:
             # Resolve workflow dependencies BEFORE enforcing handoff rules.
             # This ensures DEMO-1 (prerequisite flow) is offered even when a
             # requested handoff would otherwise be blocked.
-            from taskorbit.types import ConversationStatus
+            #
+            # Note: _resolve_missing_dependencies may also have been called inside
+            # _is_executing_workflow_prerequisite (via the clarification gate above)
+            # with the *pre-gate* intent. We cannot reuse that result here because
+            # _resolve_intent_after_clarification_gate can return a *different* intent
+            # (from _KNOWN_INTENTS[current_intent_name]) — making the two calls
+            # operate on different intents. Correctness requires recomputing here with
+            # the post-gate intent that the rest of this pipeline actually uses.
+            direct_dependencies, effective_dependencies, missing_dependencies = (
+                _resolve_missing_dependencies(request, intent)
+            )
 
-            missing_dependencies = [
-                dep
-                for dep in request.agent_config.workflow_dependencies
-                if dep not in request.completed_workflow_steps
-            ]
+            logger.debug(
+                "workflow_dependency_check",
+                direct=direct_dependencies,
+                effective=effective_dependencies,
+                completed=request.completed_workflow_steps,
+                missing=missing_dependencies,
+                selected=request.selected_agent,
+            )
 
             executing_prereq_id: str | None = None
             if missing_dependencies:
@@ -325,7 +420,9 @@ class ConversationOrchestrator:
                         return ConversationResponse(
                             conversation_id=request.conversation_id,
                             reply=self._make_assistant_message(
-                                f"Before we proceed with {request.agent_config.name}, I'll need to complete some prerequisite steps regarding {dep_name}. Shall I start with that?"
+                                _workflow_prereq_confirmation_message(
+                                    request.agent_config.name, dep_name
+                                )
                             ),
                             status=ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED,
                             confirmation=ConfirmationResponsePayload(
@@ -334,8 +431,9 @@ class ConversationOrchestrator:
                                 description=f"Prerequisite: {dep_name}",
                             ),
                             selected_intent=intent.name,
-                            selected_agent=agent.agent_name,
+                            selected_agent=_workflow_ui_selected_agent(request) or "",
                             intent_confidence=intent.confidence,
+                            locked_intent_name=intent.name,
                             completed_workflow_steps=request.completed_workflow_steps,
                         )
 
@@ -352,7 +450,8 @@ class ConversationOrchestrator:
                             ),
                             status=ConversationStatus.REJECTED,
                             selected_intent=intent.name,
-                            selected_agent=agent.agent_name,
+                            selected_agent=_workflow_ui_selected_agent(request) or "",
+                            locked_intent_name=intent.name,
                             completed_workflow_steps=request.completed_workflow_steps,
                         )
 
@@ -363,15 +462,23 @@ class ConversationOrchestrator:
                     )
                     return ConversationResponse(
                         conversation_id=request.conversation_id,
-                        reply=self._make_assistant_message(
-                            f"Understood. Let's start with the {next_dep.replace('-', ' ')} steps."
-                        ),
+                        reply=self._make_assistant_message(_workflow_prereq_start_ack(next_dep)),
                         status=ConversationStatus.SUCCESS,
                         selected_agent=next_dep,
                         selected_intent=intent.name,
                         intent_confidence=1.0,
+                        locked_intent_name=intent.name,
                         completed_workflow_steps=request.completed_workflow_steps,
                     )
+
+            elif effective_dependencies and not missing_dependencies:
+                # All prerequisites satisfied — entry agent owns this turn (not intent router).
+                agent = AgentRegistry.create(request.agent_config, self)
+                logger.info(
+                    "workflow_entry_agent_resumed",
+                    agent=agent.agent_name,
+                    conversation_id=request.conversation_id,
+                )
 
             # Now enforce handoff rules (if any)
             if (
@@ -394,7 +501,7 @@ class ConversationOrchestrator:
                     )
                     # Revert the intent name to match the selected agent's intent
                     if request.current_intent_name:
-                        intent = _replace(
+                        intent = dataclass_replace(
                             _KNOWN_INTENTS[request.current_intent_name], confidence=1.0
                         )
 
@@ -418,6 +525,10 @@ class ConversationOrchestrator:
                 conversation_id=request.conversation_id,
             )
 
+            # Use the routed agent's saved config for LLM context (prerequisite steps
+            # must not inherit the entry agent's persona).
+            active_config = agent.config
+
             # 3. Select active tool
             active_tool = self._select_active_tool(
                 request.messages, agent, active_tool_id=request.active_tool_id
@@ -435,10 +546,23 @@ class ConversationOrchestrator:
                 and active_tool.parameters["params"]
             ):
                 extraction_inputs = _normalize_field_key(active_tool.parameters["params"])
-                intent = _replace(intent, required_inputs=extraction_inputs)
+                intent = dataclass_replace(intent, required_inputs=extraction_inputs)
+
+            # Pre-slot-extraction scope short-circuit: refuse a clearly off-topic
+            # message before any slot-extraction LLM call runs (#168).
+            refusal_response = self._scope_refusal(
+                message=last_user.content,
+                active_config=active_config,
+                intent=intent,
+                agent=agent,
+                conversation_id=request.conversation_id,
+                stage="pre_extraction",
+            )
+            if refusal_response is not None:
+                return refusal_response
 
             slot_result = await self._extract_slots(
-                request.messages, extraction_inputs, request.agent_config.llm
+                request.messages, extraction_inputs, active_config.llm
             )
             logger.info(
                 "slots_extracted",
@@ -449,18 +573,30 @@ class ConversationOrchestrator:
 
             # 4. Build system prompt using the routed agent's role
             system_prompt = self._build_system_prompt(
-                request.agent_config, active_tool, slot_result, routed_agent=agent
+                active_config, active_tool, slot_result, routed_agent=agent
             )
 
             # 4b. Truncate conversation history if context limit is configured
             truncated_messages = self._truncate_messages(
-                request.messages, request.agent_config.context_limit
+                request.messages, active_config.context_limit
             )
+
+            # Pre-LLM scope short-circuit: final guard before the LLM call (#168).
+            refusal_response = self._scope_refusal(
+                message=last_user.content,
+                active_config=active_config,
+                intent=intent,
+                agent=agent,
+                conversation_id=request.conversation_id,
+                stage="pre_llm",
+            )
+            if refusal_response is not None:
+                return refusal_response
 
             # 5. Call LLM with a timeout from settings — measure latency
             _llm_start = time.perf_counter()
             llm_text = await asyncio.wait_for(
-                self._call_llm(system_prompt, truncated_messages, request.agent_config.llm),
+                self._call_llm(system_prompt, truncated_messages, active_config.llm),
                 timeout=self._settings.llm_timeout_seconds,
             )
             _llm_elapsed = time.perf_counter() - _llm_start
@@ -618,6 +754,10 @@ class ConversationOrchestrator:
 
                 request = await enrich_request_dependency_configs(request, db, user_id)
 
+            effective_selected = _effective_selected_agent(request.selected_agent)
+            if effective_selected != request.selected_agent:
+                request = request.model_copy(update={"selected_agent": effective_selected})
+
             last_user = next(
                 (m for m in reversed(request.messages) if m.role == MessageRole.USER),
                 None,
@@ -626,6 +766,8 @@ class ConversationOrchestrator:
                 raise ValueError("No user message content found in request.")
 
             # 0. User-initiated end-call.
+            from taskorbit.types import ConversationStatus, ToolType
+
             end_call_tool = next(
                 (t for t in request.agent_config.tools if t.type == ToolType.END_CALL),
                 None,
@@ -673,11 +815,17 @@ class ConversationOrchestrator:
                 )
                 return
 
+            # 0b. Pre-intent scope short-circuit (parity with text path, #168 follow-up).
+            refusal_response = self._entry_scope_refusal(
+                message=last_user.content,
+                request=request,
+                stage="pre_intent",
+            )
+            if refusal_response is not None:
+                yield refusal_response
+                return
+
             # 1. Detect intent.
-            from dataclasses import replace as _replace
-
-            from taskorbit.intent import _KNOWN_INTENTS
-
             if request.current_intent_name and request.current_intent_name in _KNOWN_INTENTS:
                 fresh = await self._intent_router.detect(
                     last_user.content,
@@ -699,7 +847,9 @@ class ConversationOrchestrator:
                         conversation_id=request.conversation_id,
                     )
                 else:
-                    intent = _replace(_KNOWN_INTENTS[request.current_intent_name], confidence=1.0)
+                    intent = dataclass_replace(
+                        _KNOWN_INTENTS[request.current_intent_name], confidence=1.0
+                    )
                     logger.info(
                         "intent_locked",
                         intent=intent.name,
@@ -719,6 +869,8 @@ class ConversationOrchestrator:
                     conversation_id=request.conversation_id,
                 )
 
+            intent = _resolve_intent_after_clarification_gate(request, intent)
+
             if intent.requires_clarification:
                 from taskorbit.intent import _CLARIFICATION_REPLY
 
@@ -733,8 +885,6 @@ class ConversationOrchestrator:
                 return
 
             # 2. Select agent.
-            from taskorbit.agents import AgentRegistry
-
             handoff_blocked = False
             allowed_agent_names: list[str] = []
             if not request.selected_agent:
@@ -758,12 +908,23 @@ class ConversationOrchestrator:
                         for cfg_id in request.agent_config.allowed_handoffs
                     ]
 
-            # Resolve workflow dependencies.
-            missing_dependencies = [
-                dep
-                for dep in request.agent_config.workflow_dependencies
-                if dep not in request.completed_workflow_steps
-            ]
+            # Resolve workflow dependencies BEFORE enforcing handoff rules.
+            # See the equivalent block in process_message for why this cannot
+            # reuse the result computed inside the clarification gate: the gate
+            # may return a different intent (from _KNOWN_INTENTS), so the two
+            # calls can operate on different intents and must stay separate.
+            direct_dependencies, effective_dependencies, missing_dependencies = (
+                _resolve_missing_dependencies(request, intent)
+            )
+
+            logger.debug(
+                "workflow_dependency_check",
+                direct=direct_dependencies,
+                effective=effective_dependencies,
+                completed=request.completed_workflow_steps,
+                missing=missing_dependencies,
+                selected=request.selected_agent,
+            )
 
             executing_prereq_id: str | None = None
             if missing_dependencies:
@@ -810,7 +971,9 @@ class ConversationOrchestrator:
                         yield ConversationResponse(
                             conversation_id=request.conversation_id,
                             reply=self._make_assistant_message(
-                                f"Before we proceed with {request.agent_config.name}, I'll need to complete some prerequisite steps regarding {dep_name}. Shall I start with that?"
+                                _workflow_prereq_confirmation_message(
+                                    request.agent_config.name, dep_name
+                                )
                             ),
                             status=ConversationStatus.WORKFLOW_CONFIRMATION_REQUIRED,
                             confirmation=ConfirmationResponsePayload(
@@ -819,8 +982,9 @@ class ConversationOrchestrator:
                                 description=f"Prerequisite: {dep_name}",
                             ),
                             selected_intent=intent.name,
-                            selected_agent=agent.agent_name,
+                            selected_agent=_workflow_ui_selected_agent(request) or "",
                             intent_confidence=intent.confidence,
+                            locked_intent_name=intent.name,
                             completed_workflow_steps=request.completed_workflow_steps,
                         )
                         return
@@ -838,7 +1002,8 @@ class ConversationOrchestrator:
                             ),
                             status=ConversationStatus.REJECTED,
                             selected_intent=intent.name,
-                            selected_agent=agent.agent_name,
+                            selected_agent=_workflow_ui_selected_agent(request) or "",
+                            locked_intent_name=intent.name,
                             completed_workflow_steps=request.completed_workflow_steps,
                         )
                         return
@@ -850,16 +1015,23 @@ class ConversationOrchestrator:
                     )
                     yield ConversationResponse(
                         conversation_id=request.conversation_id,
-                        reply=self._make_assistant_message(
-                            f"Understood. Let's start with the {next_dep.replace('-', ' ')} steps."
-                        ),
+                        reply=self._make_assistant_message(_workflow_prereq_start_ack(next_dep)),
                         status=ConversationStatus.SUCCESS,
                         selected_agent=next_dep,
                         selected_intent=intent.name,
                         intent_confidence=1.0,
+                        locked_intent_name=intent.name,
                         completed_workflow_steps=request.completed_workflow_steps,
                     )
                     return
+
+            elif effective_dependencies and not missing_dependencies:
+                agent = AgentRegistry.create(request.agent_config, self)
+                logger.info(
+                    "workflow_entry_agent_resumed",
+                    agent=agent.agent_name,
+                    conversation_id=request.conversation_id,
+                )
 
             # Enforce handoff rules.
             if (
@@ -884,7 +1056,7 @@ class ConversationOrchestrator:
                         user_id=user_id,
                     )
                     if request.current_intent_name:
-                        intent = _replace(
+                        intent = dataclass_replace(
                             _KNOWN_INTENTS[request.current_intent_name], confidence=1.0
                         )
 
@@ -908,10 +1080,28 @@ class ConversationOrchestrator:
                 conversation_id=request.conversation_id,
             )
 
+            active_config = agent.config
+
             # 3. Select active tool.
             active_tool = self._select_active_tool(
                 request.messages, agent, active_tool_id=request.active_tool_id
             )
+
+            # Pre-extraction scope short-circuit (parity with the text path, #168):
+            # refuse a clearly off-topic message before any slot-extraction LLM
+            # call or tool dispatch runs. Without this, an off-topic voice turn
+            # could fire a tool before being refused.
+            refusal_response = self._scope_refusal(
+                message=last_user.content,
+                active_config=active_config,
+                intent=intent,
+                agent=agent,
+                conversation_id=request.conversation_id,
+                stage="pre_extraction",
+            )
+            if refusal_response is not None:
+                yield refusal_response
+                return
 
             # 3b. Extract slots.
             # Prefer the user-configured fields on the active DataExtractionTool over
@@ -925,10 +1115,10 @@ class ConversationOrchestrator:
                 and active_tool.parameters["params"]
             ):
                 extraction_inputs = _normalize_field_key(active_tool.parameters["params"])
-                intent = _replace(intent, required_inputs=extraction_inputs)
+                intent = dataclass_replace(intent, required_inputs=extraction_inputs)
 
             slot_result = await self._extract_slots(
-                request.messages, extraction_inputs, request.agent_config.llm
+                request.messages, extraction_inputs, active_config.llm
             )
             logger.info(
                 "slots_extracted",
@@ -939,12 +1129,12 @@ class ConversationOrchestrator:
 
             # 4. Build system prompt.
             system_prompt = self._build_system_prompt(
-                request.agent_config, active_tool, slot_result, routed_agent=agent
+                active_config, active_tool, slot_result, routed_agent=agent
             )
 
             # 4b. Truncate messages.
             truncated_messages = self._truncate_messages(
-                request.messages, request.agent_config.context_limit
+                request.messages, active_config.context_limit
             )
 
             # 5b. Run dispatch logic before streaming so confirmation short-circuits
@@ -956,6 +1146,19 @@ class ConversationOrchestrator:
                 yield dispatch.early_response
                 return
 
+            # Pre-LLM scope short-circuit: final guard before streaming tokens (#168).
+            refusal_response = self._scope_refusal(
+                message=last_user.content,
+                active_config=active_config,
+                intent=intent,
+                agent=agent,
+                conversation_id=request.conversation_id,
+                stage="pre_llm",
+            )
+            if refusal_response is not None:
+                yield refusal_response
+                return
+
             # 5. Stream LLM response or use rejection override.
             _llm_start = time.perf_counter()
             full_text_parts: list[str] = []
@@ -963,7 +1166,7 @@ class ConversationOrchestrator:
                 full_text_parts = [dispatch.llm_text_override]
             else:
                 async for chunk in self._call_llm_stream(
-                    system_prompt, truncated_messages, request.agent_config.llm
+                    system_prompt, truncated_messages, active_config.llm
                 ):
                     full_text_parts.append(chunk)
                     yield chunk
@@ -1200,6 +1403,85 @@ class ConversationOrchestrator:
             update={"agent_config": target_config, "manual_transfer": None}
         )
         return await self.process_message(updated_request, db, user_id=user_id)
+
+    def _entry_scope_refusal(
+        self,
+        *,
+        message: str,
+        request: ConversationRequest,
+        stage: str = "pre_intent",
+    ) -> ConversationResponse | None:
+        """Refuse using the entry agent's constraints before intent routing."""
+        if not request.agent_config.persona_constraints:
+            return None
+        entry_agent = AgentRegistry.create(request.agent_config, self)
+        placeholder = IntentResult(
+            name="",
+            description="",
+            agent_name=entry_agent.agent_name,
+            confidence=0.0,
+        )
+        return self._scope_refusal(
+            message=message,
+            active_config=request.agent_config,
+            intent=placeholder,
+            agent=entry_agent,
+            conversation_id=request.conversation_id,
+            stage=stage,
+        )
+
+    def _scope_refusal(
+        self,
+        *,
+        message: str,
+        active_config: AgentConfig,
+        intent: IntentResult,
+        agent: Any,
+        conversation_id: str,
+        stage: str,
+    ) -> ConversationResponse | None:
+        """Refuse a clearly out-of-scope message, or return ``None`` to proceed.
+
+        Single source of truth for the guardrail short-circuit so the text and
+        voice/stream paths enforce identically (#168). Gated by
+        ``enable_scope_shortcircuit``; fail-open -- a classifier error allows the
+        turn through rather than hard-failing a live call. ``stage`` labels the
+        call site in logs ("pre_intent" / "pre_extraction" / "pre_llm").
+        """
+        if not self._settings.enable_scope_shortcircuit:
+            return None
+        try:
+            in_scope, match = is_message_in_scope(message, active_config.persona_constraints)
+        except Exception as exc:  # noqa: BLE001 - never fail a turn on a classifier error
+            logger.exception(
+                "scope_check_failed",
+                conversation_id=conversation_id,
+                stage=stage,
+                error=str(exc),
+            )
+            return None
+        if in_scope:
+            return None
+        refusal = (
+            active_config.persona_constraints.refusal_template
+            if active_config.persona_constraints
+            and active_config.persona_constraints.refusal_template
+            else "I'm sorry, I can't assist with that topic."
+        )
+        logger.info(
+            "message_out_of_scope",
+            conversation_id=conversation_id,
+            stage=stage,
+            match=match,
+        )
+        return ConversationResponse(
+            conversation_id=conversation_id,
+            reply=self._make_assistant_message(refusal),
+            status=ConversationStatus.REJECTED,
+            selected_intent=intent.name,
+            selected_agent=agent.agent_name,
+            intent_confidence=intent.confidence,
+        )
 
     def _build_system_prompt(
         self,
