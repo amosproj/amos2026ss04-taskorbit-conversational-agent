@@ -65,8 +65,6 @@ def evaluate_reliability_authoritative(row: dict) -> dict:
         tool_correct = True
         reason = f"correct tool invoked: {invoked_type}"
 
-    reliability_pass = tool_correct
-
     # result_incorporated: reuse the harness value for data_extraction;
     # mark immediate tools as N/A (None) — no reply content to check.
     if invoked_type in _IMMEDIATE_TOOLS:
@@ -75,6 +73,15 @@ def evaluate_reliability_authoritative(row: dict) -> dict:
         result_incorporated = tr.get("result_incorporated_in_reply")
     else:
         result_incorporated = None
+
+    reliability_pass = tool_correct
+    if (
+        tool_correct
+        and invoked_type == "data_extraction"
+        and result_incorporated is False
+    ):
+        reliability_pass = False
+        reason = f"{reason}; extracted slots not reflected in reply"
 
     return {
         "reliability_pass": reliability_pass,

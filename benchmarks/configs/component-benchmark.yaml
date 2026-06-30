@@ -2,26 +2,24 @@
 #
 # Requirements:
 #   Running backend at BENCHMARK_API_URL (default http://localhost:8000)
-#   BENCHMARK_API_TOKEN set for authenticated /v1/conversations/process calls
+#   BENCHMARK_API_TOKEN set for authenticated /v1/conversations/process calls when auth enabled
+#   OLLAMA_BASE_URL + OLLAMA_MODEL on backend for the OSS config
 #
 # Run:
 #   python runner/run_component_benchmark.py --config configs/component-benchmark.yaml
 #   python runner/run_component_benchmark.py --config configs/component-benchmark.yaml --dry-run
 
 name: component-benchmark
-description: "Compare cloud OpenAI vs OpenRouter OSS models across #68 prompt categories"
+description: "Compare cloud OpenAI vs self-hosted Ollama across #68 prompt categories (text path)"
 
 prompt_set: benchmarks/prompts/component_prompts.json
 
 repetitions: 5
 concurrency: 1
-timeout_seconds: 120
+timeout_seconds: 180
 
-# text = LLM + tool latency via REST API
-# voice = text path + direct STT/TTS provider timing (requires DEEPGRAM_API_KEY, ELEVENLABS_API_KEY)
 paths:
   - text
-  - voice
 
 configs:
   - name: cloud-openai-deepgram-elevenlabs
@@ -33,15 +31,15 @@ configs:
     tts_voice_id: CwhRBWXzGAHq8TQ4Fs17
     tts_model: eleven_multilingual_v2
 
-  - name: oss-openrouter-deepgram-deepgram
+  - name: oss-ollama-deepgram-deepgram
     stt_provider: deepgram
     stt_model: nova-2
-    llm_provider: openrouter
-    llm_model: meta-llama/llama-3.3-70b-instruct:free
+    llm_provider: ollama
+    llm_model: gemma4:26b
     tts_provider: deepgram
     tts_voice_id: aura-2-andromeda-en
     tts_model: aura-2-andromeda-en
 
 tags:
   ticket: "68"
-  version: v1
+  version: v2-text-ollama

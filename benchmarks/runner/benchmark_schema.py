@@ -28,6 +28,7 @@ class BenchmarkPromptRow:
     text: str
     expects_tool: bool
     expected_tool_type: str | None = None
+    expected_status: str = "success"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

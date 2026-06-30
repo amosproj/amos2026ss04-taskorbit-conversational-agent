@@ -23,6 +23,11 @@ from benchmark_schema import (
 )
 from component_config import ComponentBenchmarkConfig, PipelineComponentConfig
 from prompts import build_agent_config, load_prompt_set
+from turn_expectations import (
+    response_status_ok,
+    turn_expected_status,
+    turn_tool_expectations,
+)
 from voice_stages import measure_stt_latency_ms, measure_tts_latency_ms, merge_voice_latency, voice_api_keys
 
 logger = logging.getLogger(__name__)
@@ -93,7 +98,7 @@ class ComponentBenchmarkRunner:
                         for row in rows:
                             self.writer.append(row)
                             summary["total_rows"] += 1
-                            if row.status == "success" or row.status == "ended":
+                            if response_status_ok(row.to_dict()):
                                 summary["success_rows"] += 1
                             else:
                                 summary["failure_rows"] += 1
@@ -123,7 +128,8 @@ class ComponentBenchmarkRunner:
         turns: list[str] = prompt_def["turns"]
         messages: list[dict[str, str]] = []
         conversation_id: str | None = None
-        current_intent_name: str | None = None
+        current_intent_name: str | None = prompt_def.get("intent_name")
+        selected_agent: str | None = None
         active_tool_id: str | None = None
         completed_workflow_steps: list[str] = []
 
@@ -133,12 +139,19 @@ class ComponentBenchmarkRunner:
 
         async with httpx.AsyncClient(timeout=config.timeout_seconds) as client:
             for turn_index, turn_text in enumerate(turns):
+                turn_count = len(turns)
+                expects_tool, expected_tool_type = turn_tool_expectations(
+                    prompt_def, turn_index, turn_count
+                )
+                expected_status = turn_expected_status(prompt_def, turn_index, turn_count)
+
                 messages.append({"role": "user", "content": turn_text})
                 payload: dict[str, Any] = {
                     "conversation_id": conversation_id,
                     "agent_config": agent_config,
                     "messages": messages,
                     "current_intent_name": current_intent_name,
+                    "selected_agent": selected_agent,
                     "active_tool_id": active_tool_id,
                     "completed_workflow_steps": completed_workflow_steps,
                 }
@@ -180,7 +193,8 @@ class ComponentBenchmarkRunner:
 
                     data: dict[str, Any] = response.json()
                     conversation_id = data.get("conversation_id", conversation_id)
-                    current_intent_name = data.get("locked_intent_name")
+                    current_intent_name = data.get("locked_intent_name") or current_intent_name
+                    selected_agent = data.get("selected_agent") or selected_agent
                     active_tool_id = data.get("next_active_tool_id")
                     completed_workflow_steps = data.get("completed_workflow_steps", [])
 
@@ -189,8 +203,8 @@ class ComponentBenchmarkRunner:
 
                     reliability = evaluate_tool_reliability(
                         data,
-                        expects_tool=bool(prompt_def.get("expects_tool")),
-                        expected_tool_type=prompt_def.get("expected_tool_type"),
+                        expects_tool=expects_tool,
+                        expected_tool_type=expected_tool_type,
                     )
                     latency = latency_from_response(data, cumulative_ms=cumulative_ms)
 
@@ -232,8 +246,9 @@ class ComponentBenchmarkRunner:
                                 category=prompt_def["category"],
                                 id=prompt_def["id"],
                                 text=turn_text,
-                                expects_tool=bool(prompt_def.get("expects_tool")),
-                                expected_tool_type=prompt_def.get("expected_tool_type"),
+                                expects_tool=expects_tool,
+                                expected_tool_type=expected_tool_type,
+                                expected_status=expected_status,
                             ),
                             path=path,
                             turn_index=turn_index,
@@ -296,6 +311,10 @@ class ComponentBenchmarkRunner:
         error: str,
         path: str = "text",
     ) -> BenchmarkResultRow:
+        expects_tool, expected_tool_type = turn_tool_expectations(
+            prompt_def, turn_index, turn_count
+        )
+        expected_status = turn_expected_status(prompt_def, turn_index, turn_count)
         return BenchmarkResultRow(
             run_id=run_id,
             timestamp=utc_now_iso(),
@@ -314,8 +333,9 @@ class ComponentBenchmarkRunner:
                 category=prompt_def["category"],
                 id=prompt_def["id"],
                 text=turn_text,
-                expects_tool=bool(prompt_def.get("expects_tool")),
-                expected_tool_type=prompt_def.get("expected_tool_type"),
+                expects_tool=expects_tool,
+                expected_tool_type=expected_tool_type,
+                expected_status=expected_status,
             ),
             path=path,
             turn_index=turn_index,
@@ -323,8 +343,8 @@ class ComponentBenchmarkRunner:
             latency_ms=latency_from_response({}),
             tool_reliability=evaluate_tool_reliability(
                 {},
-                expects_tool=bool(prompt_def.get("expects_tool")),
-                expected_tool_type=prompt_def.get("expected_tool_type"),
+                expects_tool=expects_tool,
+                expected_tool_type=expected_tool_type,
             ),
             status="error",
             error=error,
@@ -339,6 +359,9 @@ class ComponentBenchmarkRunner:
         path: str = "text",
     ) -> BenchmarkResultRow:
         turn_text = prompt_def["turns"][0]
+        turn_count = len(prompt_def["turns"])
+        expects_tool, expected_tool_type = turn_tool_expectations(prompt_def, 0, turn_count)
+        expected_status = turn_expected_status(prompt_def, 0, turn_count)
         mock_latency: dict[str, float | None] = {
             "llm_call": 120.0,
             "tool_call": 5.0,
@@ -371,18 +394,19 @@ class ComponentBenchmarkRunner:
                 category=prompt_def["category"],
                 id=prompt_def["id"],
                 text=turn_text,
-                expects_tool=bool(prompt_def.get("expects_tool")),
-                expected_tool_type=prompt_def.get("expected_tool_type"),
+                expects_tool=expects_tool,
+                expected_tool_type=expected_tool_type,
+                expected_status=expected_status,
             ),
             path=path,
             turn_index=0,
-            turn_count=len(prompt_def["turns"]),
+            turn_count=turn_count,
             latency_ms=latency_from_response({"latency_ms": mock_latency}),
             tool_reliability=evaluate_tool_reliability(
                 {},
-                expects_tool=bool(prompt_def.get("expects_tool")),
-                expected_tool_type=prompt_def.get("expected_tool_type"),
+                expects_tool=expects_tool,
+                expected_tool_type=expected_tool_type,
             ),
-            status="success",
+            status=expected_status if expected_status in ("success", "ended") else "success",
             error=None,
         )

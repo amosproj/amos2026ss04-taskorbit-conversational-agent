@@ -154,9 +154,10 @@ def test_data_extraction_result_incorporated_false() -> None:
             category="long_with_tool",
         )
     )
-    assert verdict["reliability_pass"] is True  # tool_correct; incorporation is advisory
+    assert verdict["reliability_pass"] is False
     assert verdict["tool_correct"] is True
     assert verdict["result_incorporated"] is False
+    assert "not reflected in reply" in verdict["reason"]
 
 
 # ---------------------------------------------------------------------------

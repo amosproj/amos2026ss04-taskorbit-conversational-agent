@@ -18,6 +18,7 @@ from typing import Any
 
 from reliability import summarize_reliability
 from recommendation import format_recommendation_section
+from turn_expectations import response_status_ok
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,13 @@ _INDEX_COLUMNS = [
 ]
 
 _SUCCESS_STATUSES: frozenset[str] = frozenset({"success", "ended"})
+
+
+def _row_succeeded(row: dict[str, Any]) -> bool:
+    """True when status matches per-turn expected_status stored on the prompt row."""
+    if (row.get("prompt") or {}).get("expected_status"):
+        return response_status_ok(row)
+    return row.get("status") in _SUCCESS_STATUSES
 
 
 class BenchmarkAggregator:
@@ -141,7 +149,7 @@ class BenchmarkAggregator:
         """Compute index.csv fields for one (run_id, config_label, path) group."""
         totals = self._latency_totals(rows)
 
-        success_count = sum(1 for r in rows if r.get("status") in _SUCCESS_STATUSES)
+        success_count = sum(1 for r in rows if _row_succeeded(r))
         total_trials = len(rows)
         failure_count = total_trials - success_count
         success_rate = success_count / total_trials if total_trials else 0.0
@@ -295,7 +303,7 @@ class BenchmarkAggregator:
                 by_cat.setdefault(cat, []).append(row)
 
             for cat, cat_rows in sorted(by_cat.items()):
-                n_success = sum(1 for r in cat_rows if r.get("status") in _SUCCESS_STATUSES)
+                n_success = sum(1 for r in cat_rows if _row_succeeded(r))
                 totals = self._latency_totals(cat_rows)
                 avg_str = f"{statistics.mean(totals):.1f} ms avg" if totals else "no latency data"
                 lines.append(

@@ -6,6 +6,7 @@
     "expects_tool": false,
     "expected_tool_type": null,
     "expected_status": "success",
+    "intent_name": "general_inquiry",
     "agent_template": "general_inquiry"
   },
   {
@@ -15,6 +16,7 @@
     "expects_tool": false,
     "expected_tool_type": null,
     "expected_status": "success",
+    "intent_name": "general_inquiry",
     "agent_template": "general_inquiry"
   },
   {
@@ -24,6 +26,7 @@
     "expects_tool": true,
     "expected_tool_type": "agent_transfer",
     "expected_status": "success",
+    "intent_name": "general_inquiry",
     "agent_template": "transfer_technical_support"
   },
   {
@@ -33,6 +36,7 @@
     "expects_tool": true,
     "expected_tool_type": "end_call",
     "expected_status": "ended",
+    "intent_name": "general_inquiry",
     "agent_template": "end_call"
   },
   {
@@ -46,6 +50,7 @@
     "expects_tool": false,
     "expected_tool_type": null,
     "expected_status": "success",
+    "intent_name": "technical_support_request",
     "agent_template": "technical_support"
   },
   {
@@ -60,7 +65,9 @@
     ],
     "expects_tool": true,
     "expected_tool_type": "data_extraction",
+    "tool_on_final_turn_only": true,
     "expected_status": "success",
+    "intent_name": "book_service_appointment",
     "agent_template": "appointment_booking"
   }
 ]
