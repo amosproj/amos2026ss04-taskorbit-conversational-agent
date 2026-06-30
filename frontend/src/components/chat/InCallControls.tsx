@@ -61,6 +61,8 @@ type Props = {
   onMicError: (message: string | null) => void;
   agentMuted: boolean;
   onAgentMutedChange: (muted: boolean) => void;
+  /** When true, the text box is disabled — voice-only turns during a LiveKit call. */
+  disableTextInput?: boolean;
 };
 
 export function InCallControls({
@@ -74,6 +76,7 @@ export function InCallControls({
   onMicError,
   agentMuted,
   onAgentMutedChange,
+  disableTextInput = false,
 }: Props) {
   const mic = useMicRecorder();
   const [draft, setDraft] = useState("");
@@ -406,7 +409,10 @@ export function InCallControls({
 
   const thinking = status === "thinking";
   const awaitingConfirmation = status === "awaiting_confirmation";
-  const textDisabled = awaitingConfirmation || (status !== "idle_in_call" && status !== "speaking");
+  const textDisabled =
+    disableTextInput ||
+    awaitingConfirmation ||
+    (status !== "idle_in_call" && status !== "speaking");
 
   // Allow stopping continuous mode at any non-network phase; keep disabled
   // only for actual connection states and while the mic track is initialising.
@@ -447,9 +453,11 @@ export function InCallControls({
               }
             }}
             placeholder={
-              awaitingConfirmation
-                ? "Approve or deny the action above to continue…"
-                : "Ask from Orbit."
+              disableTextInput
+                ? "Use the mic to speak during a voice call."
+                : awaitingConfirmation
+                  ? "Approve or deny the action above to continue…"
+                  : "Ask from Orbit."
             }
             autoComplete="off"
             disabled={textDisabled}

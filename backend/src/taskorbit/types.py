@@ -125,6 +125,28 @@ class PersonaConstraints(BaseModel):
     refusal_template: str | None = None
 
 
+def default_persona_constraints() -> PersonaConstraints:
+    """Baseline guardrail applied to agents created without their own (#168).
+
+    Keeps a brand-new / blank agent from being unguarded: it anchors the agent
+    to the role described by its name and persona and gives a generic polite
+    refusal. ``out_of_scope`` is left empty so domain-specific agents (e.g. a
+    cooking assistant) are not blocked until the creator adds explicit rules.
+    Creators can override any of this in the config UI.
+    """
+    return PersonaConstraints(
+        scope=(
+            "Stay within the role, tasks, and topics described by this agent's "
+            "name and persona. Treat clearly unrelated requests as out of scope."
+        ),
+        out_of_scope=[],
+        refusal_template=(
+            "I'm sorry, that's outside what I can help with here. Is there "
+            "something related to my role that I can help you with?"
+        ),
+    )
+
+
 class WorkflowRuleWhen(BaseModel):
     """Condition for selecting a workflow branch (evaluated after intent routing)."""
 
@@ -203,6 +225,18 @@ class AgentConfig(BaseModel):
         ),
     )
     allowed_handoffs: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _workflow_rules_else_must_be_last(self) -> AgentConfig:
+        rules = self.workflow_rules or []
+        if sum(1 for r in rules if r.when.else_branch) > 1:
+            raise ValueError("workflow_rules: only one else_branch rule is allowed")
+        for index, rule in enumerate(rules):
+            if rule.when.else_branch and index != len(rules) - 1:
+                raise ValueError(
+                    "workflow_rules: else_branch rule must be the last rule in the list"
+                )
+        return self
 
 
 # ---------------------------------------------------------------------------

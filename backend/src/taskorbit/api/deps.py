@@ -5,13 +5,18 @@ from __future__ import annotations
 from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from taskorbit.constants import DEV_USER_EMAIL
 from taskorbit.database import get_session
 from taskorbit.database.crud import get_user_by_email
 from taskorbit.logging.setup import get_logger
 
 logger = get_logger(__name__)
 
-_DEV_USER_EMAIL = "dev@taskorbit.local"
+# ---------------------------------------------------------------------------
+# Hardcoded dev user — swap this entire function for JWT logic when ready.
+# ---------------------------------------------------------------------------
+
+_DEV_USER_EMAIL = DEV_USER_EMAIL
 
 
 async def get_current_user_id(

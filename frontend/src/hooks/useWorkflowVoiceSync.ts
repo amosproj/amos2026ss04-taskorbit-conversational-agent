@@ -36,7 +36,7 @@ export function WorkflowVoiceSyncBridge({ onRegister }: Props): null {
           type: "workflow_state",
           selected_agent: state.selected_agent ?? null,
           completed_workflow_steps: state.completed_workflow_steps ?? [],
-          clear_pending_confirmation: state.clear_pending_confirmation ?? true,
+          clear_pending_confirmation: state.clear_pending_confirmation ?? false,
         }),
       );
       await room.localParticipant.publishData(payload, {
