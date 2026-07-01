@@ -6,7 +6,7 @@ import json
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +19,7 @@ from taskorbit.database.crud import (
     create_conversation_message,
     create_slot_extractions,
     create_tool_execution,
+    delete_conversation,
     enrich_request_dependency_configs,
     get_conversation,
     get_conversation_history,
@@ -379,3 +380,15 @@ async def get_conversation_messages(
     except Exception as e:
         logger.error("get_messages_failed", error=str(e), conversation_id=conversation_id)
         raise HTTPException(status_code=500, detail="Failed to retrieve messages") from e
+
+
+@router.delete("/{conversation_id}", response_class=Response)
+async def delete_conversation_route(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> Response:
+    """Permanently delete a conversation and all its messages, tool executions, and slot extractions."""
+    deleted = await delete_conversation(db, conversation_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return Response(status_code=204)
