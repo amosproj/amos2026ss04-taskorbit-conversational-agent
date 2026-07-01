@@ -218,7 +218,9 @@ async def _sse_generator(
                 conversation_id=request.conversation_id,
             )
 
-    # Short-circuit paths put the reply only in meta.reply without streaming chunks.
+    # Short-circuit paths (clarification, workflow confirmation, handoff-blocked,
+    # manual transfer) put the reply only in meta.reply without yielding chunks.
+    # Emit the text now so the frontend can render it.
     if chunks_sent == 0 and meta.reply and meta.reply.content:
         yield f"data: {json.dumps({'type': 'chunk', 'text': meta.reply.content})}\n\n"
 

@@ -79,6 +79,9 @@ Thumbs.db
 LOCAL_NOTES.md
 TASKORBIT_PROJECT_CONTEXT.md
 
+# Benchmark run artifacts (generated locally / in CI)
+benchmarks/results/
+
 # TypeScript build cache (regenerated on every build, never commit)
 frontend/tsconfig.*.tsbuildinfo
 
