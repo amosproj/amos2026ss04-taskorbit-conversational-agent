@@ -120,6 +120,12 @@ Three quality-gate workflows run on every push and pull request. A fourth deploy
 
 Each workflow is split into named stages chained with `needs:`, so a single failing stage shows up clearly in the GitHub Checks UI. The full team-facing guide — local commands, troubleshooting, and how to extend the pipeline — lives in [`Documentation/ci-cd.md`](Documentation/ci-cd.md). 
 
+## SBOM & Legal Notices
+
+Third-party dependencies are tracked with [Syft](https://github.com/anchore/syft).
+See [Documentation/sbom.md](Documentation/sbom.md). Legal Notices are available
+in the application footer.
+
 ### Pre-commit Hooks
 
 The same lint/format checks run automatically on every `git commit` via [pre-commit](https://pre-commit.com/) (config: [`.pre-commit-config.yaml`](.pre-commit-config.yaml)). `pre-commit` is already declared in `backend/pyproject.toml`'s dev dependencies, so a plain `poetry install` in `backend/` is enough to install it.

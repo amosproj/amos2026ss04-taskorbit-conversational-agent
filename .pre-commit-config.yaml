@@ -30,7 +30,8 @@
 exclude: |
   (?x)^(
     .*\.tsv|
-    .*\.tsbuildinfo
+    .*\.tsbuildinfo|
+    Documentation/sbom\.cyclonedx\.json
   )$
 
 repos:
