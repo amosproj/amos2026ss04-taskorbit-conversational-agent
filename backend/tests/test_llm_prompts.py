@@ -53,7 +53,7 @@ def test_guardrails_scope_only_appended():
     """Only ``scope`` set → only the Scope line is appended."""
     constraints = PersonaConstraints(scope="TechStore customer service.")
     result = with_persona_guardrails(BASE_PROMPT, constraints)
-    assert result.startswith(BASE_PROMPT)
+    assert BASE_PROMPT in result
     # Asserting against the new imperative header
     assert "CORE CONSTRAINT - Authorized Scope: TechStore customer service." in result
     assert "Forbidden Topics" not in result
@@ -100,5 +100,22 @@ def test_guardrails_preserves_original_prompt():
     """Original prompt body is never mutated, only appended to."""
     constraints = PersonaConstraints(scope="A scope.")
     result = with_persona_guardrails(BASE_PROMPT, constraints)
-    assert result.startswith(BASE_PROMPT)
+    assert BASE_PROMPT in result
     assert "\n\n" in result
+
+
+def test_guardrails_top_priority_header_leads_prompt():
+    """#168: when guardrails are present, a top-priority stay-in-role directive
+    leads the prompt (primacy), the original body is preserved in the middle,
+    and the detailed scope/forbidden/refusal block still trails it (recency)."""
+    constraints = PersonaConstraints(
+        scope="TechStore customer service.",
+        out_of_scope=["recipes"],
+        refusal_template="I can only help with TechStore.",
+    )
+    result = with_persona_guardrails(BASE_PROMPT, constraints)
+    assert result.startswith("TOP PRIORITY - STAY IN ROLE:")
+    header_idx = result.index("TOP PRIORITY - STAY IN ROLE:")
+    base_idx = result.index(BASE_PROMPT)
+    forbidden_idx = result.index("CORE CONSTRAINT - Forbidden Topics")
+    assert header_idx < base_idx < forbidden_idx

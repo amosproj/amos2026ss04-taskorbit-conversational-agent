@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { useActiveAgent } from "@/components/active-agent-provider";
 import { AdvancedSection } from "@/components/agent-config/AdvancedSection";
+import { PersonaGuardrailsSection } from "@/components/agent-config/PersonaGuardrailsSection";
 import { ConfirmationsSection } from "@/components/agent-config/ConfirmationsSection";
 import { IdentitySection } from "@/components/agent-config/IdentitySection";
 import { InstructionsSection } from "@/components/agent-config/InstructionsSection";
@@ -28,7 +29,6 @@ import {
   deleteAgentConfig,
   listAgentConfigs,
   loadAgentConfig,
-  saveAgentConfig,
   updateAgentConfig,
   type SavedAgentConfigSummary,
 } from "@/lib/agentConfigApi";
@@ -36,6 +36,7 @@ import { EMPTY_AGENT, JOHN_DOE_AGENT } from "@/lib/mockAgents";
 import { cn } from "@/lib/utils";
 import {
   backendToFrontendAgent,
+  createUserAgent,
   customizeUserAgent,
   fetchUserAgents,
   type UserAgentEntry,
@@ -63,7 +64,8 @@ export function AgentConfigPage() {
   const [isListLoading, setIsListLoading] = useState(false);
   const [userAgents, setUserAgents] = useState<UserAgentEntry[]>([]);
   // Tracks whether the currently-loaded agent came from /v1/user-agents.
-  // Format: "ua:<template_id>" — used to route Save → customizeUserAgent.
+  // Format: "ua:<db_row_id>" — the actual DB primary key, used to route
+  // Save/Update to PUT /v1/user-agents/{db_row_id} for by-id updates.
   const [activeUserAgentId, setActiveUserAgentId] = useState<string | null>(
     loadedConfigId?.startsWith("ua:") ? loadedConfigId.slice(3) : null,
   );
@@ -107,7 +109,10 @@ export function AgentConfigPage() {
 
   const loadUserAgent = (entry: UserAgentEntry) => {
     const converted = backendToFrontendAgent(entry);
-    const uaId = entry.template_id ?? entry.id;
+    // Use entry.id (DB primary key) so subsequent saves target the exact row.
+    // For built-in templates entry.id === entry.template_id, so the clone path
+    // still fires correctly on first save.
+    const uaId = entry.id;
     setActiveAgent(converted, `ua:${uaId}`);
     setActiveUserAgentId(uaId);
     setIsLoadedBuiltIn(!entry.is_customized);
@@ -142,6 +147,7 @@ export function AgentConfigPage() {
         variables: raw.variables ?? {},
         engine: raw.engine ?? {},
         workflow_dependencies: raw.workflow_dependencies ?? [],
+        workflow_rules: raw.workflow_rules,
         allowed_handoffs: raw.allowed_handoffs ?? [],
       };
       setActiveAgent(normalized, saved.id);
@@ -196,32 +202,21 @@ export function AgentConfigPage() {
       });
       return;
     }
-    // If a user agent is active, persist via copy-on-write to /v1/user-agents.
-    if (activeUserAgentId) {
-      try {
-        const saved = await customizeUserAgent(activeUserAgentId, agent);
-        const newUaId = saved.template_id ?? saved.id;
-        setActiveAgent(backendToFrontendAgent(saved), `ua:${newUaId}`);
-        setActiveUserAgentId(newUaId);
-        setIsLoadedBuiltIn(false);
-        toast.success("Agent saved.", { description: `Saved "${saved.name}".` });
-        const updated = await fetchUserAgents();
-        setUserAgents(updated);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Unknown error.";
-        toast.error("Could not save agent.", { description: message });
-      }
-      return;
-    }
+    // Always POST to create a fresh row — never touch whatever agent is
+    // currently loaded. This is the "Save as new" contract: activeUserAgentId
+    // is intentionally ignored here so Step C is not overwritten when the user
+    // fills in Step B and clicks "Save as new".
     try {
-      const saved = await saveAgentConfig(agent);
-      toast.success("Configuration saved.", {
-        description: `Saved as "${saved.name}".`,
-      });
-      void refreshList();
+      const saved = await createUserAgent(agent);
+      setActiveAgent(backendToFrontendAgent(saved), `ua:${saved.id}`);
+      setActiveUserAgentId(saved.id);
+      setIsLoadedBuiltIn(false);
+      toast.success("Agent saved.", { description: `Saved "${saved.name}".` });
+      const updated = await fetchUserAgents();
+      setUserAgents(updated);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error.";
-      toast.error("Could not save configuration.", { description: message });
+      toast.error("Could not save agent.", { description: message });
     }
   };
 
@@ -290,6 +285,11 @@ export function AgentConfigPage() {
           showErrors={showErrors}
         />
 
+        <PersonaGuardrailsSection
+          value={agent.persona_constraints}
+          onChange={(persona_constraints) => setAgent({ ...agent, persona_constraints })}
+        />
+
         <PipelineSection
           value={{ stt: agent.stt, tts: agent.tts, llm: agent.llm }}
           onChange={(next) => setAgent({ ...agent, ...next })}
@@ -299,11 +299,14 @@ export function AgentConfigPage() {
 
         <WorkflowSection
           currentAgentId={agent.agent_id}
+          userAgentEntries={userAgents}
           workflowDependencies={agent.workflow_dependencies}
+          workflowRules={agent.workflow_rules}
           allowedHandoffs={agent.allowed_handoffs}
           onWorkflowDependenciesChange={(workflow_dependencies) =>
             setAgent({ ...agent, workflow_dependencies })
           }
+          onWorkflowRulesChange={(workflow_rules) => setAgent({ ...agent, workflow_rules })}
           onAllowedHandoffsChange={(allowed_handoffs) => setAgent({ ...agent, allowed_handoffs })}
           onValidationChange={setWorkflowValidation}
         />
@@ -356,7 +359,7 @@ export function AgentConfigPage() {
                           onClick={() => loadUserAgent(entry)}
                           className={cn(
                             "flex items-center gap-2",
-                            activeUserAgentId === (entry.template_id ?? entry.id) && "bg-muted",
+                            activeUserAgentId === entry.id && "bg-muted",
                           )}
                         >
                           <Bot className="h-3 w-3 shrink-0 text-muted-foreground" />
@@ -380,7 +383,7 @@ export function AgentConfigPage() {
                           onClick={() => loadUserAgent(entry)}
                           className={cn(
                             "flex items-center gap-2",
-                            activeUserAgentId === (entry.template_id ?? entry.id) && "bg-muted",
+                            activeUserAgentId === entry.id && "bg-muted",
                           )}
                         >
                           <Bot className="h-3 w-3 shrink-0 text-muted-foreground" />

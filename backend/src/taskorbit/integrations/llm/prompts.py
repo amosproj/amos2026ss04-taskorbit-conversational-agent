@@ -18,13 +18,17 @@ def with_persona_guardrails(
     system_prompt: str,
     constraints: PersonaConstraints | None,
 ) -> str:
-    """Return ``system_prompt`` with persona scope, out-of-scope domains, and
-    refusal template appended.
+    """Return ``system_prompt`` wrapped with persona guardrails (#69, #168).
 
-    No-op (returns ``system_prompt`` unchanged) when ``constraints`` is None
-    or when every field on the constraints object is empty. This keeps the
-    behaviour fully backward-compatible for agent configs that do not opt
-    into the guardrails (ticket #69).
+    Leads with a concise top-priority "stay in role" directive (primacy) and
+    appends the detailed authorized-scope, forbidden-topics, and refusal-template
+    block (recency). The top directive is the primary prompt guard in
+    environments where the code-level scope check is disabled (e.g. staging /
+    production), so it is placed where the model weights it most.
+
+    No-op (returns ``system_prompt`` unchanged) when ``constraints`` is None or
+    when every field on the constraints object is empty. This keeps the behaviour
+    fully backward-compatible for agent configs that do not opt into guardrails.
     """
     if constraints is None:
         return system_prompt
@@ -49,4 +53,13 @@ def with_persona_guardrails(
 
     if not lines:
         return system_prompt
-    return system_prompt + "\n\n" + "\n".join(lines)
+
+    # Top-anchored guardrail (#168): models weight the earliest instructions most,
+    # and where the code-level scope check is off this is the primary guard.
+    header = (
+        "TOP PRIORITY - STAY IN ROLE: You are strictly limited to your authorized "
+        "scope (defined below). If the user's request falls outside that scope or "
+        "touches a forbidden topic, do NOT answer it; politely decline and redirect "
+        "using your required refusal phrase."
+    )
+    return header + "\n\n" + system_prompt + "\n\n" + "\n".join(lines)

@@ -3,14 +3,14 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from taskorbit.agent_config_util import agent_config_from_stored_blob, logical_id_from_stored_blob
+from taskorbit.agent_config_util import agent_config_from_stored_blob
 from taskorbit.logging.setup import get_logger
-from taskorbit.types import AgentConfig, ConversationRequest
+from taskorbit.types import AgentConfig, ConversationRequest, default_persona_constraints
 
 from .models import (
     AgentConfiguration,
@@ -23,6 +23,52 @@ from .models import (
 )
 
 logger = get_logger(__name__)
+
+
+def _config_logical_id_matches(logical_id: str):
+    """Match workflow logical ids stored in the JSON config blob (agent_id or id)."""
+    return or_(
+        AgentConfiguration.config["agent_id"].as_string() == logical_id,
+        AgentConfiguration.config["id"].as_string() == logical_id,
+    )
+
+
+async def _find_agent_config_by_logical_id(
+    db: AsyncSession,
+    logical_id: str,
+    user_id: int,
+) -> AgentConfiguration | None:
+    """Look up a saved agent row by logical id, preferring the user's copy."""
+    try:
+        user_result = await db.execute(
+            select(AgentConfiguration)
+            .where(
+                AgentConfiguration.user_id == user_id,
+                _config_logical_id_matches(logical_id),
+            )
+            .limit(1)
+        )
+        row = user_result.scalar_one_or_none()
+        if row is not None:
+            return row
+
+        admin_result = await db.execute(
+            select(AgentConfiguration)
+            .where(
+                AgentConfiguration.user_id.is_(None),
+                _config_logical_id_matches(logical_id),
+            )
+            .limit(1)
+        )
+        return admin_result.scalar_one_or_none()
+    except SQLAlchemyError as e:
+        logger.error(
+            "find_agent_config_by_logical_id_failed",
+            logical_id=logical_id,
+            user_id=user_id,
+            error=str(e),
+        )
+        return None
 
 
 # ============ USER CRUD ============
@@ -466,6 +512,24 @@ def list_agent_configurations(
         return []
 
 
+def _ensure_persona_constraints(config: dict) -> dict:
+    """Return ``config`` with a sensible default ``persona_constraints`` when it
+    has none, so a newly created user agent is never left unguarded (#168).
+
+    A creator's own constraints (any of scope / out_of_scope / refusal_template
+    populated) are left untouched; only a missing or fully-empty block is filled.
+    Applied on the "Save as new" user-agent path only; the ``/v1/agent-configs``
+    preset route stores an opaque FE blob verbatim (round-trip contract) and is
+    left untouched.
+    """
+    existing = config.get("persona_constraints")
+    if isinstance(existing, dict) and any(
+        existing.get(k) for k in ("scope", "out_of_scope", "refusal_template")
+    ):
+        return config
+    return {**config, "persona_constraints": default_persona_constraints().model_dump()}
+
+
 def create_agent_configuration(db: Session, name: str, config: dict) -> AgentConfiguration | None:
     try:
         db_config = AgentConfiguration(id=uuid4().hex, name=name, config=config)
@@ -592,6 +656,39 @@ async def create_user_agents_from_templates(
         return []
 
 
+async def create_user_agent(
+    db: AsyncSession,
+    user_id: int,
+    name: str,
+    config: dict,
+) -> AgentConfiguration | None:
+    """Create a brand-new user agent row, independent of any template.
+
+    Used by the "Save as new" path so a fresh INSERT always happens — the
+    caller's currently-loaded agent is never touched.
+    """
+    try:
+        config = _ensure_persona_constraints(config)
+        agent = AgentConfiguration(
+            id=uuid4().hex,
+            user_id=user_id,
+            template_id=None,
+            name=name,
+            config=config,
+            is_default=False,
+            is_customized=True,
+        )
+        db.add(agent)
+        await db.commit()
+        await db.refresh(agent)
+        logger.info("user_agent_created", agent_id=agent.id, user_id=user_id)
+        return agent
+    except SQLAlchemyError as e:
+        logger.error("create_user_agent_failed", user_id=user_id, error=str(e))
+        await db.rollback()
+        return None
+
+
 async def list_user_agents(db: AsyncSession, user_id: int) -> list[AgentConfiguration]:
     try:
         result = await db.execute(
@@ -635,27 +732,10 @@ async def resolve_dependency_agent_config(
         return agent_config_from_stored_blob(row.config)
 
     try:
-        result = await db.execute(
-            select(AgentConfiguration).where(
-                (AgentConfiguration.user_id == user_id) | (AgentConfiguration.user_id.is_(None))
-            )
-        )
-        user_blob: dict | None = None
-        admin_blob: dict | None = None
-        for candidate in result.scalars().all():
-            blob = candidate.config or {}
-            if logical_id_from_stored_blob(blob) != logical_id:
-                continue
-            if candidate.user_id == user_id:
-                user_blob = blob
-                break
-            if candidate.user_id is None and admin_blob is None:
-                admin_blob = blob
-
-        chosen = user_blob or admin_blob
-        if chosen is None:
+        matched = await _find_agent_config_by_logical_id(db, logical_id, user_id)
+        if matched is None:
             return None
-        return agent_config_from_stored_blob(chosen)
+        return agent_config_from_stored_blob(matched.config or {})
     except SQLAlchemyError as e:
         logger.error(
             "resolve_dependency_agent_config_failed",
@@ -671,28 +751,63 @@ async def enrich_request_dependency_configs(
     db: AsyncSession,
     user_id: int,
 ) -> ConversationRequest:
-    """Attach resolved prerequisite AgentConfigs to a conversation request."""
-    if not request.agent_config.workflow_dependencies:
-        return request
+    """Attach resolved prerequisite AgentConfigs to a conversation request (transitive)."""
+    from collections import deque
 
-    dep_configs: dict[str, AgentConfig] = {}
-    for dep_id in request.agent_config.workflow_dependencies:
-        if dep_id in request.dependency_configs:
+    from taskorbit.workflow_rules import collect_workflow_dependency_ids
+
+    # Use a worklist to find all transitive dependencies
+    all_dep_ids: set[str] = set()
+    new_dep_configs: dict[str, AgentConfig] = {}
+
+    # Start with the entry agent's dependencies
+    to_check: deque[str] = deque(collect_workflow_dependency_ids(request.agent_config))
+
+    logger.debug(
+        "enrich_dependencies_start",
+        entry_agent=request.agent_config.id,
+        initial_to_check=to_check,
+        user_id=user_id,
+    )
+
+    while to_check:
+        dep_id = to_check.popleft()
+        if dep_id in all_dep_ids:
             continue
-        resolved = await resolve_dependency_agent_config(db, dep_id, user_id)
-        if resolved:
-            dep_configs[dep_id] = resolved
-        else:
-            logger.warning(
-                "workflow_dependency_config_unresolved",
-                dependency=dep_id,
-                conversation_id=request.conversation_id,
-            )
+        all_dep_ids.add(dep_id)
 
-    if not dep_configs:
+        # Check if already in request or new_dep_configs
+        resolved = request.dependency_configs.get(dep_id) or new_dep_configs.get(dep_id)
+        if not resolved:
+            resolved = await resolve_dependency_agent_config(db, dep_id, user_id)
+            if resolved:
+                new_dep_configs[dep_id] = resolved
+                logger.debug("enrich_dependency_resolved", id=dep_id, name=resolved.name)
+            else:
+                logger.warning(
+                    "workflow_dependency_config_unresolved",
+                    dependency=dep_id,
+                    conversation_id=request.conversation_id,
+                )
+
+        # If we have a config, add its dependencies to the worklist
+        if resolved:
+            nested_deps = collect_workflow_dependency_ids(resolved)
+            if nested_deps:
+                logger.debug("enrich_dependency_nested_found", parent=dep_id, nested=nested_deps)
+                to_check.extend(nested_deps)
+
+    if not new_dep_configs:
         return request
+
+    logger.info(
+        "enrich_dependencies_complete",
+        conversation_id=request.conversation_id,
+        resolved_ids=list(new_dep_configs.keys()),
+    )
+
     return request.model_copy(
-        update={"dependency_configs": {**request.dependency_configs, **dep_configs}}
+        update={"dependency_configs": {**request.dependency_configs, **new_dep_configs}}
     )
 
 
@@ -714,7 +829,7 @@ async def update_user_agent(
             agent.config = config
         if is_default is not None:
             agent.is_default = is_default
-        agent.updated_at = datetime.now()
+        agent.updated_at = datetime.now(UTC)
         await db.commit()
         await db.refresh(agent)
         return agent

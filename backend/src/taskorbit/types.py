@@ -125,6 +125,58 @@ class PersonaConstraints(BaseModel):
     refusal_template: str | None = None
 
 
+def default_persona_constraints() -> PersonaConstraints:
+    """Baseline guardrail applied to agents created without their own (#168).
+
+    Keeps a brand-new / blank agent from being unguarded: it anchors the agent
+    to the role described by its name and persona and gives a generic polite
+    refusal. ``out_of_scope`` is left empty so domain-specific agents (e.g. a
+    cooking assistant) are not blocked until the creator adds explicit rules.
+    Creators can override any of this in the config UI.
+    """
+    return PersonaConstraints(
+        scope=(
+            "Stay within the role, tasks, and topics described by this agent's "
+            "name and persona. Treat clearly unrelated requests as out of scope."
+        ),
+        out_of_scope=[],
+        refusal_template=(
+            "I'm sorry, that's outside what I can help with here. Is there "
+            "something related to my role that I can help you with?"
+        ),
+    )
+
+
+class WorkflowRuleWhen(BaseModel):
+    """Condition for selecting a workflow branch (evaluated after intent routing)."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    intent: str | None = Field(
+        default=None,
+        description="Match when detected intent name equals this value (e.g. technical_support_request).",
+    )
+    agent_name: str | None = Field(
+        default=None,
+        description="Match when routed agent_name equals this value (e.g. technical_support).",
+    )
+    else_branch: bool = Field(
+        default=False,
+        alias="else",
+        description="When true, matches if no prior rule matched in this config.",
+    )
+
+
+class WorkflowRule(BaseModel):
+    """One conditional branch: when matched, run these workflow dependency blocks."""
+
+    when: WorkflowRuleWhen
+    dependencies: list[str] = Field(
+        default_factory=list,
+        description="Agent ids (workflow blocks) that must complete for this branch.",
+    )
+
+
 class ContextLimitConfig(BaseModel):
     """Configuration for conversation history limits and truncation.
 
@@ -165,7 +217,26 @@ class AgentConfig(BaseModel):
     persona_constraints: PersonaConstraints | None = None
     context_limit: ContextLimitConfig | None = None
     workflow_dependencies: list[str] = Field(default_factory=list)
+    workflow_rules: list[WorkflowRule] = Field(
+        default_factory=list,
+        description=(
+            "Conditional branches evaluated after intent routing. "
+            "When non-empty, overrides workflow_dependencies for the matched turn."
+        ),
+    )
     allowed_handoffs: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _workflow_rules_else_must_be_last(self) -> AgentConfig:
+        rules = self.workflow_rules or []
+        if sum(1 for r in rules if r.when.else_branch) > 1:
+            raise ValueError("workflow_rules: only one else_branch rule is allowed")
+        for index, rule in enumerate(rules):
+            if rule.when.else_branch and index != len(rules) - 1:
+                raise ValueError(
+                    "workflow_rules: else_branch rule must be the last rule in the list"
+                )
+        return self
 
 
 # ---------------------------------------------------------------------------

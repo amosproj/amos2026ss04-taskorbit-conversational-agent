@@ -406,3 +406,148 @@ class TestOrchestratorSlotIntegration:
         assert "Test Agent" in prompt
         assert "- Caller Name: John Doe" in prompt
         assert "Still need to collect: Email Address, Phone Number" in prompt
+
+
+# ============ TESTS FOR EMAIL NORMALIZATION ============
+
+
+from taskorbit.slots.extractor import _SLOT_VALIDATORS, _normalize_email_value  # noqa: E402
+
+
+class TestNormalizeEmailValue:
+    """Unit tests for _normalize_email_value."""
+
+    def test_strips_trailing_period(self):
+        assert _normalize_email_value("alice@gmail.com.") == "alice@gmail.com"
+
+    def test_strips_trailing_comma(self):
+        assert _normalize_email_value("alice@gmail.com,") == "alice@gmail.com"
+
+    def test_strips_trailing_semicolon(self):
+        assert _normalize_email_value("alice@gmail.com;") == "alice@gmail.com"
+
+    def test_spoken_at_the_rate(self):
+        assert _normalize_email_value("alice at the rate gmail dot com") == "alice@gmail.com"
+
+    def test_spoken_standalone_at(self):
+        assert _normalize_email_value("alice at gmail.com") == "alice@gmail.com"
+
+    def test_spoken_dot(self):
+        assert _normalize_email_value("alice@gmail dot com") == "alice@gmail.com"
+
+    def test_spaces_around_at_and_dot(self):
+        assert _normalize_email_value("alice @ gmail . com") == "alice@gmail.com"
+
+    def test_partial_smart_format_trailing_period(self):
+        # STT emits "@" but leaves trailing period from spoken sentence end
+        assert _normalize_email_value("alice@therategmail.com.") == "alice@therategmail.com"
+
+    def test_already_clean_passes_through_unchanged(self):
+        assert _normalize_email_value("alice@gmail.com") == "alice@gmail.com"
+
+    def test_subdomain_preserved(self):
+        assert _normalize_email_value("user@mail.example.co.uk") == "user@mail.example.co.uk"
+
+    def test_hyphenated_domain_preserved(self):
+        assert (
+            _normalize_email_value("first-last@company-name.com") == "first-last@company-name.com"
+        )
+
+    def test_leading_and_trailing_whitespace_stripped(self):
+        assert _normalize_email_value("  alice@gmail.com  ") == "alice@gmail.com"
+
+
+class TestEmailValidator:
+    """Tests for the tightened email validator in _SLOT_VALIDATORS."""
+
+    def test_valid_simple_email(self):
+        assert _SLOT_VALIDATORS["email"]("alice@gmail.com") is True
+
+    def test_valid_subdomain_email(self):
+        assert _SLOT_VALIDATORS["email"]("user@mail.example.co.uk") is True
+
+    def test_valid_hyphenated_email(self):
+        assert _SLOT_VALIDATORS["email"]("first-last@company-name.com") is True
+
+    def test_rejects_trailing_period(self):
+        assert _SLOT_VALIDATORS["email"]("alice@therategmail.com.") is False
+
+    def test_rejects_numeric_tld(self):
+        assert _SLOT_VALIDATORS["email"]("alice@gmail.123") is False
+
+    def test_rejects_no_at(self):
+        assert _SLOT_VALIDATORS["email"]("alicegmail.com") is False
+
+    def test_rejects_spaces(self):
+        assert _SLOT_VALIDATORS["email"]("alice @gmail.com") is False
+
+
+class TestSlotExtractorEmailNormalization:
+    """Integration tests: normalized value ends up in SlotValue.value."""
+
+    @pytest.mark.asyncio
+    async def test_spoken_at_the_rate_stored_normalized(self):
+        async def mock_llm(system_prompt, messages, llm_config):
+            return '{"email_address": "alice at the rate gmail dot com"}'
+
+        extractor = SlotExtractor(
+            llm_fn=mock_llm,
+            llm_config=LLMConfig(provider="openai", model="gpt-4o-mini"),
+        )
+        result = await extractor.extract(
+            [Message(role=MessageRole.USER, content="my email is alice at the rate gmail dot com")],
+            [{"name": "email_address", "type": "email", "required": True}],
+        )
+        assert "email_address" in result.filled
+        assert result.filled["email_address"].value == "alice@gmail.com"
+        assert result.missing == []
+
+    @pytest.mark.asyncio
+    async def test_partial_smart_format_trailing_period_stored_normalized(self):
+        # STT converts "@" but leaves trailing period; extraction LLM echoes it verbatim.
+        async def mock_llm(system_prompt, messages, llm_config):
+            return '{"email_address": "alice@therategmail.com."}'
+
+        extractor = SlotExtractor(
+            llm_fn=mock_llm,
+            llm_config=LLMConfig(provider="openai", model="gpt-4o-mini"),
+        )
+        result = await extractor.extract(
+            [Message(role=MessageRole.USER, content="my email is alice@therategmail.com.")],
+            [{"name": "email_address", "type": "email", "required": True}],
+        )
+        assert "email_address" in result.filled
+        assert result.filled["email_address"].value == "alice@therategmail.com"
+        assert result.missing == []
+
+    @pytest.mark.asyncio
+    async def test_already_clean_email_unchanged(self):
+        async def mock_llm(system_prompt, messages, llm_config):
+            return '{"email_address": "bob@example.org"}'
+
+        extractor = SlotExtractor(
+            llm_fn=mock_llm,
+            llm_config=LLMConfig(provider="openai", model="gpt-4o-mini"),
+        )
+        result = await extractor.extract(
+            [Message(role=MessageRole.USER, content="bob@example.org")],
+            [{"name": "email_address", "type": "email", "required": True}],
+        )
+        assert result.filled["email_address"].value == "bob@example.org"
+
+    @pytest.mark.asyncio
+    async def test_irreparable_email_treated_as_missing(self):
+        # After normalization the value is still invalid → slot stays missing.
+        async def mock_llm(system_prompt, messages, llm_config):
+            return '{"email_address": "notanemail"}'
+
+        extractor = SlotExtractor(
+            llm_fn=mock_llm,
+            llm_config=LLMConfig(provider="openai", model="gpt-4o-mini"),
+        )
+        result = await extractor.extract(
+            [Message(role=MessageRole.USER, content="my email is notanemail")],
+            [{"name": "email_address", "type": "email", "required": True}],
+        )
+        assert "email_address" not in result.filled
+        assert "email_address" in result.missing
