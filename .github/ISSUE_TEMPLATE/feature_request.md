@@ -25,7 +25,7 @@ assignees: ''
 
 ## DoD general criteria
 * Feature has been fully implemented
-* Feature has been merged into the mainline
+* Feature has been merged into the mainline and deployed to PROD
 * All acceptance criteria were met
 * Product owner approved features
 * All tests are passing
