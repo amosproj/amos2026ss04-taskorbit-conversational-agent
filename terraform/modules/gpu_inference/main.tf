@@ -168,8 +168,20 @@ resource "google_compute_instance" "ollama" {
           -e OLLAMA_HOST=0.0.0.0:11434 \
           -e OLLAMA_KEEP_ALIVE=-1 \
           -e OLLAMA_NUM_PARALLEL=4 \
+          -e OLLAMA_MAX_LOADED_MODELS=4 \
+          -e OLLAMA_MAX_QUEUE=100 \
+          -e OLLAMA_FLASH_ATTENTION=1 \
           ollama/ollama:${var.ollama_version}
       fi
+
+      # Wait for Ollama to be ready, then pre-pull all configured models onto local SSD.
+      # This avoids a slow first-request download; subsequent VRAM loads read from SSD (~10-15s).
+      for i in $(seq 1 30); do
+        curl -sf http://localhost:11434/api/tags &>/dev/null && break || sleep 5
+      done
+      %{~ for model in var.gpu_inference_models }
+      docker exec ollama ollama pull ${model} || true
+      %{~ endfor }
     SCRIPT
   }
 }
