@@ -18,6 +18,7 @@ from typing import Any
 
 from reliability import summarize_reliability
 from recommendation import format_recommendation_section
+from export_csv import write_readable_export
 from turn_expectations import response_status_ok
 
 logger = logging.getLogger(__name__)
@@ -222,6 +223,18 @@ class BenchmarkAggregator:
         )
         return self.index_file
 
+    def write_readable_csv_export(
+        self, rows: list[dict[str, Any]] | None = None
+    ) -> Path:
+        """Write PO-friendly benchmark-summary.csv (overall + by-category)."""
+        if rows is None:
+            rows = self.load_jsonl_rows()
+        return write_readable_export(
+            self.results_dir,
+            rows,
+            row_succeeded_fn=_row_succeeded,
+        )
+
     # ------------------------------------------------------------------
     # Component report
     # ------------------------------------------------------------------
@@ -396,6 +409,8 @@ def main() -> int:
     if not args.no_index:
         index_path = aggregator.write_index_csv(rows)
         print(f"Wrote index.csv → {index_path}")
+        summary_path = aggregator.write_readable_csv_export(rows)
+        print(f"Wrote benchmark-summary.csv → {summary_path}")
 
     if args.report or args.recommend:
         aggregator.print_report(rows, include_recommendation=True)

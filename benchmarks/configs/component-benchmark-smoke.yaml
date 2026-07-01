@@ -8,6 +8,11 @@ repetitions: 1
 concurrency: 1
 timeout_seconds: 180
 
+ollama_warmup:
+  enabled: true
+  buffer_seconds: 30
+  timeout_seconds: 300
+
 paths:
   - text
 

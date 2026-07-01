@@ -21,7 +21,8 @@ from benchmark_schema import (
     latency_from_response,
     utc_now_iso,
 )
-from component_config import ComponentBenchmarkConfig, PipelineComponentConfig
+from component_config import ComponentBenchmarkConfig, OllamaWarmupSettings, PipelineComponentConfig
+from ollama_warmup import warmup_ollama_pipeline
 from prompts import build_agent_config, load_prompt_set
 from turn_expectations import (
     response_status_ok,
@@ -84,8 +85,22 @@ class ComponentBenchmarkRunner:
                             summary["success_rows"] += 1
             return self.writer.session_file, summary
 
+        warmup_settings = config.ollama_warmup or OllamaWarmupSettings()
+        api_url = os.environ.get("BENCHMARK_API_URL", "http://localhost:8000").rstrip("/")
+        api_token = os.environ.get("BENCHMARK_API_TOKEN", "")
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if api_token:
+            headers["Authorization"] = f"Bearer {api_token}"
+
         for run_number in range(1, config.repetitions + 1):
             for pipeline in config.configs:
+                if pipeline.llm_provider == "ollama":
+                    await warmup_ollama_pipeline(
+                        api_url=api_url,
+                        pipeline=pipeline,
+                        headers=headers,
+                        settings=warmup_settings,
+                    )
                 for path in config.paths:
                     for prompt_def in prompts:
                         rows = await self._run_prompt_case(

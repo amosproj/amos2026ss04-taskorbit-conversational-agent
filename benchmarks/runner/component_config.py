@@ -10,6 +10,25 @@ import yaml
 
 
 @dataclass
+class OllamaWarmupSettings:
+    """Pre-benchmark Ollama VRAM primer + settle buffer (#68)."""
+
+    enabled: bool = True
+    buffer_seconds: float = 30.0
+    timeout_seconds: float = 300.0
+
+    @classmethod
+    def from_yaml(cls, data: dict[str, Any] | None) -> OllamaWarmupSettings:
+        if not data:
+            return cls()
+        return cls(
+            enabled=bool(data.get("enabled", True)),
+            buffer_seconds=float(data.get("buffer_seconds", 30.0)),
+            timeout_seconds=float(data.get("timeout_seconds", 300.0)),
+        )
+
+
+@dataclass
 class PipelineComponentConfig:
     """One STT + LLM + TTS combination to benchmark."""
 
@@ -47,6 +66,7 @@ class ComponentBenchmarkConfig:
     configs: list[PipelineComponentConfig]
     paths: list[str]
     tags: dict[str, str] | None = None
+    ollama_warmup: OllamaWarmupSettings | None = None
 
     @classmethod
     def from_yaml(cls, path: Path | str) -> ComponentBenchmarkConfig:
@@ -91,6 +111,7 @@ class ComponentBenchmarkConfig:
             configs=configs,
             paths=paths,
             tags=data.get("tags"),
+            ollama_warmup=OllamaWarmupSettings.from_yaml(data.get("ollama_warmup")),
         )
 
     def validate(self) -> tuple[bool, str]:
