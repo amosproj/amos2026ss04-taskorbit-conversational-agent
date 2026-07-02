@@ -18,7 +18,6 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
 from typing import Any
 
 
@@ -69,8 +68,12 @@ def extract_legal_notices(sbom_path: str) -> dict[str, Any]:
 
     extracted.sort(key=lambda c: (c["ecosystem"], c["name"].lower(), c["version"]))
 
+    generated_at = bom.get("metadata", {}).get("timestamp", "")
+    if not generated_at:
+        generated_at = "1970-01-01T00:00:00Z"
+
     return {
-        "generatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generatedAt": generated_at,
         "sbomVersion": "1.5",
         "scope": ["backend", "frontend"],
         "componentCount": len(extracted),
