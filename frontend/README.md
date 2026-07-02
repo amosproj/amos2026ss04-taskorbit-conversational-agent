@@ -109,7 +109,6 @@ frontend/
     ├── App.tsx                  # Placeholder page; replaced in #19
     ├── index.css                # Tailwind v4 + shadcn tokens
     ├── vite-env.d.ts            # Typed import.meta.env
-    ├── generated/               # Auto-generated legal notices (committed)
     ├── components/
     │   ├── ui/                  # shadcn components land here
     │   ├── chat/                # call surface (mic, transcript, controls)
