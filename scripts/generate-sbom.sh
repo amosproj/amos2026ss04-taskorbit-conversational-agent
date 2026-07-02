@@ -54,12 +54,7 @@ echo "   -> frontend scan complete ($(python3 -c "import json; print(len(json.lo
 echo "==> Merging scans into combined CycloneDX BOM ..."
 
 python3 -c "
-import hashlib
 import json
-import os
-from datetime import datetime, timezone
-
-repo_root = '$REPO_ROOT'
 
 with open('/tmp/sbom-backend.json') as f:
     be = json.load(f)
@@ -67,28 +62,9 @@ with open('/tmp/sbom-frontend.json') as f:
     fe = json.load(f)
 
 merged = dict(be)
-components = be.get('components', []) + fe.get('components', [])
-merged['components'] = components
+merged['components'] = (be.get('components', []) + fe.get('components', []))
 merged['metadata']['component']['name'] = 'taskorbit-conversational-agent'
 merged['metadata']['component']['description'] = 'TaskOrbit Conversational Agent (backend + frontend)'
-
-lock_paths = [
-    os.path.join(repo_root, 'backend/poetry.lock'),
-    os.path.join(repo_root, 'frontend/package-lock.json'),
-]
-lock_mtimes = [os.path.getmtime(path) for path in lock_paths if os.path.exists(path)]
-if lock_mtimes:
-    timestamp = datetime.fromtimestamp(max(lock_mtimes), tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-else:
-    timestamp = datetime.fromtimestamp(0, tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-merged['metadata']['timestamp'] = timestamp
-
-payload = json.dumps(components, sort_keys=True, separators=(',', ':')).encode('utf-8')
-digest = hashlib.sha256(payload).hexdigest()
-merged['serialNumber'] = (
-    f'urn:uuid:{digest[:8]}-{digest[8:12]}-{digest[12:16]}-{digest[16:20]}-{digest[20:32]}'
-)
-
 print(json.dumps(merged, indent=2))
 " > "$REPO_ROOT/Documentation/sbom.cyclonedx.json"
 

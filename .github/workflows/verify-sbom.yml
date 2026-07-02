@@ -16,7 +16,7 @@ jobs:
       - name: Install Syft
         uses: anchore/syft-action@v1
         with:
-          version: v1.38.2
+          version: v1.18.0
 
       - name: Regenerate SBOM artifacts
         run: ./scripts/generate-sbom.sh
