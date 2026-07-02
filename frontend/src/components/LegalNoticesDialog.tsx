@@ -43,16 +43,17 @@ export function LegalNoticesDialog() {
     if (!search.trim()) return data.components;
     const q = search.toLowerCase();
     return data.components.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.license.toLowerCase().includes(q),
+      (c) => c.name.toLowerCase().includes(q) || c.license.toLowerCase().includes(q),
     );
   }, [search]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="link" className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground">
+        <Button
+          variant="link"
+          className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground"
+        >
           Legal Notices
         </Button>
       </DialogTrigger>
@@ -93,15 +94,10 @@ export function LegalNoticesDialog() {
                 return (
                   <tr key={c.purl ?? `${c.name}@${c.version}`} className="border-b last:border-0">
                     <td className="py-1.5 pr-2 font-medium">{c.name}</td>
-                    <td className="py-1.5 pr-2 text-muted-foreground">
-                      {c.version}
-                    </td>
+                    <td className="py-1.5 pr-2 text-muted-foreground">{c.version}</td>
                     <td className="py-1.5 pr-2">
                       <span
-                        className={cn(
-                          c.license === "UNKNOWN" &&
-                            "text-muted-foreground italic",
-                        )}
+                        className={cn(c.license === "UNKNOWN" && "text-muted-foreground italic")}
                         title={
                           c.license === "UNKNOWN"
                             ? "License could not be determined from the package metadata"
@@ -114,10 +110,7 @@ export function LegalNoticesDialog() {
                     <td className="py-1.5">
                       <Badge
                         variant="outline"
-                        className={cn(
-                          "text-[10px] leading-none",
-                          ECOSYSTEM_STYLES[eco],
-                        )}
+                        className={cn("text-[10px] leading-none", ECOSYSTEM_STYLES[eco])}
                       >
                         {eco}
                       </Badge>
