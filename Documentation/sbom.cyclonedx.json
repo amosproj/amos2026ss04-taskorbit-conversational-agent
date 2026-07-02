@@ -2,10 +2,10 @@
   "$schema": "http://cyclonedx.org/schema/bom-1.5.schema.json",
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:118aa20d-b507-ee26-c69f-03896fd399c3",
+  "serialNumber": "urn:uuid:d99e7956-79bf-09ff-a7d4-4198eab7896e",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-06-30T20:01:48Z",
+    "timestamp": "2026-06-27T22:22:58Z",
     "tools": {
       "components": [
         {
@@ -17,8 +17,7 @@
       ]
     },
     "component": {
-      "bom-ref": "59df224fc66d7890",
-      "type": "file",
+      "type": "application",
       "name": "taskorbit-conversational-agent",
       "description": "TaskOrbit Conversational Agent (backend + frontend)"
     }
@@ -14753,21 +14752,6 @@
       ]
     },
     {
-      "bom-ref": "4490038dd0eaaf1f",
-      "type": "file",
-      "name": "/Users/shikharthakur/Documents/GitHub/amos2026ss04-taskorbit-conversational-agent/backend/poetry.lock",
-      "hashes": [
-        {
-          "alg": "SHA-1",
-          "content": "3a4bcee8573fd5157926c349e547924c736b8803"
-        },
-        {
-          "alg": "SHA-256",
-          "content": "dda3b0701966c3e0ff434ff690df58c268d1046796cd422a20985d7f4a827691"
-        }
-      ]
-    },
-    {
       "bom-ref": "pkg:npm/%40bufbuild/protobuf@1.10.1?package-id=920645c1e0c058fc",
       "type": "library",
       "name": "@bufbuild/protobuf",
@@ -22548,21 +22532,6 @@
         {
           "name": "syft:location:0:path",
           "value": "/package-lock.json"
-        }
-      ]
-    },
-    {
-      "bom-ref": "fd71c2238fc07657",
-      "type": "file",
-      "name": "/Users/shikharthakur/Documents/GitHub/amos2026ss04-taskorbit-conversational-agent/frontend/package-lock.json",
-      "hashes": [
-        {
-          "alg": "SHA-1",
-          "content": "3c41a8661108f47bb4aa932ddd47bf29879d1be1"
-        },
-        {
-          "alg": "SHA-256",
-          "content": "b1a60dc395b487045706bb741fc6a296c6ef679c5eb9a77fe75ad44ea0b8bdba"
         }
       ]
     }

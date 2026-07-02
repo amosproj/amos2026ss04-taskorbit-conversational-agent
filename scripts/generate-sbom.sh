@@ -57,6 +57,7 @@ python3 -c "
 import hashlib
 import json
 import os
+import subprocess
 from datetime import datetime, timezone
 
 repo_root = '$REPO_ROOT'
@@ -68,20 +69,59 @@ with open('/tmp/sbom-frontend.json') as f:
 
 merged = dict(be)
 components = be.get('components', []) + fe.get('components', [])
-merged['components'] = components
-merged['metadata']['component']['name'] = 'taskorbit-conversational-agent'
-merged['metadata']['component']['description'] = 'TaskOrbit Conversational Agent (backend + frontend)'
 
-lock_paths = [
-    os.path.join(repo_root, 'backend/poetry.lock'),
-    os.path.join(repo_root, 'frontend/package-lock.json'),
-]
-lock_mtimes = [os.path.getmtime(path) for path in lock_paths if os.path.exists(path)]
-if lock_mtimes:
-    timestamp = datetime.fromtimestamp(max(lock_mtimes), tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-else:
-    timestamp = datetime.fromtimestamp(0, tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-merged['metadata']['timestamp'] = timestamp
+def drop_syft_lockfile_entries(items):
+    kept = []
+    for comp in items:
+        purl = comp.get('purl') or ''
+        if purl.startswith('pkg:'):
+            kept.append(comp)
+            continue
+        name = os.path.basename(comp.get('name', ''))
+        if name in {'poetry.lock', 'package-lock.json'}:
+            continue
+        kept.append(comp)
+    return kept
+
+components = drop_syft_lockfile_entries(components)
+merged['components'] = components
+merged['metadata']['component'] = {
+    'type': 'application',
+    'name': 'taskorbit-conversational-agent',
+    'description': 'TaskOrbit Conversational Agent (backend + frontend)',
+}
+
+def lockfile_timestamp(repo_root):
+    rel_paths = ['backend/poetry.lock', 'frontend/package-lock.json']
+    timestamps = []
+    for rel in rel_paths:
+        if not os.path.exists(os.path.join(repo_root, rel)):
+            continue
+        try:
+            stamp = subprocess.check_output(
+                ['git', 'log', '-1', '--format=%cI', '--', rel],
+                cwd=repo_root,
+                text=True,
+                stderr=subprocess.DEVNULL,
+            ).strip()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            stamp = ''
+        if not stamp:
+            continue
+        if stamp.endswith('Z'):
+            parsed = datetime.fromisoformat(stamp.replace('Z', '+00:00'))
+        else:
+            parsed = datetime.fromisoformat(stamp)
+        timestamps.append(parsed)
+    if timestamps:
+        return max(timestamps).astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    lock_paths = [os.path.join(repo_root, rel) for rel in rel_paths]
+    lock_mtimes = [os.path.getmtime(path) for path in lock_paths if os.path.exists(path)]
+    if lock_mtimes:
+        return datetime.fromtimestamp(max(lock_mtimes), tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    return datetime.fromtimestamp(0, tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+merged['metadata']['timestamp'] = lockfile_timestamp(repo_root)
 
 payload = json.dumps(components, sort_keys=True, separators=(',', ':')).encode('utf-8')
 digest = hashlib.sha256(payload).hexdigest()
