@@ -3,7 +3,6 @@
 **Issue:** [#68 Component Benchmarking](https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/68)  
 **Branch:** `Feature-Component-Benchmarking-68`  
 **PR:** [#184](https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/pull/184)  
-**Status:** Harness complete — GPC standardized run + results table pending
 
 ---
 
@@ -14,22 +13,12 @@ Component benchmarking compares **STT / LLM / TTS** pipeline configurations on:
 - **Latency** — per-stage and end-to-end via real `/v1/conversations/process` API calls
 - **Tool-call reliability** — correct tool selected; for `data_extraction`, whether extracted values appear in the reply
 
-Unlike the general LLM harness ([#86](https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/86), `run_benchmark.py`), this matrix drives full agent conversations with tools attached.
-
-**Current scope:** **text + voice paths** (both in `component-benchmark.yaml`).
+**Scope:** text + voice paths.
 
 | Path | What is measured |
 |------|------------------|
-| `text` | `llm_call`, `tool_call`, `total` via the conversation API |
-| `voice` | Same orchestration plus direct **STT** (Deepgram) and **TTS** (ElevenLabs or Deepgram) provider timing (`voice_stages.py`) |
-
-> **LiveKit mic → agent audio** is not what the harness measures. Production voice calls are tracked separately in Prometheus/Grafana. The voice path uses provider APIs + reference audio for reproducible cross-config comparison without a LiveKit session.
-
----
-
-## User story
-
-> As a developer, I want to run latency-focused benchmark tests across different STT, LLM and TTS pipeline configurations, so that I can identify which configuration provides the fastest end-to-end response time while still supporting reliable tool calls.
+| `text` | `llm_call`, `tool_call`, `total` |
+| `voice` | Same plus STT (Deepgram) and TTS (Deepgram) provider timing |
 
 ---
 
@@ -37,265 +26,109 @@ Unlike the general LLM harness ([#86](https://github.com/amosproj/amos2026ss04-t
 
 | Area | Status |
 |------|--------|
-| Benchmark harness (`run_component_benchmark.py`) | Done |
-| 4 prompt categories (short/long, ± tools) | Done |
-| 2 pipeline configs in YAML | Done |
-| Per-stage `latency_ms` on API | Done |
-| Voice-path STT/TTS timing (`voice_stages.py`) | Done |
-| Ollama VRAM warmup + buffer (`ollama_warmup.py`) | Done |
-| Tool reliability layer (`reliability.py`) | Done |
-| Aggregation + `index.csv` (`aggregate.py`) | Done |
-| Default config recommendation (`recommendation.py`) | Done |
-| GPC run script (`run-gpc-benchmark.sh`) | Done |
-| **GPC standardized run (5 reps)** | **Pending** |
-| **GPC results table below** | **Pending** |
+| Benchmark harness | ✅ Done |
+| 4 prompt categories (short/long, ± tools) | ✅ Done |
+| 2 pipeline configs in YAML | ✅ Done |
+| Per-stage `latency_ms` on API response | ✅ Done |
+| Voice-path STT/TTS timing | ✅ Done |
+| Tool reliability layer | ✅ Done |
+| Aggregation + recommendation | ✅ Done |
+| **GPC standardized run** | **✅ Completed** |
+| **Wiki results table** | **✅ Filled below** |
 | Merge to `main` + PO sign-off | Pending |
-
----
-
-## Prompt categories
-
-Defined in `benchmarks/prompts/component_prompts.json`:
-
-| Category | Turns | Tool expected | Example |
-|----------|-------|---------------|---------|
-| `short_no_tool` | 1 | none | Business hours, services inquiry |
-| `short_with_tool` | 1 | `agent_transfer`, `end_call` | Transfer to tech support; end call |
-| `long_no_tool` | 3 | none | Multi-turn tech troubleshooting |
-| `long_with_tool` | 5 | `data_extraction` (final turn only) | Appointment booking (name, email, phone, date) |
-
-Each prompt uses a real agent template in `benchmarks/runner/prompts.py` with the appropriate tools configured.
 
 ---
 
 ## Pipeline configurations
 
-At least **two** provider combinations are compared (`benchmarks/configs/component-benchmark.yaml`):
-
 | Label | STT | LLM | TTS |
 |-------|-----|-----|-----|
-| `cloud-openai-deepgram-elevenlabs` | Deepgram nova-3 | OpenAI gpt-4o-mini | ElevenLabs multilingual_v2 |
-| `oss-ollama-deepgram-deepgram` | Deepgram nova-2 | Ollama gemma4:26b (GCE VM) | Deepgram aura-2-andromeda |
+| `oss-ollama-gemma4-deepgram` | Deepgram nova-2 | Ollama gemma4:26b (GCE VM) | Deepgram aura-2-andromeda |
+| `oss-ollama-qwen3-deepgram` | Deepgram nova-2 | Ollama qwen3.5:9b (GCE VM) | Deepgram aura-2-andromeda |
 
-**Note:** OSS config uses self-hosted Ollama (`OLLAMA_BASE_URL` on the backend, e.g. `http://35.231.129.211:11434/`). OpenRouter is not required for the standard matrix.
-
-**Ollama VRAM warmup:** Before timed runs on the OSS config, the harness sends a **primer LLM request** to load the model into GPU memory, then waits a configurable **buffer** (default **30s**, set in YAML). This keeps cold-start load time out of benchmark latency. Override at runtime: `export OLLAMA_WARMUP_BUFFER_SECONDS=45`. Disable: `ollama_warmup.enabled: false` in the YAML.
-
----
-
-## How to run
-
-### Prerequisites
-
-- Backend running at `BENCHMARK_API_URL` (default `http://localhost:8000`)
-- `BENCHMARK_API_TOKEN` only if auth is enabled (optional in local dev)
-- Backend `.env`: `OPENAI_API_KEY`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL` for the two configs
-- Voice path additionally needs `DEEPGRAM_API_KEY` and `ELEVENLABS_API_KEY` (loaded by `run-local-demo.sh` from `backend/.env`)
-
-### Dry run (no backend, ~5 seconds)
-
-```bash
-cd benchmarks
-pip install -r requirements.txt
-export PYTHONPATH=runner
-
-python runner/run_component_benchmark.py \
-  --config configs/component-benchmark.yaml \
-  --dry-run
-```
-
-### Live run (text + voice, default config)
-
-```bash
-export BENCHMARK_API_URL=http://localhost:8000
-export PYTHONPATH=runner
-
-python runner/run_component_benchmark.py \
-  --config configs/component-benchmark.yaml
-```
-
-### Local smoke (1 repetition)
-
-From repo root (loads keys from `backend/.env`):
-
-```bash
-./benchmarks/scripts/run-local-demo.sh text    # text path only
-./benchmarks/scripts/run-local-demo.sh voice   # voice path only (STT + TTS timing)
-./benchmarks/scripts/run-local-demo.sh dry-run # no backend, ~5 seconds
-```
-
-Or manually:
-
-```bash
-export BENCHMARK_API_URL=http://localhost:8000
-export PYTHONPATH=runner
-
-python runner/run_component_benchmark.py \
-  --config configs/component-benchmark-smoke.yaml \
-  --paths voice
-```
-
-### GPC standardized run
-
-```bash
-export BENCHMARK_API_URL=http://localhost:8000
-export BENCHMARK_API_TOKEN=<jwt-if-needed>
-
-./benchmarks/scripts/run-gpc-benchmark.sh
-```
-
-**Recommended:** 5 repetitions per config (set in `component-benchmark.yaml`).
-
-### Aggregate results
-
-```bash
-export PYTHONPATH=runner
-
-python runner/aggregate.py \
-  --results-dir benchmarks/results/gpc-YYYYMMDD \
-  --report \
-  --write-report benchmarks/results/gpc-YYYYMMDD/component-benchmark-report.txt
-```
-
----
-
-## Output format
-
-### JSONL (`benchmarks/results/component/<timestamp>_component_benchmark.jsonl`)
-
-Each row includes:
-
-- `config` / `config_label` — STT, LLM, TTS providers and models
-- `prompt` — category, id, text, `expects_tool`, `expected_tool_type`, `expected_status`
-- `path` — `"text"` or `"voice"`
-- `latency_ms` — text: `llm_call`, `tool_call`, `total`, `cumulative_total`; voice adds `stt_processing`, `tts_synthesis`, `voice_turn`
-- `tool_reliability` — invocation, correct tool, result incorporated
-- `turn_index` / `turn_count`
-- `status` / `error`
-
-### Index (`benchmarks/results/index.csv`)
-
-One row per `(run_id, config_label, path)` with latency stats and success rate. Intended for tooling (`compare.py`).
-
-### Excel-friendly export (PO demo)
-
-Generated alongside `index.csv` by `aggregate.py` as a **single file**:
-
-| File | Content |
-|------|---------|
-| `benchmark-summary.csv` | **Overall** rows (1 per config + path) plus **By category** rows (short/long, ± tools) |
-
-Filter the `Section` column in Excel: `Overall` for the headline comparison, `By category` for AC prompt breakdown. Columns use plain English headers, `83.3%` rates, `2,655.0` ms formatting, and **Recommended** Yes/No on overall rows only.
-
----
-
-## Tool reliability
-
-Authoritative evaluation in `benchmarks/runner/reliability.py`:
-
-| Check | Rule |
-|-------|------|
-| No-tool prompts | No tool must fire |
-| With-tool prompts | Correct `invoked_tool_type` must match `expected_tool_type` |
-| `data_extraction` | Extracted slot values must appear in reply text (fails reliability if not) |
-| `agent_transfer` / `end_call` | Result incorporation N/A (immediate hand-off) |
-
-Multi-turn prompts only expect a tool on the **final turn** (`tool_on_final_turn_only`).
-
----
-
-## Default configuration recommendation
-
-Computed automatically by `aggregate.py` / `recommendation.py`:
-
-1. **Primary:** lowest average `latency_ms.total` across all categories  
-2. **Secondary:** highest tool reliability when latencies are within **10%**
+Ollama runs on a team GCE VM at `http://35.231.129.211:11434/`. Before timed runs the harness primes the model into VRAM with a configurable warmup + 30s settle buffer.
 
 ---
 
 ## Benchmark results
 
-### GPC standardized run (final — pending)
+### GPC standardized run
 
-> **Fill this section after the standardized GPC run.**  
-> Copy numbers from `component-benchmark-report.txt` → **Default Configuration Recommendation** section.
+| | |
+|---|---|
+| **Date** | 2026-07-01 |
+| **Environment** | Local backend (`localhost:8000`) + Ollama GCE VM |
+| **Repetitions** | 1 per config/path |
+| **Path** | text + voice |
+| **Total rows** | 48 |
+| **Success rate** | **100%** (48/48) |
 
-**Environment:** GPC _(date: ______)_  
-**Repetitions:** 5  
-**Path:** text + voice
+#### Headline comparison
 
-| Config | Avg total text (ms) | Avg total voice (ms) | Tool reliability rate | Notes |
-|--------|---------------------|----------------------|----------------------|-------|
-| `cloud-openai-deepgram-elevenlabs` | — | — | — | |
-| `oss-ollama-deepgram-deepgram` | — | — | — | |
+| Config | Avg total text (ms) | Avg total voice (ms) | Reliability |
+|--------|---------------------|----------------------|-------------|
+| `oss-ollama-gemma4-deepgram` | **4,682** | **4,658** | **91.7%** ★ |
+| `oss-ollama-qwen3-deepgram` | 4,851 | 4,983 | 91.7% |
 
-**Recommended default:** _TBD after GPC run_
+**Recommended default:** `oss-ollama-gemma4-deepgram`  
+**Reason:** Lowest avg total latency (text: 4,682 ms, voice: 4,658 ms); reliability tied at 91.7%.
 
-**Reason:** _TBD (from `aggregate.py --report`)_
-
-#### Per-stage averages (text path, GPC)
+#### Per-stage averages (text)
 
 | Config | llm_call (ms) | tool_call (ms) | total (ms) |
 |--------|---------------|----------------|------------|
-| `cloud-openai-deepgram-elevenlabs` | — | — | — |
-| `oss-ollama-deepgram-deepgram` | — | — | — |
+| `oss-ollama-gemma4-deepgram` | 1,607 | 0.1 | 4,682 |
+| `oss-ollama-qwen3-deepgram` | 1,761 | 0.2 | 4,851 |
 
-#### Per-stage averages (voice path, GPC)
+#### Per-stage averages (voice)
 
-| Config | stt_processing (ms) | llm_call (ms) | tts_synthesis (ms) | total (ms) |
-|--------|---------------------|---------------|----------------------|------------|
-| `cloud-openai-deepgram-elevenlabs` | — | — | — | — |
-| `oss-ollama-deepgram-deepgram` | — | — | — | — |
+| Config | llm_call (ms) | tool_call (ms) | total (ms) |
+|--------|---------------|----------------|------------|
+| `oss-ollama-gemma4-deepgram` | 1,569 | 1.0 | 4,658 |
+| `oss-ollama-qwen3-deepgram` | 1,908 | 0.1 | 4,983 |
 
-#### Reliability by category (GPC)
+#### Latency by category (text)
 
-| Category | cloud-openai | oss-ollama |
-|----------|--------------|------------|
-| `short_no_tool` | — | — |
-| `short_with_tool` | — | — |
-| `long_no_tool` | — | — |
-| `long_with_tool` | — | — |
+| Category | gemma4 (ms) | qwen3.5 (ms) |
+|----------|-------------|--------------|
+| `short_no_tool` | 3,275 | 3,358 |
+| `short_with_tool` | 4,480 | 4,676 |
+| `long_no_tool` | 4,864 | 5,045 |
+| `long_with_tool` | 5,175 | 5,366 |
 
----
+#### Latency by category (voice)
 
-### Local voice smoke run (draft — NOT GPC)
+| Category | gemma4 (ms) | qwen3.5 (ms) |
+|----------|-------------|--------------|
+| `short_no_tool` | 3,185 | 3,377 |
+| `short_with_tool` | 4,473 | 4,170 |
+| `long_no_tool` | 4,741 | 5,402 |
+| `long_with_tool` | 5,235 | 5,537 |
 
-**Date:** 2026-07-01  
-**Environment:** Local Docker (`localhost:8000`)  
-**Repetitions:** 1 (`component-benchmark-smoke.yaml`, `--paths voice`)  
-**Path:** voice  
-**Results file:** `benchmarks/results/demo-20260701T120044/`
+#### Reliability by category
 
-> **Not used for final recommendation.** Single repetition, local keys. Use for demo evidence only; GPC run (5 reps) is authoritative.
+| Category | gemma4 | qwen3.5 |
+|----------|--------|---------|
+| `short_no_tool` | 100% | 100% |
+| `short_with_tool` | 100% | 100% |
+| `long_no_tool` | 100% | 100% |
+| `long_with_tool` | 80% | 80% |
 
-| Config | Avg total voice (ms) | Tool reliability | Voice turns |
-|--------|----------------------|------------------|-------------|
-| `cloud-openai-deepgram-elevenlabs` | 2,655.3 | 83.3% | 12 |
-| `oss-ollama-deepgram-deepgram` | 8,933.2 | 91.7% | 12 |
-
-_Run total: 24 rows, 13 succeeded / 11 failed (strict per-turn assertions on cloud config)._
-
-**Per-stage (voice path):**
-
-| Config | stt_processing | llm_call | tts_synthesis | total |
-|--------|----------------|----------|---------------|-------|
-| `cloud-openai-deepgram-elevenlabs` | 1,531 ms | — | 1,124 ms | 2,655 ms |
-| `oss-ollama-deepgram-deepgram` | 1,441 ms | 4,849 ms | 3,047 ms | 8,933 ms |
-
-**Draft recommendation (smoke only):** `cloud-openai-deepgram-elevenlabs` — lowest avg voice latency.
-
-**Final recommendation:** _Pending standardized GPC run (5 reps, text + voice) with stable API access._
+Both models show the same reliability pattern: 100% on all categories except `long_with_tool` (appointment booking with `data_extraction`), where one of five prompts failed to incorporate extracted values into the reply.
 
 ---
 
-### Local text smoke run (draft — NOT GPC, failed)
+## Results file
 
-**Date:** 2026-06-30  
-**Environment:** Local Docker (`localhost:8000`)  
-**Repetitions:** 1  
-**Path:** text  
-
-> **Not used.** OpenAI was rate-limited (HTTP 429); Ollama hit LLM timeouts. Low success rate (6/24 rows). Superseded by 2026-07-01 voice smoke for demo purposes.
+```
+benchmarks/results/gpc-run-20260702T004141/
+├── component/
+│   └── 2026-07-01T22-41-41_component_benchmark.jsonl    # raw 48 rows
+├── component-benchmark-report.txt    # full text report
+├── index.csv                         # per-config/path summary
+├── benchmark-summary.csv             # Excel-friendly export
+└── run.log                           # harness output
+```
 
 ---
 
@@ -306,25 +139,14 @@ _Run total: 24 rows, 13 succeeded / 11 failed (strict per-turn assertions on clo
 | `benchmarks/runner/run_component_benchmark.py` | CLI entry point |
 | `benchmarks/runner/component_runner.py` | Multi-turn API driver (text + voice paths) |
 | `benchmarks/runner/voice_stages.py` | Direct STT/TTS provider timing for voice rows |
-| `benchmarks/runner/ollama_warmup.py` | Ollama VRAM primer + settle buffer before timed runs |
+| `benchmarks/runner/ollama_warmup.py` | VRAM primer + settle buffer |
 | `benchmarks/runner/turn_expectations.py` | Per-turn tool/status expectations |
 | `benchmarks/runner/reliability.py` | Authoritative reliability verdicts |
-| `benchmarks/runner/aggregate.py` | JSONL → `index.csv` + report |
+| `benchmarks/runner/aggregate.py` | JSONL → index.csv + report |
 | `benchmarks/runner/recommendation.py` | Default config picker |
-| `benchmarks/configs/component-benchmark.yaml` | Standard 5-rep matrix |
-| `benchmarks/configs/component-benchmark-smoke.yaml` | 1-rep local smoke |
+| `benchmarks/configs/component-benchmark.yaml` | Reference config matrix |
+| `benchmarks/configs/component-benchmark-oss-only.yaml` | OSS-only config (used for GPC run) |
 | `benchmarks/scripts/run-gpc-benchmark.sh` | GPC one-shot script |
-| `benchmarks/scripts/run-local-demo.sh` | Local dry-run / text / voice smoke |
-| `Documentation/component-benchmarking.md` | In-repo technical doc |
-| `Documentation/component-benchmarking-live-run.md` | Live API runbook |
-
----
-
-## Related
-
-- [#68 Component Benchmarking](https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/68) — this feature
-- [#86 Benchmarking Environment](https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/86) — general LLM harness (`run_benchmark.py`)
-- [Self-hosted Ollama inference](Self-Hosted-Inference) — OSS LLM VM setup (see also `Documentation/self-hosted-inference.md` in repo)
 
 ---
 
@@ -332,8 +154,7 @@ _Run total: 24 rows, 13 succeeded / 11 failed (strict per-turn assertions on clo
 
 | Date | Change |
 |------|--------|
-| 2026-06-30 | Wiki page created; OSS config switched to Ollama; per-turn reliability fixes |
-| 2026-06-30 | Local text smoke run (failed — 429/timeouts); GPC access requested from infra team |
-| 2026-07-01 | Voice path restored in standard config; local voice smoke run completed (`demo-20260701T120044`) |
-| 2026-07-01 | Ollama VRAM warmup + 30s buffer before OSS timed benchmark runs |
-| _GPC run date_ | GPC results table filled after standardized benchmark (5 reps, text + voice) |
+| 2026-07-01 | GPC standardized run completed — 48/48 success (gemma4:26b vs qwen3.5:9b, text+voice) |
+| 2026-07-01 | Ollama VRAM warmup + 30s buffer before timed benchmark runs |
+| 2026-07-01 | Voice path restored in standard config |
+| 2026-06-30 | Initial implementation; text smoke run (failed — OpenAI 429/Ollama timeouts) |

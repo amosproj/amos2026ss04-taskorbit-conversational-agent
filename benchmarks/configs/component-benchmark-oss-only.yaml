@@ -9,12 +9,12 @@
 #   python runner/run_component_benchmark.py --config configs/component-benchmark.yaml
 #   python runner/run_component_benchmark.py --config configs/component-benchmark.yaml --dry-run
 
-name: component-benchmark-oss-only
-description: "OSS-only (Ollama + Deepgram) benchmark run (#68)"
+name: gpc-benchmark
+description: "Compare Ollama gemma4:26b vs qwen3.5:9b across #68 prompt categories (text + voice paths)"
 
 prompt_set: benchmarks/prompts/component_prompts.json
 
-repetitions: 5
+repetitions: 2
 concurrency: 1
 timeout_seconds: 180
 
@@ -26,18 +26,10 @@ ollama_warmup:
 
 paths:
   - text
+  - voice
 
 configs:
-  - name: cloud-openai-deepgram-elevenlabs
-    stt_provider: deepgram
-    stt_model: nova-3
-    llm_provider: openai
-    llm_model: gpt-4o-mini
-    tts_provider: elevenlabs
-    tts_voice_id: CwhRBWXzGAHq8TQ4Fs17
-    tts_model: eleven_multilingual_v2
-
-  - name: oss-ollama-deepgram-deepgram
+  - name: oss-ollama-gemma4-deepgram
     stt_provider: deepgram
     stt_model: nova-2
     llm_provider: ollama
@@ -46,6 +38,15 @@ configs:
     tts_voice_id: aura-2-andromeda-en
     tts_model: aura-2-andromeda-en
 
+  - name: oss-ollama-qwen3-deepgram
+    stt_provider: deepgram
+    stt_model: nova-2
+    llm_provider: ollama
+    llm_model: qwen3.5:9b
+    tts_provider: deepgram
+    tts_voice_id: aura-2-andromeda-en
+    tts_model: aura-2-andromeda-en
+
 tags:
   ticket: "68"
-  version: v2-text-voice-ollama
+  version: gpc-v1
