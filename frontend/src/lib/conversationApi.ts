@@ -404,6 +404,18 @@ export async function* sendMessageStream(
 }
 
 /**
+ * Permanently delete a conversation and all its messages.
+ * Throws on network error or non-2xx response.
+ */
+export async function deleteConversation(conversationId: string): Promise<void> {
+  const res = await fetch(`/api/v1/conversations/${conversationId}`, { method: "DELETE" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(String(err.detail ?? `HTTP ${res.status}`));
+  }
+}
+
+/**
  * Fetch full history for a single conversation — messages, tool executions,
  * and slot extractions. Used on reload to restore a previous session.
  */

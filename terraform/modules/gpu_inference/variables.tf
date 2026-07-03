@@ -25,7 +25,7 @@ variable "ollama_version" {
 variable "region" {
   description = "GCP region for the Ollama GCE VM. Must have NVIDIA L4 available."
   type        = string
-  default     = "europe-west3"
+  default     = "us-east1"
 }
 
 variable "project_id" {
@@ -36,7 +36,7 @@ variable "project_id" {
 variable "zone" {
   description = "GCP zone for the Ollama GCE VM. Must be in var.region and support NVIDIA L4."
   type        = string
-  default     = "us-central1-a"
+  default     = "us-east1-b"
 }
 
 variable "preemptible" {
