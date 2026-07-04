@@ -736,7 +736,7 @@ export function ConversationalChat() {
   );
 
   const body: ReactNode = (
-    <div className="mx-auto flex min-h-svh max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
+    <div className="mx-auto flex min-h-svh max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
       <header className="space-y-1">
         <p className="text-sm font-medium tracking-widest text-muted-foreground uppercase">
           Conversational agent
