@@ -593,10 +593,6 @@ export function ConversationalChat() {
     [call],
   );
 
-  const handleTriggerConfirmation = useCallback(() => {
-    // Confirmation is triggered by the backend response, not a UI button.
-  }, []);
-
   const handleSendDecision = useCallback(
     (confirmationId: string, decision: "confirm" | "reject") => {
       abortRef.current?.abort();
@@ -853,7 +849,6 @@ export function ConversationalChat() {
             onEnd={call.end}
             onSendText={handleSendText}
             onRoutingTargetChange={handleRoutingTargetChange}
-            onTriggerConfirmation={handleTriggerConfirmation}
             onMicError={call.setMicError}
             agentMuted={agentMuted}
             onAgentMutedChange={setAgentMuted}

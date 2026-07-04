@@ -25,7 +25,6 @@ import {
   UserRoundCog,
   Volume2,
   VolumeX,
-  Wand2,
   X,
 } from "lucide-react";
 
@@ -57,7 +56,6 @@ type Props = {
   ) => void;
   /** Fires immediately when the user picks (or clears) an agent from the @route menu. */
   onRoutingTargetChange?: (target: { id: string; name: string } | null) => void;
-  onTriggerConfirmation: () => void;
   onMicError: (message: string | null) => void;
   agentMuted: boolean;
   onAgentMutedChange: (muted: boolean) => void;
@@ -72,7 +70,6 @@ export function InCallControls({
   onEnd,
   onSendText,
   onRoutingTargetChange,
-  onTriggerConfirmation,
   onMicError,
   agentMuted,
   onAgentMutedChange,
@@ -595,17 +592,6 @@ export function InCallControls({
             <UserRoundCog size={16} />
           </button>
         </div>
-
-        {/* ── Demo confirmation (icon-only) ── */}
-        <button
-          type="button"
-          onClick={onTriggerConfirmation}
-          aria-label="Demo: trigger agent confirmation"
-          title="Demo: simulate the agent asking for confirmation"
-          className="flex size-9 shrink-0 items-center justify-center rounded-full border bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <Wand2 size={15} />
-        </button>
 
         {/* ── End call ── */}
         <button
