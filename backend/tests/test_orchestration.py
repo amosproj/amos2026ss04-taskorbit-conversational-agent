@@ -1458,3 +1458,132 @@ async def test_get_agent_config_by_id_cross_user_returns_none() -> None:
     # The mock returns None (simulating that user B's record is excluded).
     result = await get_agent_configuration_by_id(mock_db, "some-uuid", user_id=user_a_id)
     assert result is None, "User A must not receive user B's agent configuration"
+
+
+# ---------------------------------------------------------------------------
+# LLM provider failures surface clearly (#197)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_provider_error_during_intent_detection_returns_clear_message() -> None:
+    """A provider failure in the intent router must yield a provider-error
+    response, not the generic clarification reply that masked outages (#197)."""
+    from taskorbit.integrations.llm.errors import LLMRateLimitError
+
+    orch = ConversationOrchestrator()
+    mock_metrics = MagicMock()
+
+    with patch("taskorbit.orchestration.get_metrics", return_value=mock_metrics):
+        with patch.object(
+            ConversationOrchestrator,
+            "_call_llm_json",
+            new_callable=AsyncMock,
+            side_effect=LLMRateLimitError("OpenAI rate-limited: 429 insufficient_quota"),
+        ):
+            response = await orch.process_message(_make_request())
+
+    assert response.status == "error"
+    assert "language model provider" in response.reply.content
+    assert "insufficient_quota" in response.error
+    mock_metrics.conversation_errors_total.labels(
+        error_type="llm_provider_error"
+    ).inc.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_provider_error_during_reply_generation_returns_clear_message(
+    mock_good_intent: Any,
+) -> None:
+    from taskorbit.integrations.llm.errors import LLMAPIError
+
+    orch = ConversationOrchestrator()
+    mock_metrics = MagicMock()
+
+    with patch("taskorbit.orchestration.get_metrics", return_value=mock_metrics):
+        with patch.object(
+            ConversationOrchestrator,
+            "_call_llm",
+            new_callable=AsyncMock,
+            side_effect=LLMAPIError("OpenAI API error: 500 server_error"),
+        ):
+            response = await orch.process_message(_make_request())
+
+    assert response.status == "error"
+    assert "language model provider" in response.reply.content
+    mock_metrics.conversation_errors_total.labels(
+        error_type="llm_provider_error"
+    ).inc.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_llm_timeout_error_maps_to_timeout_handler(mock_good_intent: Any) -> None:
+    """LLMTimeoutError (provider-side timeout) must land in the llm_timeout
+    bucket like the builtin TimeoutError, not in the generic runtime_error one."""
+    from taskorbit.integrations.llm.errors import LLMTimeoutError
+
+    orch = ConversationOrchestrator()
+    mock_metrics = MagicMock()
+
+    with patch("taskorbit.orchestration.get_metrics", return_value=mock_metrics):
+        with patch.object(
+            ConversationOrchestrator,
+            "_call_llm",
+            new_callable=AsyncMock,
+            side_effect=LLMTimeoutError("OpenAI request timed out"),
+        ):
+            response = await orch.process_message(_make_request())
+
+    assert response.status == "error"
+    assert "trouble connecting to my brain" in response.reply.content
+    mock_metrics.conversation_errors_total.labels(error_type="llm_timeout").inc.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_provider_error_in_stream_yields_error_response() -> None:
+    from taskorbit.integrations.llm.errors import LLMAuthError
+
+    orch = ConversationOrchestrator()
+    mock_metrics = MagicMock()
+
+    with patch("taskorbit.orchestration.get_metrics", return_value=mock_metrics):
+        with patch.object(
+            ConversationOrchestrator,
+            "_call_llm_json",
+            new_callable=AsyncMock,
+            side_effect=LLMAuthError("OpenAI authentication failed: 401"),
+        ):
+            events = []
+            async for event in orch.process_message_stream(_make_request()):
+                events.append(event)
+
+    responses = [e for e in events if isinstance(e, ConversationResponse)]
+    assert len(responses) == 1
+    assert responses[0].status == "error"
+    assert "language model provider" in responses[0].reply.content
+    mock_metrics.conversation_errors_total.labels(
+        error_type="llm_provider_error"
+    ).inc.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_slot_extraction_reraises_provider_errors() -> None:
+    """_extract_slots must not convert a provider outage into 'all slots
+    missing' — that would make the agent re-ask for data the user already gave."""
+    from taskorbit.integrations.llm.errors import LLMRateLimitError
+
+    orch = ConversationOrchestrator()
+    request = _make_request("My email is user@example.com")
+
+    with patch.object(
+        ConversationOrchestrator,
+        "_call_llm_json",
+        new_callable=AsyncMock,
+        side_effect=LLMRateLimitError("OpenAI rate-limited: 429"),
+    ):
+        with pytest.raises(LLMRateLimitError):
+            await orch._extract_slots(
+                request.messages,
+                [{"name": "email", "type": "email", "required": True}],
+                request.agent_config.llm,
+            )
