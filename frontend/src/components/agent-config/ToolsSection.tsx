@@ -37,7 +37,7 @@ type Props = {
   onChange: (next: ToolDefinition[]) => void;
 };
 
-const PARAM_TYPES: ParamType[] = ["string", "number", "boolean", "date"];
+const PARAM_TYPES: ParamType[] = ["string", "email", "number", "boolean", "date"];
 
 const TOOL_TYPE_META: Record<ToolType, { label: string; icon: LucideIcon; blurb: string }> = {
   data_extraction: {

@@ -19,7 +19,7 @@ export type SttProvider = "deepgram" | "elevenlabs";
 export type TtsProvider = "elevenlabs" | "deepgram";
 export type LlmProvider = "openai" | "gemini" | "openrouter" | "ollama";
 
-export type ParamType = "string" | "number" | "boolean" | "date";
+export type ParamType = "string" | "email" | "number" | "boolean" | "date";
 
 export type ToolParam = {
   variable_name: string;
