@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -1015,3 +1015,14 @@ async def list_user_agents_merged(db: AsyncSession, user_id: int) -> list[dict]:
         )
 
     return merged
+
+
+async def delete_conversation(db: AsyncSession, conversation_id: str) -> bool:
+    """Delete a conversation and all its child records (messages, tool executions, slot extractions).
+
+    Child rows are removed via SQLAlchemy cascade (all, delete-orphan) defined on the model.
+    Returns True when a row was deleted, False when the ID doesn't exist.
+    """
+    result = await db.execute(delete(Conversation).where(Conversation.id == conversation_id))
+    await db.commit()
+    return result.rowcount > 0
