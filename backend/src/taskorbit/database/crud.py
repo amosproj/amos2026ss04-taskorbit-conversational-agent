@@ -220,21 +220,44 @@ async def create_slot_extractions(
     slots: dict,
     user_id: int | None = None,
 ) -> list[SlotExtraction]:
-    """Bulk-insert one row per extracted field, recording which tool extracted it."""
+    """Upsert one row per extracted field, recording which tool extracted it.
+
+    A field is keyed by ``(conversation_id, tool_id, field_name)``: an existing
+    row is updated in place, a new field is inserted. Extraction tools fire
+    repeatedly over a call with the cumulative slot set, so inserting every time
+    floods the history view with duplicate rows (the same field repeated once
+    per turn). Upserting keeps a single current value per field.
+    """
     if not slots:
         return []
     try:
-        extractions = [
-            SlotExtraction(
-                conversation_id=conversation_id,
-                user_id=user_id,
-                tool_id=tool_id,
-                field_name=str(name),
-                field_value=str(value) if value is not None else None,
+        field_names = [str(name) for name in slots]
+        existing_result = await db.execute(
+            select(SlotExtraction).where(
+                SlotExtraction.conversation_id == conversation_id,
+                SlotExtraction.tool_id == tool_id,
+                SlotExtraction.field_name.in_(field_names),
             )
-            for name, value in slots.items()
-        ]
-        db.add_all(extractions)
+        )
+        existing = {row.field_name: row for row in existing_result.scalars().all()}
+
+        extractions: list[SlotExtraction] = []
+        for name, value in slots.items():
+            field_name = str(name)
+            field_value = str(value) if value is not None else None
+            row = existing.get(field_name)
+            if row is not None:
+                row.field_value = field_value
+            else:
+                row = SlotExtraction(
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                    tool_id=tool_id,
+                    field_name=field_name,
+                    field_value=field_value,
+                )
+                db.add(row)
+            extractions.append(row)
         await db.commit()
         for extraction in extractions:
             await db.refresh(extraction)
@@ -252,14 +275,26 @@ async def create_slot_extractions(
 
 
 async def get_slot_extractions(db: AsyncSession, conversation_id: str) -> list[SlotExtraction]:
-    """Return all slot extractions for a conversation ordered by extraction time."""
+    """Return the current slot extractions for a conversation.
+
+    Deduplicated to one row per ``(tool_id, field_name)`` keeping the latest
+    value, so conversations recorded before the write-side upsert (which stored
+    a new row per turn) still render cleanly in the history view. Fields keep
+    their first-seen order.
+    """
     try:
         result = await db.execute(
             select(SlotExtraction)
             .where(SlotExtraction.conversation_id == conversation_id)
             .order_by(SlotExtraction.extracted_at.asc())
         )
-        return list(result.scalars().all())
+        rows = list(result.scalars().all())
+        latest: dict[tuple[str, str], SlotExtraction] = {}
+        for row in rows:
+            # Ascending order means a later row overwrites an earlier one, so the
+            # dict ends with the most recent value while preserving first-seen order.
+            latest[(row.tool_id, row.field_name)] = row
+        return list(latest.values())
     except SQLAlchemyError as e:
         logger.error("get_slot_extractions_failed", error=str(e))
         return []
