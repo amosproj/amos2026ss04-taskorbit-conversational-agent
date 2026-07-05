@@ -48,8 +48,8 @@ export function ConversationListItem({
       )}
     >
       <div className="flex flex-col gap-1 p-4">
-        {/* Agent name — full width, wraps to 2 lines max */}
-        <span className="line-clamp-2 text-sm font-medium leading-snug">
+        {/* Agent name: full width, wraps fully so long names are never cut off (#181). */}
+        <span className="text-sm font-medium leading-snug break-words">
           {conversation.agent_name}
         </span>
 
