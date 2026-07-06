@@ -108,6 +108,8 @@ def configure_default_metrics() -> None:
         "invalid_input",
         "runtime_error",
         "llm_config",
+        "llm_provider_error",
+        "unhandled",
     ):
         m.conversation_errors_total.labels(error_type=error_type)
     for handler in ("/v1/conversations/process", "/v1/tts/synthesize"):

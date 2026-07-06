@@ -2,6 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import { DatabaseZap, Loader2, MessageSquareDashed } from "lucide-react";
 
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
+import {
   ConversationListItem,
   type ConversationRow,
 } from "@/components/history/ConversationListItem";
@@ -11,6 +22,7 @@ import { Empty } from "@/components/Empty";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  deleteConversation,
   getConversationHistory,
   getConversations,
   type ConversationHistory,
@@ -66,6 +78,9 @@ export function HistoryPage() {
   const [selectedHistory, setSelectedHistory] = useState<ConversationHistory | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const detailRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -104,6 +119,29 @@ export function HistoryPage() {
       })
       .catch(() => setSelectedHistory(null))
       .finally(() => setDetailLoading(false));
+  };
+
+  const handleDeleteConfirmed = async () => {
+    if (!pendingDeleteId) return;
+    setDeleting(true);
+    try {
+      await deleteConversation(pendingDeleteId);
+      setConversations((prev) => prev.filter((c) => c.id !== pendingDeleteId));
+      if (selectedId === pendingDeleteId) {
+        setSelectedId(null);
+        setSelectedHistory(null);
+      }
+    } catch {
+      // If the conversation was already gone, still remove it from local state
+      setConversations((prev) => prev.filter((c) => c.id !== pendingDeleteId));
+      if (selectedId === pendingDeleteId) {
+        setSelectedId(null);
+        setSelectedHistory(null);
+      }
+    } finally {
+      setDeleting(false);
+      setPendingDeleteId(null);
+    }
   };
 
   const selectedMeta = conversations.find((c) => c.id === selectedId) ?? null;
@@ -151,6 +189,7 @@ export function HistoryPage() {
                       conversation={c}
                       selected={c.id === selectedId}
                       onSelect={() => handleSelect(c.id)}
+                      onDelete={() => setPendingDeleteId(c.id)}
                       formatRelativeStart={formatRelativeStart}
                       formatDuration={formatDuration}
                     />
@@ -240,6 +279,36 @@ export function HistoryPage() {
           )}
         </aside>
       </div>
+
+      <AlertDialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setPendingDeleteId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete conversation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove the conversation and all its messages. This cannot be
+              undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleDeleteConfirmed();
+              }}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? <Loader2 className="size-4 animate-spin" /> : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }

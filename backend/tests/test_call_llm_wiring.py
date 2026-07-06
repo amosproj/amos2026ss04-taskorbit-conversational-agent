@@ -175,6 +175,7 @@ async def test_persona_guardrails_flow_through_to_llm_prompt(
 @pytest.mark.asyncio
 async def test_no_persona_guardrails_means_no_guardrail_text_in_prompt(
     orchestrator: ConversationOrchestrator,
+    mock_good_intent: object,
 ) -> None:
     """Backward-compatibility: agents without persona_constraints receive a
     prompt with zero guardrail boilerplate — protects every existing config."""

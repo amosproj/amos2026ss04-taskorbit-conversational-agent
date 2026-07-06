@@ -6,7 +6,7 @@ import json
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +19,7 @@ from taskorbit.database.crud import (
     create_conversation_message,
     create_slot_extractions,
     create_tool_execution,
+    delete_conversation,
     enrich_request_dependency_configs,
     get_conversation,
     get_conversation_history,
@@ -164,7 +165,13 @@ async def _sse_generator(
       data: {"type": "done", "intent": "...", "status": "...", "selected_agent": "...",
               "slots": {...}, "missing_slots": [...], "conversation_id": "...",
               "reply": "..." (when no chunks were streamed)}
-      data: {"type": "error", "message": "..."}
+      data: {"type": "error", "message": "<technical>", "reply": "<polite>"}
+
+    On error events, `reply` carries the polite user-facing text from
+    ConversationResponse.reply (#197). The FE should render `reply` in the
+    assistant bubble and treat `message` as debug detail for on-call.
+    `reply` is null only when the orchestrator's error path predates the
+    polite-reply pattern.
     """
     # Persist user message upfront so it survives client disconnects.
     last_msg = request.messages[-1] if request.messages else None
@@ -201,7 +208,25 @@ async def _sse_generator(
         return
 
     if meta.status == "error":
-        yield f"data: {json.dumps({'type': 'error', 'message': meta.error or 'Unknown error'})}\n\n"
+        # Forward the polite user-facing reply (from ConversationResponse.reply,
+        # #197) alongside the technical error string so the FE can render the
+        # polite text in the assistant bubble instead of a raw provider error.
+        reply_text = meta.reply.content if meta.reply else None
+        yield f"data: {json.dumps({'type': 'error', 'message': meta.error or 'Unknown error', 'reply': reply_text})}\n\n"
+        # Persist the polite reply so conversation history is symmetric across
+        # error turns (matches the /process endpoint's persist-on-error).
+        if meta.reply:
+            saved = await create_conversation_message(
+                db=db,
+                conversation_id=request.conversation_id,
+                role=meta.reply.role.value,
+                content=meta.reply.content,
+            )
+            if saved is None:
+                logger.error(
+                    "sse_failed_to_save_assistant_error_message",
+                    conversation_id=request.conversation_id,
+                )
         return
 
     # Persist assistant reply after successful full stream
@@ -379,3 +404,15 @@ async def get_conversation_messages(
     except Exception as e:
         logger.error("get_messages_failed", error=str(e), conversation_id=conversation_id)
         raise HTTPException(status_code=500, detail="Failed to retrieve messages") from e
+
+
+@router.delete("/{conversation_id}", response_class=Response)
+async def delete_conversation_route(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> Response:
+    """Permanently delete a conversation and all its messages, tool executions, and slot extractions."""
+    deleted = await delete_conversation(db, conversation_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return Response(status_code=204)
