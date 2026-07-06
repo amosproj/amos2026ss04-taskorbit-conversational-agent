@@ -152,19 +152,30 @@ export function ConversationalChat() {
     }
   }, []);
   const [previousConversations, setPreviousConversations] = useState<RecentConversation[]>([]);
+  const [recentLoading, setRecentLoading] = useState(true);
+  const [recentError, setRecentError] = useState(false);
 
-  // Load previous conversations on page load (reload restores conversations)
-  useEffect(() => {
-    const loadConversations = async () => {
-      try {
-        const data = await getConversations();
-        setPreviousConversations(data.conversations || []);
-      } catch (error) {
-        console.error("Failed to load conversations:", error);
-      }
-    };
-    loadConversations();
+  const loadConversations = useCallback(async () => {
+    setRecentError(false);
+    try {
+      const data = await getConversations();
+      setPreviousConversations(data.conversations || []);
+    } catch {
+      setRecentError(true);
+    } finally {
+      setRecentLoading(false);
+    }
   }, []);
+
+  // Load on mount, then refresh whenever a call ends so the just-finished
+  // conversation appears in the Recent panel without a manual reload.
+  useEffect(() => {
+    void loadConversations();
+  }, [loadConversations]);
+
+  useEffect(() => {
+    if (call.status === "ended") void loadConversations();
+  }, [call.status, loadConversations]);
 
   // Agent segment merging: livekit-agents emits one stream per TTS chunk,
   // each with a unique lk.segment_id. We collapse them into a single turn
@@ -777,7 +788,11 @@ export function ConversationalChat() {
             />
           </div>
           <div className="flex flex-col gap-6">
-            <RecentConversations conversations={previousConversations} />
+            <RecentConversations
+              conversations={previousConversations}
+              isLoading={recentLoading}
+              error={recentError}
+            />
             <PreCallDiagnostics />
           </div>
         </div>
@@ -889,7 +904,7 @@ export function ConversationalChat() {
   );
 
   return (
-    <main className="min-h-svh bg-background text-foreground">
+    <div>
       {call.livekitCredentials !== null ? (
         <LiveKitRoom
           serverUrl={call.livekitCredentials.url}
@@ -931,6 +946,6 @@ export function ConversationalChat() {
           onDismiss={call.clearSessionEndReason}
         />
       )}
-    </main>
+    </div>
   );
 }

@@ -18,9 +18,13 @@ const MAX_RECENT = 5;
  */
 export function RecentConversations({
   conversations,
+  isLoading = false,
+  error = false,
   className,
 }: {
   conversations: RecentConversation[];
+  isLoading?: boolean;
+  error?: boolean;
   className?: string;
 }) {
   const recent = [...conversations]
@@ -33,7 +37,15 @@ export function RecentConversations({
         <CardTitle>Recent</CardTitle>
       </CardHeader>
       <CardContent>
-        {recent.length === 0 ? (
+        {error ? (
+          <p className="text-sm text-muted-foreground">Couldn't load recent conversations.</p>
+        ) : isLoading && recent.length === 0 ? (
+          <div className="flex flex-col gap-2" aria-hidden>
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-8 animate-pulse rounded-md bg-muted/50" />
+            ))}
+          </div>
+        ) : recent.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No conversations yet. Start your first call and it will show up here.
           </p>

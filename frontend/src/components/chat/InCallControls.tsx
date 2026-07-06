@@ -486,7 +486,7 @@ export function InCallControls({
             "disabled:cursor-not-allowed disabled:opacity-50",
             voiceBtnCls === "" && "border-border bg-card text-foreground hover:bg-muted",
             voiceBtnCls === "listening" &&
-              "border-transparent bg-primary text-primary-foreground shadow-[0_0_0_4px_hsl(var(--primary)/0.18)]",
+              "border-transparent bg-primary text-primary-foreground ring-4 ring-primary/20",
             voiceBtnCls === "speaking" &&
               "border-transparent bg-violet-500 text-white shadow-[0_0_0_4px_rgb(139_92_246/0.22)]",
             voiceBtnCls === "processing" &&

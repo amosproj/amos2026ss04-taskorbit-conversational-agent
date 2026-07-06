@@ -105,13 +105,18 @@ export function HistoryPage() {
   };
 
   // Deep-link: /history?c=<id> opens straight to that conversation (used by the
-  // home-screen recent list). Reads the param once on mount.
+  // home-screen recent list). Waits for the list to load, then only selects an
+  // id that actually exists, so a stale link degrades gracefully instead of
+  // flashing a failed-detail error. Fires once.
   const [searchParams] = useSearchParams();
+  const deepLinkHandledRef = useRef(false);
   useEffect(() => {
+    if (deepLinkHandledRef.current || listLoading) return;
+    deepLinkHandledRef.current = true;
     const id = searchParams.get("c");
-    if (id) handleSelect(id);
+    if (id && conversations.some((c) => c.id === id)) handleSelect(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [listLoading]);
 
   const handleDeleteConfirmed = async () => {
     if (!pendingDeleteId) return;
