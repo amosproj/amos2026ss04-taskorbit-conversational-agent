@@ -337,3 +337,45 @@ class TestConversationHistoryCRUD:
         assert history["slot_extractions"][0]["tool_id"] == "data_extraction"
         assert len(history["tool_executions"]) == 1
         assert history["tool_executions"][0]["tool_id"] == "data_extraction"
+
+    @pytest.mark.asyncio
+    async def test_get_slot_extractions_returns_latest_value_after_repeated_upserts(
+        self, db_session
+    ):
+        """get_slot_extractions returns one row per (tool_id, field_name) with the
+        latest field_value — the ORDER BY id ASC tie-breaker ensures the highest-id
+        row wins deterministically for rows whose extracted_at share a transaction
+        timestamp."""
+        conv = await create_conversation(db_session, agent_id="agent-1", agent_name="Bot")
+        await create_slot_extractions(
+            db_session, conversation_id=conv.id, tool_id="t", slots={"email": "old@x.com"}
+        )
+        await create_slot_extractions(
+            db_session, conversation_id=conv.id, tool_id="t", slots={"email": "new@x.com"}
+        )
+
+        rows = await get_slot_extractions(db_session, conv.id)
+        assert len(rows) == 1
+        assert rows[0].field_value == "new@x.com"
+
+    @pytest.mark.asyncio
+    async def test_get_conversation_history_returns_slot_extractions_via_get_slot_extractions(
+        self, db_session
+    ):
+        """get_conversation_history must delegate slot queries to get_slot_extractions
+        (not query SlotExtraction directly) so the dedup ORDER BY logic is shared.
+        Verified by confirming the history endpoint returns the latest value after
+        two upserts — the same assertion that test_get_slot_extractions_returns_latest_value
+        makes, applied to the /history code path."""
+        conv = await create_conversation(db_session, agent_id="agent-1", agent_name="Bot")
+        await create_slot_extractions(
+            db_session, conversation_id=conv.id, tool_id="t", slots={"name": "Old Name"}
+        )
+        await create_slot_extractions(
+            db_session, conversation_id=conv.id, tool_id="t", slots={"name": "New Name"}
+        )
+
+        history = await get_conversation_history(db_session, conv.id)
+        assert history is not None
+        assert len(history["slot_extractions"]) == 1
+        assert history["slot_extractions"][0]["field_value"] == "New Name"

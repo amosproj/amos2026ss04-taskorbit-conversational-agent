@@ -28,6 +28,8 @@ from taskorbit.types import (
     ConversationStatus,
     Message,
     MessageRole,
+    ToolDefinition,
+    ToolType,
 )
 
 _FAKE_DG_KEY = "test-deepgram-key"
@@ -522,3 +524,56 @@ def test_sync_workflow_state_clears_empty_selected_agent() -> None:
     agent._current_routed_agent = "agent-a"
     agent.sync_workflow_state(selected_agent="   ")
     assert agent._current_routed_agent is None
+
+
+# ---------------------------------------------------------------------------
+# Voice-path slot persistence gate
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_llm_node_does_not_persist_slots_when_tool_invoked_is_none() -> None:
+    """Partial slot fills (extracted_slots set, tool_invoked=None) must NOT be
+    persisted — they are surfaced to the UI for progress display only, and
+    storing them under a synthetic tool_id would create noise rows and break
+    the (tool_id, field_name) dedup key."""
+    response = ConversationResponse(
+        conversation_id="test-conv",
+        reply=Message(role=MessageRole.ASSISTANT, content="Got it."),
+        extracted_slots={"name": "Alice"},
+        tool_invoked=None,
+    )
+    agent, _ = _make_agent("Got it.", response=response)
+    chat_ctx = _make_chat_ctx([("user", "My name is Alice")])
+
+    with patch("taskorbit.livekit_agent.llm.create_slot_extractions") as mock_create:
+        agent.request_reply()
+        [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
+
+    mock_create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_llm_node_persists_slots_when_tool_invoked_is_set() -> None:
+    """Slot extractions are persisted with tool_id=response.tool_invoked.id when
+    both extracted_slots and tool_invoked are present."""
+    tool = ToolDefinition(id="data_extraction", name="Collect Info", type=ToolType.DATA_EXTRACTION)
+    response = ConversationResponse(
+        conversation_id="test-conv",
+        reply=Message(role=MessageRole.ASSISTANT, content="All set."),
+        extracted_slots={"email": "alice@example.com"},
+        tool_invoked=tool,
+    )
+    agent, _ = _make_agent("All set.", response=response)
+    chat_ctx = _make_chat_ctx([("user", "alice@example.com")])
+
+    with patch(
+        "taskorbit.livekit_agent.llm.create_slot_extractions", new_callable=AsyncMock
+    ) as mock_create:
+        agent.request_reply()
+        [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
+
+    mock_create.assert_called_once()
+    call_kwargs = mock_create.call_args.kwargs
+    assert call_kwargs["tool_id"] == "data_extraction"
+    assert call_kwargs["slots"] == {"email": "alice@example.com"}
