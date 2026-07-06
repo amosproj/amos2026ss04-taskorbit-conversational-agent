@@ -7,7 +7,7 @@
 | **Issue** | [#138 — SBOM Automation & Legal Notices UI](https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/138) |
 | **Repository** | `amosproj/amos2026ss04-taskorbit-conversational-agent` |
 | **Branch** | `feature/138-sbom-legal-notices-ui` (from `main`) |
-| **Status** | Planning — ready for implementation |
+| **Status** | Implemented |
 | **Assignees** | shikharthakur2404 (originally abdulmoeez1225, qiblatainf) |
 | **Sprint board** | In Progress on `amos2026ss04-feature-board` |
 
@@ -33,6 +33,20 @@
 
 ---
 
+## Quick summary of implemented changes (for developers & reviewers)
+
+- Added `scripts/generate-sbom.sh`: runs Syft against backend+frontend, merges CycloneDX outputs into `Documentation/sbom.cyclonedx.json`, and invokes the extractor. Note: metadata.timestamp was intentionally removed from the generated SBOM to avoid unstable CI failures caused by rebases; determinism is preserved via a payload-derived `serialNumber`.
+
+- Added `scripts/extract_legal_notices.py`: reads CycloneDX JSON and emits `frontend/src/generated/legal-notices.json`. Key behaviors: derives `ecosystem` from `purl` (pkg:pypi → python, pkg:npm → npm, ...), handles license `expression` entries (e.g. "Apache-2.0 AND BSD-3-Clause"), dedupes by ecosystem+name+version, and sorts by (ecosystem, name, version).
+
+- Updated backend tests (`backend/tests/test_extract_legal_notices.py`) to exercise license-expression handling and to assert the full sort key (ecosystem, name, version).
+
+- CI: ` .github/workflows/verify-sbom.yml` now runs the same regeneration script and fails the PR if the committed artifacts are stale. Workflow tightened to least-privilege (`permissions: contents: read`) and uses concurrency/cancel semantics; it targets `main`/`prod` pushes + PRs to avoid double-run on feature branch pushes.
+
+- Frontend: `LegalNoticesDialog` added and made accessible (search input `aria-label`, result counter has `role="status" aria-live="polite"`, table headers include `scope="col"`).
+
+- Developer workflow: after changing dependencies, run `./scripts/generate-sbom.sh` and commit *both* lockfiles and the generated artifacts (`Documentation/sbom.cyclonedx.json` and `frontend/src/generated/legal-notices.json`). This keeps CI verification deterministic and prevents spurious failures.
+
 ## 1. Ticket context
 
 ### User story
@@ -43,11 +57,13 @@
 
 ### Acceptance criteria (from GitHub issue)
 
-1. An SCA tool (e.g. scatool.com or an alternative) is used to generate an up-to-date version of the SBOM
-2. Project dependencies are successfully scanned using "blind accept" for license clearing (when using e.g. scatool.com)
-3. The old SBOM in the Planning Documents is updated based on the tool output
-4. A new "Legal Notices" section or modal is added to the UI
-5. The UI component correctly renders and displays the automatically generated license information from the SCA tool
+1. An SCA tool (e.g. scatool.com or an alternative) is used to generate an up-to-date SBOM.
+2. The SBOM artifact(s) are committed to the repository and saved to sprint deliverables (e.g., `Documentation/sbom.cyclonedx.json` and `frontend/src/generated/legal-notices.json`).
+3. Project dependencies are successfully scanned using "blind accept" for license clearing (when using e.g. scatool.com).
+4. The old SBOM in the Planning Documents is updated based on the tool output.
+5. A new "Legal Notices" section or modal is added to the UI.
+6. The UI component correctly renders and displays the automatically generated license information from the SCA tool.
+
 
 ### How we interpret the ticket for TaskOrbit
 
