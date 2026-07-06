@@ -52,6 +52,8 @@ syft scan "dir:$REPO_ROOT/frontend" \
 echo "   -> frontend scan complete ($(python3 -c "import json; print(len(json.load(open('/tmp/sbom-frontend.json'))['components']))") components)"
 
 echo "==> Merging scans into combined CycloneDX BOM ..."
+# NOTE: metadata.timestamp is derived from lockfile git history (not Syft scan time)
+# so CI and local regen stay in sync. serialNumber is a sha256 of the component payload.
 
 python3 -c "
 import hashlib
@@ -121,6 +123,7 @@ def lockfile_timestamp(repo_root):
         return datetime.fromtimestamp(max(lock_mtimes), tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     return datetime.fromtimestamp(0, tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
+merged['metadata']['timestamp'] = lockfile_timestamp(repo_root)
 
 payload = json.dumps(components, sort_keys=True, separators=(',', ':')).encode('utf-8')
 digest = hashlib.sha256(payload).hexdigest()

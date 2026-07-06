@@ -59,6 +59,8 @@ def resolve_license(component: dict[str, Any]) -> str:
       - {"licenses": [{"license": {"name": "License Name"}}]}
       - {"licenses": [{"expression": "Apache-2.0 AND BSD-3-Clause"}]}
     """
+    # DEV NOTE: Syft/CycloneDX may represent license info in multiple shapes.
+    # Prefer SPDX id -> license name -> expression (handled below).
     licenses = component.get("licenses")
     if not licenses:
         return "UNKNOWN"
@@ -102,6 +104,8 @@ def extract_legal_notices(sbom_path: str) -> dict[str, Any]:
 
         name = comp.get("name", "").lower()
         version = comp.get("version", "")
+        # DEV NOTE: derive ecosystem from purl (pkg:...) rather than CycloneDX 'type'
+        # This yields stable values like 'python'/'npm' that the frontend expects.
         ecosystem = ecosystem_from_purl(purl)
         license_str = resolve_license(comp)
 

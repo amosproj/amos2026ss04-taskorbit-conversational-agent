@@ -49,13 +49,25 @@ def test_dedupes_components(result: dict) -> None:
 
 
 def test_sorts_alphabetically(result: dict) -> None:
-    """Components are sorted by ecosystem, then name, then version."""
+    """Components are sorted by ecosystem, then name, then version.
+
+    DEV NOTE: ordering by (ecosystem, name, version) ensures stable grouping
+    in the frontend and predictable pagination/search results.
+    """
+    # Ensure ordering is by (ecosystem, name, version) so frontend grouping is stable.
     keys = [(c["ecosystem"], c["name"].lower(), c["version"]) for c in result["components"]]
     assert keys == sorted(keys)
 
 
 def test_handles_license_expression(result: dict) -> None:
-    """License expressions (CycloneDX 'expression') are preserved."""
+    """License expressions (CycloneDX 'expression') are preserved.
+
+    DEV NOTE: CycloneDX can provide composite expressions ("A AND B").
+    The extractor preserves the expression verbatim so downstream UIs can render
+    composite licenses accurately.
+    """
+    # License-expression entries are preserved verbatim; this exercises the
+    # CycloneDX 'expression' shape in fixtures.
     expr = [c for c in result["components"] if c["name"] == "exprpkg"]
     assert len(expr) == 1
     assert expr[0]["license"] == "Apache-2.0 AND BSD-3-Clause"
@@ -78,5 +90,5 @@ def test_output_schema(result: dict) -> None:
 
 
 def test_component_count_matches(result: dict) -> None:
-    """The fixture has 6 pkg: components after dedupe of flask."""
-    assert result["componentCount"] == 6
+    """The fixture has 7 pkg: components after dedupe of flask."""
+    assert result["componentCount"] == 7

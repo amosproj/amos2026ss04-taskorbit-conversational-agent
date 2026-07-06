@@ -67,6 +67,7 @@ export function LegalNoticesDialog() {
         </DialogHeader>
 
         <div className="flex items-center gap-2">
+          {/* Accessible search input: aria-label provides a readable name for screen readers */}
           <Input
             placeholder="Search by package name or license type…"
             aria-label="Search legal notices"
@@ -74,6 +75,7 @@ export function LegalNoticesDialog() {
             onChange={(e) => setSearch(e.target.value)}
             className="h-9"
           />
+          {/* Visible counter with live region so screen readers announce changes */}
           <span className="shrink-0 text-xs text-muted-foreground" role="status" aria-live="polite">
             {filtered.length} of {data.componentCount}
           </span>
@@ -82,11 +84,20 @@ export function LegalNoticesDialog() {
         <ScrollArea className="max-h-[60vh]">
           <table className="w-full text-sm">
             <thead>
+              {/* Table headers: include scope="col" for proper table semantics */}
               <tr className="border-b text-left text-xs text-muted-foreground">
-                <th scope="col" className="pb-2 pr-2 font-medium">Package</th>
-                <th scope="col" className="pb-2 pr-2 font-medium">Version</th>
-                <th scope="col" className="pb-2 pr-2 font-medium">License</th>
-                <th scope="col" className="pb-2 font-medium">Ecosystem</th>
+                <th scope="col" className="pb-2 pr-2 font-medium">
+                  Package
+                </th>
+                <th scope="col" className="pb-2 pr-2 font-medium">
+                  Version
+                </th>
+                <th scope="col" className="pb-2 pr-2 font-medium">
+                  License
+                </th>
+                <th scope="col" className="pb-2 font-medium">
+                  Ecosystem
+                </th>
               </tr>
             </thead>
             <tbody>

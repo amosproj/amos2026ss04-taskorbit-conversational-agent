@@ -1,3 +1,7 @@
+# Verify SBOM workflow: regenerate the CycloneDX SBOM and the frontend
+# legal-notices.json then verify the committed artifacts are up-to-date.
+# Run only on pushes to main/prod and on PRs to avoid double-runs on feature
+# branches; use concurrency to cancel in-progress runs on force-push.
 name: Verify SBOM
 
 permissions:
