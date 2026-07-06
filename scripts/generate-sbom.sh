@@ -121,7 +121,6 @@ def lockfile_timestamp(repo_root):
         return datetime.fromtimestamp(max(lock_mtimes), tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     return datetime.fromtimestamp(0, tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
-merged['metadata']['timestamp'] = lockfile_timestamp(repo_root)
 
 payload = json.dumps(components, sort_keys=True, separators=(',', ':')).encode('utf-8')
 digest = hashlib.sha256(payload).hexdigest()

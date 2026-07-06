@@ -95,6 +95,18 @@
       ]
     },
     {
+      "bom-ref": "pkg:pypi/exprpkg@1.0",
+      "type": "library",
+      "name": "exprpkg",
+      "version": "1.0",
+      "purl": "pkg:pypi/exprpkg@1.0",
+      "licenses": [
+        {
+          "expression": "Apache-2.0 AND BSD-3-Clause"
+        }
+      ]
+    },
+    {
       "bom-ref": "pkg:pypi/alpha-package@0.1.0",
       "type": "library",
       "name": "alpha-package",

@@ -1,8 +1,15 @@
 name: Verify SBOM
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
-    branches: ["**"]
+    branches: [main, prod]
   pull_request:
   workflow_dispatch:
 

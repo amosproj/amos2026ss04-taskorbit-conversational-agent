@@ -69,11 +69,12 @@ export function LegalNoticesDialog() {
         <div className="flex items-center gap-2">
           <Input
             placeholder="Search by package name or license type…"
+            aria-label="Search legal notices"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="h-9"
           />
-          <span className="shrink-0 text-xs text-muted-foreground">
+          <span className="shrink-0 text-xs text-muted-foreground" role="status" aria-live="polite">
             {filtered.length} of {data.componentCount}
           </span>
         </div>
@@ -82,10 +83,10 @@ export function LegalNoticesDialog() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-xs text-muted-foreground">
-                <th className="pb-2 pr-2 font-medium">Package</th>
-                <th className="pb-2 pr-2 font-medium">Version</th>
-                <th className="pb-2 pr-2 font-medium">License</th>
-                <th className="pb-2 font-medium">Ecosystem</th>
+                <th scope="col" className="pb-2 pr-2 font-medium">Package</th>
+                <th scope="col" className="pb-2 pr-2 font-medium">Version</th>
+                <th scope="col" className="pb-2 pr-2 font-medium">License</th>
+                <th scope="col" className="pb-2 font-medium">Ecosystem</th>
               </tr>
             </thead>
             <tbody>

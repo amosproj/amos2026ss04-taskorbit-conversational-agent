@@ -50,8 +50,15 @@ def test_dedupes_components(result: dict) -> None:
 
 def test_sorts_alphabetically(result: dict) -> None:
     """Components are sorted by ecosystem, then name, then version."""
-    names = [c["name"] for c in result["components"]]
-    assert names == sorted(names, key=str.lower)
+    keys = [(c["ecosystem"], c["name"].lower(), c["version"]) for c in result["components"]]
+    assert keys == sorted(keys)
+
+
+def test_handles_license_expression(result: dict) -> None:
+    """License expressions (CycloneDX 'expression') are preserved."""
+    expr = [c for c in result["components"] if c["name"] == "exprpkg"]
+    assert len(expr) == 1
+    assert expr[0]["license"] == "Apache-2.0 AND BSD-3-Clause"
 
 
 def test_skips_non_package_components(result: dict) -> None:

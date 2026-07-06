@@ -21,11 +21,63 @@ import sys
 from typing import Any
 
 
+def ecosystem_from_purl(purl: str | None) -> str:
+    """Derive a simple ecosystem string from a package URL (purl).
+
+    Examples:
+      pkg:pypi/requests@2.31.0  -> python
+      pkg:npm/react@18.3.0      -> npm
+    """
+    if not purl:
+        return "unknown"
+    if not purl.startswith("pkg:"):
+        return "unknown"
+    rest = purl[4:]
+    type_part = rest.split("/", 1)[0]
+    mapping = {
+        "pypi": "python",
+        "npm": "npm",
+        "gem": "ruby",
+        "maven": "maven",
+        "golang": "go",
+        "golang-module": "go",
+        "cargo": "rust",
+        "composer": "php",
+        "nuget": "dotnet",
+        "deb": "debian",
+        "rpm": "rpm",
+        "docker": "docker",
+    }
+    return mapping.get(type_part, type_part or "other")
+
+
 def resolve_license(component: dict[str, Any]) -> str:
+    """Return a human-readable license string for a CycloneDX component.
+
+    Handles these common shapes produced by Syft / CycloneDX:
+      - {"licenses": [{"license": {"id": "SPDX"}}]}
+      - {"licenses": [{"license": {"name": "License Name"}}]}
+      - {"licenses": [{"expression": "Apache-2.0 AND BSD-3-Clause"}]}
+    """
     licenses = component.get("licenses")
     if not licenses:
         return "UNKNOWN"
-    lic = licenses[0].get("license", {})
+    first = licenses[0]
+
+    # CycloneDX 1.5 may express complex expressions directly on the license entry.
+    if isinstance(first, dict) and first.get("expression"):
+        expr = first.get("expression")
+        return expr if expr else "UNKNOWN"
+
+    # Normalized license object may appear under the 'license' key.
+    lic = None
+    if isinstance(first, dict) and "license" in first:
+        lic = first.get("license") or {}
+    elif isinstance(first, dict):
+        lic = first
+    else:
+        lic = {}
+
     spdx_id = lic.get("id")
     if spdx_id:
         return spdx_id
@@ -50,7 +102,7 @@ def extract_legal_notices(sbom_path: str) -> dict[str, Any]:
 
         name = comp.get("name", "").lower()
         version = comp.get("version", "")
-        ecosystem = comp.get("type", "unknown")
+        ecosystem = ecosystem_from_purl(purl)
         license_str = resolve_license(comp)
 
         key = (ecosystem, name, version)
