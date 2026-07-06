@@ -22,6 +22,9 @@ from openrouter.errors import (
     EdgeNetworkTimeoutResponseError,
     ForbiddenResponseError,
     OpenRouterError,
+    ProviderOverloadedResponseError,
+    TooManyRequestsResponseError,
+    UnauthorizedResponseError,
 )
 
 from taskorbit.config import Settings
@@ -29,13 +32,28 @@ from taskorbit.logging.setup import get_logger
 from taskorbit.observability.metrics import get_metrics
 from taskorbit.types import LLMConfig, Message
 
-from .errors import LLMAPIError, LLMAuthError, LLMTimeoutError
+from .errors import LLMAPIError, LLMAuthError, LLMRateLimitError, LLMTimeoutError
 from .messages import to_openai_messages
 
 _log = get_logger(__name__)
 
 _HTTP_REFERER = "https://taskorbit.app"
 _APP_TITLE = "TaskOrbit"
+
+_MAX_DETAIL_CHARS = 500
+
+
+def _bounded_detail(exc: OpenRouterError) -> str:
+    """Prefer ``exc.body`` (the SDK's raw response text) when populated,
+    otherwise fall back to ``str(exc)``. Truncated at ``_MAX_DETAIL_CHARS``
+    so an oversized upstream error body cannot bloat logs or the
+    user-visible LLMError message.
+    """
+    detail = getattr(exc, "body", None) or str(exc)
+    detail_str = str(detail)
+    if len(detail_str) > _MAX_DETAIL_CHARS:
+        return detail_str[:_MAX_DETAIL_CHARS] + "...[truncated]"
+    return detail_str
 
 
 class OpenRouterClient:
@@ -88,6 +106,12 @@ class OpenRouterClient:
                 provider="openrouter", model=llm_config.model, status="auth"
             ).inc()
             raise LLMAuthError(f"OpenRouter authentication failed: {exc}") from exc
+        except UnauthorizedResponseError as exc:
+            _log.error("llm_call_failed", provider="openrouter", error_type="auth", error=str(exc))
+            get_metrics().llm_requests_total.labels(
+                provider="openrouter", model=llm_config.model, status="auth"
+            ).inc()
+            raise LLMAuthError(f"OpenRouter authentication failed: {exc}") from exc
         except EdgeNetworkTimeoutResponseError as exc:
             _log.error(
                 "llm_call_failed", provider="openrouter", error_type="timeout", error=str(exc)
@@ -96,12 +120,27 @@ class OpenRouterClient:
                 provider="openrouter", model=llm_config.model, status="timeout"
             ).inc()
             raise LLMTimeoutError(f"OpenRouter request timed out: {exc}") from exc
+        except (TooManyRequestsResponseError, ProviderOverloadedResponseError) as exc:
+            # str(exc) is just "Provider returned error", exc.body carries the
+            # actual reason (e.g. "model X is temporarily rate-limited upstream,
+            # retry shortly"), essential for diagnosing flaky :free models (#197).
+            # Cap to 500 chars so an unexpectedly large body cannot bloat logs
+            # or the user-visible error string.
+            detail = _bounded_detail(exc)
+            _log.error(
+                "llm_call_failed", provider="openrouter", error_type="rate_limit", error=detail
+            )
+            get_metrics().llm_requests_total.labels(
+                provider="openrouter", model=llm_config.model, status="rate_limit"
+            ).inc()
+            raise LLMRateLimitError(f"OpenRouter rate-limited: {detail}") from exc
         except OpenRouterError as exc:
-            _log.error("llm_call_failed", provider="openrouter", error_type="api", error=str(exc))
+            detail = _bounded_detail(exc)
+            _log.error("llm_call_failed", provider="openrouter", error_type="api", error=detail)
             get_metrics().llm_requests_total.labels(
                 provider="openrouter", model=llm_config.model, status="api"
             ).inc()
-            raise LLMAPIError(f"OpenRouter API error: {exc}") from exc
+            raise LLMAPIError(f"OpenRouter API error: {detail}") from exc
 
         raw_content = result.choices[0].message.content if result.choices else None
         if isinstance(raw_content, list):

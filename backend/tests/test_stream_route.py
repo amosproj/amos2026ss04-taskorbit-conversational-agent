@@ -188,6 +188,86 @@ def test_stream_conversation_emits_error_event_on_orchestrator_error() -> None:
     app.dependency_overrides = {}
 
 
+async def _stream_error_response_with_polite_reply() -> None:
+    """Async generator that yields an error ConversationResponse WITH the
+    #197 polite reply set. Represents post-#197 orchestrator behaviour on
+    LLMError paths."""
+    yield ConversationResponse(
+        conversation_id="conv-1",
+        reply=Message(
+            role=MessageRole.ASSISTANT,
+            content=(
+                "I'm having trouble reaching my language model provider right now. "
+                "Please try again in a moment."
+            ),
+        ),
+        status="error",
+        error="OpenAI authentication failed: 401 invalid api key",
+    )
+
+
+def test_stream_conversation_forwards_reply_field_in_error_event() -> None:
+    """#197: on error events the SSE payload must include the polite reply
+    alongside the technical error message. Without this the FE only receives
+    the raw SDK error string and the whole polite-fallback contract of #197
+    is bypassed on the streaming path."""
+    mock_orchestrator = MagicMock()
+    mock_orchestrator.process_message_stream = MagicMock(
+        return_value=_stream_error_response_with_polite_reply()
+    )
+    app = create_app()
+    app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
+    app.dependency_overrides[get_session] = _mock_db
+
+    with patch(
+        "taskorbit.api.routes.conversations.create_conversation_message",
+        new_callable=AsyncMock,
+        return_value=MagicMock(),
+    ):
+        with TestClient(app) as client:
+            response = client.post("/v1/conversations/stream", json=_VALID_PAYLOAD)
+
+    events = _parse_sse_events(response.text)
+    error_events = [e for e in events if e["type"] == "error"]
+
+    assert len(error_events) == 1
+    err = error_events[0]
+    assert "language model provider" in err["reply"]
+    # The technical error still lands in `message` for on-call diagnostics.
+    assert "OpenAI authentication failed" in err["message"]
+    app.dependency_overrides = {}
+
+
+def test_stream_conversation_persists_assistant_reply_on_error() -> None:
+    """#197: the polite assistant reply on an error turn must be written to
+    the DB so history stays symmetric with the /process endpoint (which
+    always persists both user + assistant rows)."""
+    mock_orchestrator = MagicMock()
+    mock_orchestrator.process_message_stream = MagicMock(
+        return_value=_stream_error_response_with_polite_reply()
+    )
+    app = create_app()
+    app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
+    app.dependency_overrides[get_session] = _mock_db
+
+    with patch(
+        "taskorbit.api.routes.conversations.create_conversation_message",
+        new_callable=AsyncMock,
+        return_value=MagicMock(),
+    ) as mock_persist:
+        with TestClient(app) as client:
+            client.post("/v1/conversations/stream", json=_VALID_PAYLOAD)
+
+    # Two persists expected: user (upfront) + assistant (on error).
+    assert mock_persist.call_count == 2
+    assistant_calls = [
+        c for c in mock_persist.call_args_list if c.kwargs.get("role") == "assistant"
+    ]
+    assert len(assistant_calls) == 1
+    assert "language model provider" in assistant_calls[0].kwargs["content"]
+    app.dependency_overrides = {}
+
+
 def test_stream_conversation_rejects_invalid_payload() -> None:
     app = create_app()
     app.dependency_overrides[get_current_user_id] = lambda: 1

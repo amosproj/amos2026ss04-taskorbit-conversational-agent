@@ -169,7 +169,13 @@ async def _sse_generator(
       data: {"type": "done", "intent": "...", "status": "...", "selected_agent": "...",
               "slots": {...}, "missing_slots": [...], "conversation_id": "...",
               "reply": "..." (when no chunks were streamed)}
-      data: {"type": "error", "message": "..."}
+      data: {"type": "error", "message": "<technical>", "reply": "<polite>"}
+
+    On error events, `reply` carries the polite user-facing text from
+    ConversationResponse.reply (#197). The FE should render `reply` in the
+    assistant bubble and treat `message` as debug detail for on-call.
+    `reply` is null only when the orchestrator's error path predates the
+    polite-reply pattern.
     """
     # Persist user message upfront so it survives client disconnects.
     last_msg = request.messages[-1] if request.messages else None
@@ -206,7 +212,25 @@ async def _sse_generator(
         return
 
     if meta.status == "error":
-        yield f"data: {json.dumps({'type': 'error', 'message': meta.error or 'Unknown error'})}\n\n"
+        # Forward the polite user-facing reply (from ConversationResponse.reply,
+        # #197) alongside the technical error string so the FE can render the
+        # polite text in the assistant bubble instead of a raw provider error.
+        reply_text = meta.reply.content if meta.reply else None
+        yield f"data: {json.dumps({'type': 'error', 'message': meta.error or 'Unknown error', 'reply': reply_text})}\n\n"
+        # Persist the polite reply so conversation history is symmetric across
+        # error turns (matches the /process endpoint's persist-on-error).
+        if meta.reply:
+            saved = await create_conversation_message(
+                db=db,
+                conversation_id=request.conversation_id,
+                role=meta.reply.role.value,
+                content=meta.reply.content,
+            )
+            if saved is None:
+                logger.error(
+                    "sse_failed_to_save_assistant_error_message",
+                    conversation_id=request.conversation_id,
+                )
         return
 
     # Persist assistant reply after successful full stream
