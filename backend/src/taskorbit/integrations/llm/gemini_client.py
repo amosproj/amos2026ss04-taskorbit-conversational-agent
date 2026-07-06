@@ -113,6 +113,22 @@ class GeminiClient:
                 provider="google", model=llm_config.model, status="client"
             ).inc()
             raise LLMAPIError(f"Google API client error: {exc}") from exc
+        except genai_errors.UnknownApiResponseError as exc:
+            # UnknownApiResponseError inherits from ValueError (not APIError),
+            # so it slips past `except genai_errors.APIError`. Fires when the
+            # SDK cannot parse the API response into its known schema (protocol
+            # drift, unexpected shape, malformed JSON boundary). Parity extension
+            # of Vineesh's #197 review to Gemini.
+            _log.error(
+                "llm_call_failed",
+                provider="google",
+                error_type="unknown_response",
+                error=str(exc),
+            )
+            get_metrics().llm_requests_total.labels(
+                provider="google", model=llm_config.model, status="unknown_response"
+            ).inc()
+            raise LLMAPIError(f"Google API returned unparseable response: {exc}") from exc
         except genai_errors.APIError as exc:
             _log.error("llm_call_failed", provider="google", error_type="api", error=str(exc))
             get_metrics().llm_requests_total.labels(
@@ -233,6 +249,19 @@ class GeminiClient:
                 provider="google", model=llm_config.model, status="client"
             ).inc()
             raise LLMAPIError(f"Google API client error: {exc}") from exc
+        except genai_errors.UnknownApiResponseError as exc:
+            # See generate() for the rationale. UnknownApiResponseError is a
+            # ValueError, not an APIError, so it needs its own catch.
+            _log.error(
+                "llm_stream_failed",
+                provider="google",
+                error_type="unknown_response",
+                error=str(exc),
+            )
+            get_metrics().llm_requests_total.labels(
+                provider="google", model=llm_config.model, status="unknown_response"
+            ).inc()
+            raise LLMAPIError(f"Google API returned unparseable response: {exc}") from exc
         except genai_errors.APIError as exc:
             _log.error("llm_stream_failed", provider="google", error_type="api", error=str(exc))
             get_metrics().llm_requests_total.labels(
