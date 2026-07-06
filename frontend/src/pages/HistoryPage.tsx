@@ -112,9 +112,12 @@ export function HistoryPage() {
     getConversationHistory(id)
       .then((h) => {
         setSelectedHistory(h);
-        // Update tool_count in list once detail is loaded
+        // Update tool_count in list once detail is loaded. Count distinct tools:
+        // each different tool invoked (e.g. collect_user_info, end_call) adds one,
+        // but the same tool firing on multiple turns is not counted again.
+        const distinctTools = new Set(h.tool_executions.map((t) => t.tool_id)).size;
         setConversations((prev) =>
-          prev.map((c) => (c.id === id ? { ...c, tool_count: h.tool_executions.length } : c)),
+          prev.map((c) => (c.id === id ? { ...c, tool_count: distinctTools } : c)),
         );
       })
       .catch(() => setSelectedHistory(null))
