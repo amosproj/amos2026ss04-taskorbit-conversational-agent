@@ -17,6 +17,7 @@ from taskorbit.database.crud import (
     get_conversation_history,
     get_messages_by_conversation,
     get_messages_by_user,
+    get_slot_extractions,
     get_user,
     get_user_by_email,
     get_user_by_username,
@@ -236,6 +237,49 @@ class TestConversationHistoryCRUD:
             db_session, conversation_id=conv.id, tool_id="data_extraction", slots={}
         )
         assert rows == []
+
+    @pytest.mark.asyncio
+    async def test_create_slot_extractions_upserts_repeated_fields(self, db_session):
+        """Re-extracting the cumulative slot set must not duplicate rows."""
+        conv = await create_conversation(db_session, agent_id="agent-1", agent_name="Bot")
+        # Simulate a tool firing repeatedly with a growing cumulative slot set.
+        await create_slot_extractions(
+            db_session,
+            conversation_id=conv.id,
+            tool_id="collect_user_info",
+            slots={"is_new_customer": "True"},
+        )
+        await create_slot_extractions(
+            db_session,
+            conversation_id=conv.id,
+            tool_id="collect_user_info",
+            slots={"is_new_customer": "True", "full_name": "John Doe"},
+        )
+        await create_slot_extractions(
+            db_session,
+            conversation_id=conv.id,
+            tool_id="collect_user_info",
+            slots={"is_new_customer": "True", "full_name": "John Doe", "email": "j@x.com"},
+        )
+
+        rows = await get_slot_extractions(db_session, conv.id)
+        # One row per field despite three firings — no duplicates.
+        assert len(rows) == 3
+        assert {r.field_name for r in rows} == {"is_new_customer", "full_name", "email"}
+
+    @pytest.mark.asyncio
+    async def test_create_slot_extractions_updates_changed_value(self, db_session):
+        """A later extraction with a new value updates the field in place."""
+        conv = await create_conversation(db_session, agent_id="agent-1", agent_name="Bot")
+        await create_slot_extractions(
+            db_session, conversation_id=conv.id, tool_id="t", slots={"full_name": "John Doe"}
+        )
+        await create_slot_extractions(
+            db_session, conversation_id=conv.id, tool_id="t", slots={"full_name": "Jane Roe"}
+        )
+        rows = await get_slot_extractions(db_session, conv.id)
+        assert len(rows) == 1
+        assert rows[0].field_value == "Jane Roe"
 
     @pytest.mark.asyncio
     async def test_create_tool_execution(self, db_session):
