@@ -14,6 +14,7 @@ import {
   type RecentConversation,
 } from "@/components/chat/RecentConversations";
 import { VoiceSessionBridge } from "@/components/chat/VoiceSessionBridge";
+import logoUrl from "@/assets/taskorbit-logo.png";
 import { TranscriptBubble } from "@/components/history/TranscriptBubble";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -748,7 +749,10 @@ export function ConversationalChat() {
         <p className="text-sm font-medium tracking-widest text-muted-foreground uppercase">
           Conversational agent
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{appName}</h1>
+        <div className="flex items-center gap-3">
+          <img src={logoUrl} alt="" className="size-9 shrink-0" />
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{appName}</h1>
+        </div>
         <p className="text-sm text-muted-foreground">
           Start a session to talk with your agent by voice, or use the text option.
         </p>
