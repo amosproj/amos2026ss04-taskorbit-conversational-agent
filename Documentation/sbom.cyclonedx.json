@@ -2,10 +2,10 @@
   "$schema": "http://cyclonedx.org/schema/bom-1.5.schema.json",
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:d99e7956-79bf-09ff-a7d4-4198eab7896e",
+  "serialNumber": "urn:uuid:660d4ff2-5578-2550-853b-bc82a4c5e729",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-06-27T22:22:58Z",
+    "timestamp": "2026-07-01T23:05:34Z",
     "tools": {
       "components": [
         {
@@ -15447,6 +15447,63 @@
       ]
     },
     {
+      "bom-ref": "pkg:npm/%40radix-ui/primitive@1.1.4?package-id=80fc81d593471421",
+      "type": "library",
+      "name": "@radix-ui/primitive",
+      "version": "1.1.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "cpe": "cpe:2.3:a:\\@radix-ui\\/primitive:\\@radix-ui\\/primitive:1.1.4:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/%40radix-ui/primitive@1.1.4",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "javascript-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "javascript"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "npm"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "javascript-npm-package-lock-entry"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/primitive:\\@radix_ui\\/primitive:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/primitive:\\@radix-ui\\/primitive:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/primitive:\\@radix_ui\\/primitive:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix-ui\\/primitive:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/primitive:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/package-lock.json"
+        }
+      ]
+    },
+    {
       "bom-ref": "pkg:npm/%40radix-ui/react-accessible-icon@1.1.7?package-id=3fcbf8336cad3905",
       "type": "library",
       "name": "@radix-ui/react-accessible-icon",
@@ -15690,6 +15747,95 @@
         {
           "name": "syft:cpe23",
           "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_alert_dialog:1.1.15:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/package-lock.json"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:npm/%40radix-ui/react-alert-dialog@1.1.18?package-id=d3039859649f6917",
+      "type": "library",
+      "name": "@radix-ui/react-alert-dialog",
+      "version": "1.1.18",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "cpe": "cpe:2.3:a:\\@radix-ui\\/react-alert-dialog:\\@radix-ui\\/react-alert-dialog:1.1.18:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/%40radix-ui/react-alert-dialog@1.1.18",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "javascript-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "javascript"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "npm"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "javascript-npm-package-lock-entry"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-alert-dialog:\\@radix_ui\\/react_alert_dialog:1.1.18:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_alert_dialog:\\@radix-ui\\/react-alert-dialog:1.1.18:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_alert_dialog:\\@radix_ui\\/react_alert_dialog:1.1.18:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-alert:\\@radix-ui\\/react-alert-dialog:1.1.18:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-alert:\\@radix_ui\\/react_alert_dialog:1.1.18:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_alert:\\@radix-ui\\/react-alert-dialog:1.1.18:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_alert:\\@radix_ui\\/react_alert_dialog:1.1.18:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix-ui\\/react-alert-dialog:1.1.18:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix_ui\\/react_alert_dialog:1.1.18:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix-ui\\/react-alert-dialog:1.1.18:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix_ui\\/react_alert_dialog:1.1.18:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix-ui\\/react-alert-dialog:1.1.18:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_alert_dialog:1.1.18:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:location:0:path",
@@ -16241,6 +16387,95 @@
       ]
     },
     {
+      "bom-ref": "pkg:npm/%40radix-ui/react-compose-refs@1.1.3?package-id=3c0f67eb3ac87389",
+      "type": "library",
+      "name": "@radix-ui/react-compose-refs",
+      "version": "1.1.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "cpe": "cpe:2.3:a:\\@radix-ui\\/react-compose-refs:\\@radix-ui\\/react-compose-refs:1.1.3:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/%40radix-ui/react-compose-refs@1.1.3",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "javascript-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "javascript"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "npm"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "javascript-npm-package-lock-entry"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-compose-refs:\\@radix_ui\\/react_compose_refs:1.1.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_compose_refs:\\@radix-ui\\/react-compose-refs:1.1.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_compose_refs:\\@radix_ui\\/react_compose_refs:1.1.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-compose:\\@radix-ui\\/react-compose-refs:1.1.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-compose:\\@radix_ui\\/react_compose_refs:1.1.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_compose:\\@radix-ui\\/react-compose-refs:1.1.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_compose:\\@radix_ui\\/react_compose_refs:1.1.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix-ui\\/react-compose-refs:1.1.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix_ui\\/react_compose_refs:1.1.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix-ui\\/react-compose-refs:1.1.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix_ui\\/react_compose_refs:1.1.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix-ui\\/react-compose-refs:1.1.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_compose_refs:1.1.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/package-lock.json"
+        }
+      ]
+    },
+    {
       "bom-ref": "pkg:npm/%40radix-ui/react-context@1.1.2?package-id=ea535e0867288677",
       "type": "library",
       "name": "@radix-ui/react-context",
@@ -16306,6 +16541,79 @@
         {
           "name": "syft:cpe23",
           "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_context:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/package-lock.json"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:npm/%40radix-ui/react-context@1.1.4?package-id=237918f822fc103c",
+      "type": "library",
+      "name": "@radix-ui/react-context",
+      "version": "1.1.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "cpe": "cpe:2.3:a:\\@radix-ui\\/react-context:\\@radix-ui\\/react-context:1.1.4:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/%40radix-ui/react-context@1.1.4",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "javascript-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "javascript"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "npm"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "javascript-npm-package-lock-entry"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-context:\\@radix_ui\\/react_context:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_context:\\@radix-ui\\/react-context:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_context:\\@radix_ui\\/react_context:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix-ui\\/react-context:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix_ui\\/react_context:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix-ui\\/react-context:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix_ui\\/react_context:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix-ui\\/react-context:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_context:1.1.4:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:location:0:path",
@@ -16476,6 +16784,79 @@
       ]
     },
     {
+      "bom-ref": "pkg:npm/%40radix-ui/react-dialog@1.1.18?package-id=c755b0a1d7754c69",
+      "type": "library",
+      "name": "@radix-ui/react-dialog",
+      "version": "1.1.18",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "cpe": "cpe:2.3:a:\\@radix-ui\\/react-dialog:\\@radix-ui\\/react-dialog:1.1.18:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/%40radix-ui/react-dialog@1.1.18",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "javascript-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "javascript"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "npm"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "javascript-npm-package-lock-entry"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-dialog:\\@radix_ui\\/react_dialog:1.1.18:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_dialog:\\@radix-ui\\/react-dialog:1.1.18:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_dialog:\\@radix_ui\\/react_dialog:1.1.18:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix-ui\\/react-dialog:1.1.18:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix_ui\\/react_dialog:1.1.18:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix-ui\\/react-dialog:1.1.18:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix_ui\\/react_dialog:1.1.18:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix-ui\\/react-dialog:1.1.18:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_dialog:1.1.18:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/package-lock.json"
+        }
+      ]
+    },
+    {
       "bom-ref": "pkg:npm/%40radix-ui/react-direction@1.1.1?package-id=121dd65c2849bd1d",
       "type": "library",
       "name": "@radix-ui/react-direction",
@@ -16630,6 +17011,95 @@
         {
           "name": "syft:cpe23",
           "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_dismissable_layer:1.1.11:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/package-lock.json"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:npm/%40radix-ui/react-dismissable-layer@1.1.14?package-id=35178c5e04f19da6",
+      "type": "library",
+      "name": "@radix-ui/react-dismissable-layer",
+      "version": "1.1.14",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "cpe": "cpe:2.3:a:\\@radix-ui\\/react-dismissable-layer:\\@radix-ui\\/react-dismissable-layer:1.1.14:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/%40radix-ui/react-dismissable-layer@1.1.14",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "javascript-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "javascript"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "npm"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "javascript-npm-package-lock-entry"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-dismissable-layer:\\@radix_ui\\/react_dismissable_layer:1.1.14:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_dismissable_layer:\\@radix-ui\\/react-dismissable-layer:1.1.14:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_dismissable_layer:\\@radix_ui\\/react_dismissable_layer:1.1.14:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-dismissable:\\@radix-ui\\/react-dismissable-layer:1.1.14:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-dismissable:\\@radix_ui\\/react_dismissable_layer:1.1.14:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_dismissable:\\@radix-ui\\/react-dismissable-layer:1.1.14:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_dismissable:\\@radix_ui\\/react_dismissable_layer:1.1.14:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix-ui\\/react-dismissable-layer:1.1.14:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix_ui\\/react_dismissable_layer:1.1.14:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix-ui\\/react-dismissable-layer:1.1.14:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix_ui\\/react_dismissable_layer:1.1.14:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix-ui\\/react-dismissable-layer:1.1.14:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_dismissable_layer:1.1.14:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:location:0:path",
@@ -16808,6 +17278,184 @@
         {
           "name": "syft:cpe23",
           "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_focus_guards:1.1.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/package-lock.json"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:npm/%40radix-ui/react-focus-guards@1.1.4?package-id=5ee9553566bba088",
+      "type": "library",
+      "name": "@radix-ui/react-focus-guards",
+      "version": "1.1.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "cpe": "cpe:2.3:a:\\@radix-ui\\/react-focus-guards:\\@radix-ui\\/react-focus-guards:1.1.4:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/%40radix-ui/react-focus-guards@1.1.4",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "javascript-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "javascript"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "npm"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "javascript-npm-package-lock-entry"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-focus-guards:\\@radix_ui\\/react_focus_guards:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_focus_guards:\\@radix-ui\\/react-focus-guards:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_focus_guards:\\@radix_ui\\/react_focus_guards:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-focus:\\@radix-ui\\/react-focus-guards:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-focus:\\@radix_ui\\/react_focus_guards:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_focus:\\@radix-ui\\/react-focus-guards:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_focus:\\@radix_ui\\/react_focus_guards:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix-ui\\/react-focus-guards:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix_ui\\/react_focus_guards:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix-ui\\/react-focus-guards:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix_ui\\/react_focus_guards:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix-ui\\/react-focus-guards:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_focus_guards:1.1.4:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/package-lock.json"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:npm/%40radix-ui/react-focus-scope@1.1.11?package-id=653c21a242dcb64d",
+      "type": "library",
+      "name": "@radix-ui/react-focus-scope",
+      "version": "1.1.11",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "cpe": "cpe:2.3:a:\\@radix-ui\\/react-focus-scope:\\@radix-ui\\/react-focus-scope:1.1.11:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/%40radix-ui/react-focus-scope@1.1.11",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "javascript-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "javascript"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "npm"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "javascript-npm-package-lock-entry"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-focus-scope:\\@radix_ui\\/react_focus_scope:1.1.11:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_focus_scope:\\@radix-ui\\/react-focus-scope:1.1.11:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_focus_scope:\\@radix_ui\\/react_focus_scope:1.1.11:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-focus:\\@radix-ui\\/react-focus-scope:1.1.11:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-focus:\\@radix_ui\\/react_focus_scope:1.1.11:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_focus:\\@radix-ui\\/react-focus-scope:1.1.11:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_focus:\\@radix_ui\\/react_focus_scope:1.1.11:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix-ui\\/react-focus-scope:1.1.11:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix_ui\\/react_focus_scope:1.1.11:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix-ui\\/react-focus-scope:1.1.11:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix_ui\\/react_focus_scope:1.1.11:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix-ui\\/react-focus-scope:1.1.11:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_focus_scope:1.1.11:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:location:0:path",
@@ -17132,6 +17780,79 @@
         {
           "name": "syft:cpe23",
           "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_id:1.1.1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/package-lock.json"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:npm/%40radix-ui/react-id@1.1.2?package-id=f2f3577f52a25812",
+      "type": "library",
+      "name": "@radix-ui/react-id",
+      "version": "1.1.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "cpe": "cpe:2.3:a:\\@radix-ui\\/react-id:\\@radix-ui\\/react-id:1.1.2:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/%40radix-ui/react-id@1.1.2",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "javascript-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "javascript"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "npm"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "javascript-npm-package-lock-entry"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-id:\\@radix_ui\\/react_id:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_id:\\@radix-ui\\/react-id:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_id:\\@radix_ui\\/react_id:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix-ui\\/react-id:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix_ui\\/react_id:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix-ui\\/react-id:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix_ui\\/react_id:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix-ui\\/react-id:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_id:1.1.2:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:location:0:path",
@@ -17820,6 +18541,79 @@
       ]
     },
     {
+      "bom-ref": "pkg:npm/%40radix-ui/react-portal@1.1.13?package-id=a6052ddb507d1e6f",
+      "type": "library",
+      "name": "@radix-ui/react-portal",
+      "version": "1.1.13",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "cpe": "cpe:2.3:a:\\@radix-ui\\/react-portal:\\@radix-ui\\/react-portal:1.1.13:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/%40radix-ui/react-portal@1.1.13",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "javascript-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "javascript"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "npm"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "javascript-npm-package-lock-entry"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-portal:\\@radix_ui\\/react_portal:1.1.13:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_portal:\\@radix-ui\\/react-portal:1.1.13:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_portal:\\@radix_ui\\/react_portal:1.1.13:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix-ui\\/react-portal:1.1.13:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix_ui\\/react_portal:1.1.13:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix-ui\\/react-portal:1.1.13:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix_ui\\/react_portal:1.1.13:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix-ui\\/react-portal:1.1.13:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_portal:1.1.13:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/package-lock.json"
+        }
+      ]
+    },
+    {
       "bom-ref": "pkg:npm/%40radix-ui/react-portal@1.1.9?package-id=55d5846d9768602e",
       "type": "library",
       "name": "@radix-ui/react-portal",
@@ -17966,6 +18760,79 @@
       ]
     },
     {
+      "bom-ref": "pkg:npm/%40radix-ui/react-presence@1.1.6?package-id=4a7f01645e1f89af",
+      "type": "library",
+      "name": "@radix-ui/react-presence",
+      "version": "1.1.6",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "cpe": "cpe:2.3:a:\\@radix-ui\\/react-presence:\\@radix-ui\\/react-presence:1.1.6:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/%40radix-ui/react-presence@1.1.6",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "javascript-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "javascript"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "npm"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "javascript-npm-package-lock-entry"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-presence:\\@radix_ui\\/react_presence:1.1.6:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_presence:\\@radix-ui\\/react-presence:1.1.6:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_presence:\\@radix_ui\\/react_presence:1.1.6:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix-ui\\/react-presence:1.1.6:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix_ui\\/react_presence:1.1.6:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix-ui\\/react-presence:1.1.6:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix_ui\\/react_presence:1.1.6:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix-ui\\/react-presence:1.1.6:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_presence:1.1.6:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/package-lock.json"
+        }
+      ]
+    },
+    {
       "bom-ref": "pkg:npm/%40radix-ui/react-primitive@2.1.3?package-id=e0fa7b588325ae73",
       "type": "library",
       "name": "@radix-ui/react-primitive",
@@ -18031,6 +18898,79 @@
         {
           "name": "syft:cpe23",
           "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_primitive:2.1.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/package-lock.json"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:npm/%40radix-ui/react-primitive@2.1.7?package-id=0c30367b3691aa38",
+      "type": "library",
+      "name": "@radix-ui/react-primitive",
+      "version": "2.1.7",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "cpe": "cpe:2.3:a:\\@radix-ui\\/react-primitive:\\@radix-ui\\/react-primitive:2.1.7:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/%40radix-ui/react-primitive@2.1.7",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "javascript-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "javascript"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "npm"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "javascript-npm-package-lock-entry"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-primitive:\\@radix_ui\\/react_primitive:2.1.7:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_primitive:\\@radix-ui\\/react-primitive:2.1.7:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_primitive:\\@radix_ui\\/react_primitive:2.1.7:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix-ui\\/react-primitive:2.1.7:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix_ui\\/react_primitive:2.1.7:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix-ui\\/react-primitive:2.1.7:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix_ui\\/react_primitive:2.1.7:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix-ui\\/react-primitive:2.1.7:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_primitive:2.1.7:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:location:0:path",
@@ -18671,10 +19611,10 @@
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-slot@1.2.4?package-id=0f60f52d93a62ac0",
+      "bom-ref": "pkg:npm/%40radix-ui/react-slot@1.3.0?package-id=cd44e42325c49d92",
       "type": "library",
       "name": "@radix-ui/react-slot",
-      "version": "1.2.4",
+      "version": "1.3.0",
       "licenses": [
         {
           "license": {
@@ -18682,8 +19622,8 @@
           }
         }
       ],
-      "cpe": "cpe:2.3:a:\\@radix-ui\\/react-slot:\\@radix-ui\\/react-slot:1.2.4:*:*:*:*:*:*:*",
-      "purl": "pkg:npm/%40radix-ui/react-slot@1.2.4",
+      "cpe": "cpe:2.3:a:\\@radix-ui\\/react-slot:\\@radix-ui\\/react-slot:1.3.0:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/%40radix-ui/react-slot@1.3.0",
       "properties": [
         {
           "name": "syft:package:foundBy",
@@ -18703,39 +19643,39 @@
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:\\@radix-ui\\/react-slot:\\@radix_ui\\/react_slot:1.2.4:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-slot:\\@radix_ui\\/react_slot:1.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:\\@radix_ui\\/react_slot:\\@radix-ui\\/react-slot:1.2.4:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_slot:\\@radix-ui\\/react-slot:1.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:\\@radix_ui\\/react_slot:\\@radix_ui\\/react_slot:1.2.4:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_slot:\\@radix_ui\\/react_slot:1.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix-ui\\/react-slot:1.2.4:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix-ui\\/react-slot:1.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix_ui\\/react_slot:1.2.4:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix_ui\\/react_slot:1.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix-ui\\/react-slot:1.2.4:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix-ui\\/react-slot:1.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix_ui\\/react_slot:1.2.4:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix_ui\\/react_slot:1.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:\\@radix:\\@radix-ui\\/react-slot:1.2.4:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:\\@radix:\\@radix-ui\\/react-slot:1.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:cpe23",
-          "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_slot:1.2.4:*:*:*:*:*:*:*"
+          "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_slot:1.3.0:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:location:0:path",
@@ -19376,6 +20316,111 @@
       ]
     },
     {
+      "bom-ref": "pkg:npm/%40radix-ui/react-use-callback-ref@1.1.2?package-id=1bfa72b76fdecdf0",
+      "type": "library",
+      "name": "@radix-ui/react-use-callback-ref",
+      "version": "1.1.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "cpe": "cpe:2.3:a:\\@radix-ui\\/react-use-callback-ref:\\@radix-ui\\/react-use-callback-ref:1.1.2:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/%40radix-ui/react-use-callback-ref@1.1.2",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "javascript-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "javascript"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "npm"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "javascript-npm-package-lock-entry"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-use-callback-ref:\\@radix_ui\\/react_use_callback_ref:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use_callback_ref:\\@radix-ui\\/react-use-callback-ref:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use_callback_ref:\\@radix_ui\\/react_use_callback_ref:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-use-callback:\\@radix-ui\\/react-use-callback-ref:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-use-callback:\\@radix_ui\\/react_use_callback_ref:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use_callback:\\@radix-ui\\/react-use-callback-ref:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use_callback:\\@radix_ui\\/react_use_callback_ref:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-use:\\@radix-ui\\/react-use-callback-ref:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-use:\\@radix_ui\\/react_use_callback_ref:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use:\\@radix-ui\\/react-use-callback-ref:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use:\\@radix_ui\\/react_use_callback_ref:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix-ui\\/react-use-callback-ref:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix_ui\\/react_use_callback_ref:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix-ui\\/react-use-callback-ref:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix_ui\\/react_use_callback_ref:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix-ui\\/react-use-callback-ref:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_use_callback_ref:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/package-lock.json"
+        }
+      ]
+    },
+    {
       "bom-ref": "pkg:npm/%40radix-ui/react-use-controllable-state@1.2.2?package-id=0934beb97b582176",
       "type": "library",
       "name": "@radix-ui/react-use-controllable-state",
@@ -19481,6 +20526,111 @@
       ]
     },
     {
+      "bom-ref": "pkg:npm/%40radix-ui/react-use-controllable-state@1.2.3?package-id=c3af667faf635dc9",
+      "type": "library",
+      "name": "@radix-ui/react-use-controllable-state",
+      "version": "1.2.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "cpe": "cpe:2.3:a:\\@radix-ui\\/react-use-controllable-state:\\@radix-ui\\/react-use-controllable-state:1.2.3:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/%40radix-ui/react-use-controllable-state@1.2.3",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "javascript-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "javascript"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "npm"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "javascript-npm-package-lock-entry"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-use-controllable-state:\\@radix_ui\\/react_use_controllable_state:1.2.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use_controllable_state:\\@radix-ui\\/react-use-controllable-state:1.2.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use_controllable_state:\\@radix_ui\\/react_use_controllable_state:1.2.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-use-controllable:\\@radix-ui\\/react-use-controllable-state:1.2.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-use-controllable:\\@radix_ui\\/react_use_controllable_state:1.2.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use_controllable:\\@radix-ui\\/react-use-controllable-state:1.2.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use_controllable:\\@radix_ui\\/react_use_controllable_state:1.2.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-use:\\@radix-ui\\/react-use-controllable-state:1.2.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-use:\\@radix_ui\\/react_use_controllable_state:1.2.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use:\\@radix-ui\\/react-use-controllable-state:1.2.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use:\\@radix_ui\\/react_use_controllable_state:1.2.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix-ui\\/react-use-controllable-state:1.2.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix_ui\\/react_use_controllable_state:1.2.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix-ui\\/react-use-controllable-state:1.2.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix_ui\\/react_use_controllable_state:1.2.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix-ui\\/react-use-controllable-state:1.2.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_use_controllable_state:1.2.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/package-lock.json"
+        }
+      ]
+    },
+    {
       "bom-ref": "pkg:npm/%40radix-ui/react-use-effect-event@0.0.2?package-id=cddfdb079b4be5bb",
       "type": "library",
       "name": "@radix-ui/react-use-effect-event",
@@ -19578,6 +20728,111 @@
         {
           "name": "syft:cpe23",
           "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_use_effect_event:0.0.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/package-lock.json"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:npm/%40radix-ui/react-use-effect-event@0.0.3?package-id=ffbb2cbbe6eeae18",
+      "type": "library",
+      "name": "@radix-ui/react-use-effect-event",
+      "version": "0.0.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "cpe": "cpe:2.3:a:\\@radix-ui\\/react-use-effect-event:\\@radix-ui\\/react-use-effect-event:0.0.3:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/%40radix-ui/react-use-effect-event@0.0.3",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "javascript-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "javascript"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "npm"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "javascript-npm-package-lock-entry"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-use-effect-event:\\@radix_ui\\/react_use_effect_event:0.0.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use_effect_event:\\@radix-ui\\/react-use-effect-event:0.0.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use_effect_event:\\@radix_ui\\/react_use_effect_event:0.0.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-use-effect:\\@radix-ui\\/react-use-effect-event:0.0.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-use-effect:\\@radix_ui\\/react_use_effect_event:0.0.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use_effect:\\@radix-ui\\/react-use-effect-event:0.0.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use_effect:\\@radix_ui\\/react_use_effect_event:0.0.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-use:\\@radix-ui\\/react-use-effect-event:0.0.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-use:\\@radix_ui\\/react_use_effect_event:0.0.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use:\\@radix-ui\\/react-use-effect-event:0.0.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use:\\@radix_ui\\/react_use_effect_event:0.0.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix-ui\\/react-use-effect-event:0.0.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix_ui\\/react_use_effect_event:0.0.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix-ui\\/react-use-effect-event:0.0.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix_ui\\/react_use_effect_event:0.0.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix-ui\\/react-use-effect-event:0.0.3:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_use_effect_event:0.0.3:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:location:0:path",
@@ -19893,6 +21148,111 @@
         {
           "name": "syft:cpe23",
           "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_use_layout_effect:1.1.1:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:location:0:path",
+          "value": "/package-lock.json"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:npm/%40radix-ui/react-use-layout-effect@1.1.2?package-id=0bf872a2ff6802ce",
+      "type": "library",
+      "name": "@radix-ui/react-use-layout-effect",
+      "version": "1.1.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "cpe": "cpe:2.3:a:\\@radix-ui\\/react-use-layout-effect:\\@radix-ui\\/react-use-layout-effect:1.1.2:*:*:*:*:*:*:*",
+      "purl": "pkg:npm/%40radix-ui/react-use-layout-effect@1.1.2",
+      "properties": [
+        {
+          "name": "syft:package:foundBy",
+          "value": "javascript-lock-cataloger"
+        },
+        {
+          "name": "syft:package:language",
+          "value": "javascript"
+        },
+        {
+          "name": "syft:package:type",
+          "value": "npm"
+        },
+        {
+          "name": "syft:package:metadataType",
+          "value": "javascript-npm-package-lock-entry"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-use-layout-effect:\\@radix_ui\\/react_use_layout_effect:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use_layout_effect:\\@radix-ui\\/react-use-layout-effect:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use_layout_effect:\\@radix_ui\\/react_use_layout_effect:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-use-layout:\\@radix-ui\\/react-use-layout-effect:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-use-layout:\\@radix_ui\\/react_use_layout_effect:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use_layout:\\@radix-ui\\/react-use-layout-effect:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use_layout:\\@radix_ui\\/react_use_layout_effect:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-use:\\@radix-ui\\/react-use-layout-effect:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react-use:\\@radix_ui\\/react_use_layout_effect:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use:\\@radix-ui\\/react-use-layout-effect:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react_use:\\@radix_ui\\/react_use_layout_effect:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix-ui\\/react-use-layout-effect:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix-ui\\/react:\\@radix_ui\\/react_use_layout_effect:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix-ui\\/react-use-layout-effect:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix_ui\\/react:\\@radix_ui\\/react_use_layout_effect:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix-ui\\/react-use-layout-effect:1.1.2:*:*:*:*:*:*:*"
+        },
+        {
+          "name": "syft:cpe23",
+          "value": "cpe:2.3:a:\\@radix:\\@radix_ui\\/react_use_layout_effect:1.1.2:*:*:*:*:*:*:*"
         },
         {
           "name": "syft:location:0:path",
@@ -22059,7 +23419,7 @@
       ]
     },
     {
-      "bom-ref": "pkg:npm/taskorbit-frontend@0.1.0?package-id=87079a680a6ff4c8",
+      "bom-ref": "pkg:npm/taskorbit-frontend@0.1.0?package-id=3162279df2b5f190",
       "type": "library",
       "name": "taskorbit-frontend",
       "version": "0.1.0",
