@@ -156,6 +156,26 @@ async def test_verify_model_available_maps_api_error() -> None:
         await client.verify_model_available()
 
 
+@pytest.mark.asyncio
+async def test_verify_model_available_maps_json_decode_error_to_llm_api_error() -> None:
+    """response.json() raises json.JSONDecodeError (a ValueError) when Ollama
+    returns malformed JSON (e.g. a reverse-proxy HTML error page fronting the
+    endpoint). The three-tier httpx catch does not cover ValueError, so this
+    would previously escape to the orchestrator's generic runtime_error bucket.
+    Regression guard for the parity extension of Vineesh's #197 review."""
+    client = OllamaClient(llm_config=_make_llm_config(), settings=_make_settings())
+    client._http = AsyncMock()
+    bad_resp = MagicMock(spec=httpx.Response)
+    bad_resp.raise_for_status = MagicMock()
+    bad_resp.json = MagicMock(
+        side_effect=json.JSONDecodeError("Expecting value", "<html>...</html>", 0)
+    )
+    client._http.get = AsyncMock(return_value=bad_resp)
+
+    with pytest.raises(LLMAPIError, match="malformed JSON"):
+        await client.verify_model_available()
+
+
 # ---------------------------------------------------------------------------
 # generate() — happy path
 # ---------------------------------------------------------------------------
@@ -283,6 +303,34 @@ async def test_generate_raises_llm_api_error_on_empty_content() -> None:
 
     with pytest.raises(LLMAPIError, match="empty response"):
         await client.generate("sys", [], _make_llm_config())
+
+
+@pytest.mark.asyncio
+async def test_generate_maps_json_decode_error_to_llm_api_error() -> None:
+    """response.json() raises json.JSONDecodeError (a ValueError) on a malformed
+    Ollama response, e.g. a truncated body on a socket close that still parses
+    as HTTP 200, or an HTML error page from a reverse proxy. The three-tier
+    httpx catch (TimeoutException, HTTPStatusError, HTTPError) does not cover
+    ValueError, so without an explicit catch this would escape to the
+    orchestrator's generic runtime_error bucket instead of the
+    llm_provider_error label. Regression guard for the #197 parity extension."""
+    client = OllamaClient(llm_config=_make_llm_config(), settings=_make_settings())
+    client._http = AsyncMock()
+    bad_resp = MagicMock(spec=httpx.Response)
+    bad_resp.raise_for_status = MagicMock()
+    bad_resp.json = MagicMock(
+        side_effect=json.JSONDecodeError("Expecting value", "<html>...</html>", 0)
+    )
+    client._http.post = AsyncMock(return_value=bad_resp)
+    mock_metrics = MagicMock()
+
+    with patch("taskorbit.integrations.llm.ollama_client.get_metrics", return_value=mock_metrics):
+        with pytest.raises(LLMAPIError, match="malformed JSON"):
+            await client.generate("sys", [], _make_llm_config())
+
+    mock_metrics.llm_requests_total.labels.assert_any_call(
+        provider="ollama", model="gemma4:26b", status="decode_error"
+    )
 
 
 # ---------------------------------------------------------------------------

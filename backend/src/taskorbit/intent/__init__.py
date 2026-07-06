@@ -12,6 +12,7 @@ from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
+from taskorbit.integrations.llm.errors import LLMError
 from taskorbit.logging.setup import get_logger
 
 if TYPE_CHECKING:
@@ -314,11 +315,18 @@ class IntentRouter:
             parsed = json.loads(cleaned)
             intent_name: str | None = parsed.get("intent")
             confidence: float = float(parsed.get("confidence", 0.0))
+        except LLMError:
+            # Provider failures (auth, quota, timeout, API error) must surface to
+            # the caller so the orchestration error handlers can return a clear
+            # message and the correct metric label. Masking them as a low-confidence
+            # clarification made a real outage (e.g. an exhausted OpenAI quota, #197)
+            # look identical to a genuine "please clarify", hiding the problem.
+            raise
         except Exception as exc:
             logger.warning("intent_router_parse_error", error=str(exc))
-            # Fallback to keyword matching so the call never silently drops.
-            # confidence=0.5 is below the threshold so requires_clarification is set
-            # consistently — prevents silent mis-routing when the LLM is unavailable.
+            # Genuine parse/format issues (malformed JSON, etc.) fall back to keyword
+            # matching so the call never silently drops. confidence=0.5 is below the
+            # threshold so requires_clarification is set consistently.
             return replace(
                 self._fallback.detect(prompt),
                 confidence=0.5,

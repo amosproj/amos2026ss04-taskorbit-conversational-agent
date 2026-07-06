@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
 from taskorbit.agents import AgentRegistry
 from taskorbit.config import Settings, get_settings
-from taskorbit.integrations.llm.errors import LLMConfigError
+from taskorbit.integrations.llm.errors import LLMConfigError, LLMError, LLMTimeoutError
 from taskorbit.integrations.llm.scope_check import is_message_in_scope
 from taskorbit.intent import _KNOWN_INTENTS, IntentResult, IntentRouter
 from taskorbit.logging.setup import get_logger
@@ -666,6 +666,11 @@ class ConversationOrchestrator:
                 completed_workflow_steps=updated_completed_steps,
             )
 
+        # Handler-order note (#197): LLMConfigError and LLMTimeoutError both
+        # inherit from LLMError. The subclass handlers must stay BEFORE the
+        # LLMError base handler, otherwise config errors would silently
+        # downgrade to the generic "llm_provider_error" label and lose their
+        # dedicated user message. See test_handler_ordering_regression.
         except LLMConfigError as exc:
             get_metrics().conversation_errors_total.labels(error_type="llm_config").inc()
             logger.error(
@@ -682,9 +687,13 @@ class ConversationOrchestrator:
                 status="error",
                 error=str(exc),
             )
-        except TimeoutError:
+        except (TimeoutError, LLMTimeoutError) as exc:
             get_metrics().conversation_errors_total.labels(error_type="llm_timeout").inc()
-            logger.warning("llm_timeout", conversation_id=request.conversation_id)
+            logger.warning(
+                "llm_timeout",
+                error=str(exc),
+                conversation_id=request.conversation_id,
+            )
             return ConversationResponse(
                 conversation_id=request.conversation_id,
                 reply=self._make_assistant_message(
@@ -692,6 +701,26 @@ class ConversationOrchestrator:
                 ),
                 status="error",
                 error=f"LLM call timed out after {self._settings.llm_timeout_seconds} seconds.",
+            )
+        except LLMError as exc:
+            # Provider failures (auth, quota/rate-limit, API outage) surfaced by the
+            # intent router and LLM call sites (#197). Distinct label + message so a
+            # real outage is never mistaken for a clarification or generic error.
+            get_metrics().conversation_errors_total.labels(error_type="llm_provider_error").inc()
+            logger.error(
+                "llm_provider_error",
+                error=str(exc),
+                conversation_id=request.conversation_id,
+                hint="Check provider status, API key validity, and remaining quota.",
+            )
+            return ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message(
+                    "I'm having trouble reaching my language model provider right now. "
+                    "Please try again in a moment."
+                ),
+                status="error",
+                error=str(exc),
             )
         except UnicodeEncodeError as exc:
             get_metrics().conversation_errors_total.labels(error_type="encoding_error").inc()
@@ -1230,6 +1259,11 @@ class ConversationOrchestrator:
                 completed_workflow_steps=updated_completed_steps,
             )
 
+        # Handler-order note (#197): LLMConfigError and LLMTimeoutError both
+        # inherit from LLMError. The subclass handlers must stay BEFORE the
+        # LLMError base handler, otherwise config errors would silently
+        # downgrade to the generic "llm_provider_error" label and lose their
+        # dedicated user message. See test_handler_ordering_regression.
         except LLMConfigError as exc:
             get_metrics().conversation_errors_total.labels(error_type="llm_config").inc()
             logger.error(
@@ -1246,9 +1280,13 @@ class ConversationOrchestrator:
                 status="error",
                 error=str(exc),
             )
-        except TimeoutError:
+        except (TimeoutError, LLMTimeoutError) as exc:
             get_metrics().conversation_errors_total.labels(error_type="llm_timeout").inc()
-            logger.warning("llm_timeout", conversation_id=request.conversation_id)
+            logger.warning(
+                "llm_timeout",
+                error=str(exc),
+                conversation_id=request.conversation_id,
+            )
             yield ConversationResponse(
                 conversation_id=request.conversation_id,
                 reply=self._make_assistant_message(
@@ -1256,6 +1294,25 @@ class ConversationOrchestrator:
                 ),
                 status="error",
                 error=f"LLM call timed out after {self._settings.llm_timeout_seconds} seconds.",
+            )
+        except LLMError as exc:
+            # Provider failures (auth, quota/rate-limit, API outage) surfaced by the
+            # intent router and LLM call sites (#197) — mirror of process_message.
+            get_metrics().conversation_errors_total.labels(error_type="llm_provider_error").inc()
+            logger.error(
+                "llm_provider_error",
+                error=str(exc),
+                conversation_id=request.conversation_id,
+                hint="Check provider status, API key validity, and remaining quota.",
+            )
+            yield ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message(
+                    "I'm having trouble reaching my language model provider right now. "
+                    "Please try again in a moment."
+                ),
+                status="error",
+                error=str(exc),
             )
         except UnicodeEncodeError as exc:
             get_metrics().conversation_errors_total.labels(error_type="encoding_error").inc()
@@ -1577,6 +1634,10 @@ class ConversationOrchestrator:
         try:
             extractor = SlotExtractor(llm_fn=self._call_llm_json, llm_config=llm_config)
             return await extractor.extract(messages, required_inputs)
+        except LLMError:
+            # Provider failures must surface (#197) — treating them as "all slots
+            # missing" would make the agent re-ask for data the user already gave.
+            raise
         except Exception as exc:
             logger.warning(
                 "slot_extraction_error",
