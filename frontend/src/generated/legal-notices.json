@@ -1,0 +1,1838 @@
+{
+  "generatedAt": "2026-07-01T23:05:34Z",
+  "sbomVersion": "1.5",
+  "scope": [
+    "backend",
+    "frontend"
+  ],
+  "componentCount": 261,
+  "components": [
+    {
+      "name": "@bufbuild/protobuf",
+      "version": "1.10.1",
+      "license": "Apache-2.0 AND BSD-3-Clause",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40bufbuild/protobuf@1.10.1"
+    },
+    {
+      "name": "@floating-ui/core",
+      "version": "1.7.5",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40floating-ui/core@1.7.5"
+    },
+    {
+      "name": "@floating-ui/dom",
+      "version": "1.7.4",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40floating-ui/dom@1.7.4"
+    },
+    {
+      "name": "@floating-ui/dom",
+      "version": "1.7.6",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40floating-ui/dom@1.7.6"
+    },
+    {
+      "name": "@floating-ui/react-dom",
+      "version": "2.1.8",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40floating-ui/react-dom@2.1.8"
+    },
+    {
+      "name": "@floating-ui/utils",
+      "version": "0.2.11",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40floating-ui/utils@0.2.11"
+    },
+    {
+      "name": "@livekit/components-core",
+      "version": "0.12.13",
+      "license": "Apache-2.0",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40livekit/components-core@0.12.13"
+    },
+    {
+      "name": "@livekit/components-react",
+      "version": "2.9.20",
+      "license": "Apache-2.0",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40livekit/components-react@2.9.20"
+    },
+    {
+      "name": "@livekit/components-styles",
+      "version": "1.2.0",
+      "license": "Apache-2.0",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40livekit/components-styles@1.2.0"
+    },
+    {
+      "name": "@livekit/mutex",
+      "version": "1.1.1",
+      "license": "Apache-2.0",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40livekit/mutex@1.1.1"
+    },
+    {
+      "name": "@livekit/protocol",
+      "version": "1.45.3",
+      "license": "Apache-2.0",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40livekit/protocol@1.45.3"
+    },
+    {
+      "name": "@radix-ui/number",
+      "version": "1.1.1",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/number@1.1.1"
+    },
+    {
+      "name": "@radix-ui/primitive",
+      "version": "1.1.3",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/primitive@1.1.3"
+    },
+    {
+      "name": "@radix-ui/primitive",
+      "version": "1.1.4",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/primitive@1.1.4"
+    },
+    {
+      "name": "@radix-ui/react-accessible-icon",
+      "version": "1.1.7",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-accessible-icon@1.1.7"
+    },
+    {
+      "name": "@radix-ui/react-accordion",
+      "version": "1.2.12",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-accordion@1.2.12"
+    },
+    {
+      "name": "@radix-ui/react-alert-dialog",
+      "version": "1.1.15",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-alert-dialog@1.1.15"
+    },
+    {
+      "name": "@radix-ui/react-alert-dialog",
+      "version": "1.1.18",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-alert-dialog@1.1.18"
+    },
+    {
+      "name": "@radix-ui/react-arrow",
+      "version": "1.1.7",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-arrow@1.1.7"
+    },
+    {
+      "name": "@radix-ui/react-aspect-ratio",
+      "version": "1.1.7",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-aspect-ratio@1.1.7"
+    },
+    {
+      "name": "@radix-ui/react-avatar",
+      "version": "1.1.10",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-avatar@1.1.10"
+    },
+    {
+      "name": "@radix-ui/react-checkbox",
+      "version": "1.3.3",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-checkbox@1.3.3"
+    },
+    {
+      "name": "@radix-ui/react-collapsible",
+      "version": "1.1.12",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-collapsible@1.1.12"
+    },
+    {
+      "name": "@radix-ui/react-collection",
+      "version": "1.1.7",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-collection@1.1.7"
+    },
+    {
+      "name": "@radix-ui/react-compose-refs",
+      "version": "1.1.2",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-compose-refs@1.1.2"
+    },
+    {
+      "name": "@radix-ui/react-compose-refs",
+      "version": "1.1.3",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-compose-refs@1.1.3"
+    },
+    {
+      "name": "@radix-ui/react-context",
+      "version": "1.1.2",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-context@1.1.2"
+    },
+    {
+      "name": "@radix-ui/react-context",
+      "version": "1.1.4",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-context@1.1.4"
+    },
+    {
+      "name": "@radix-ui/react-context-menu",
+      "version": "2.2.16",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-context-menu@2.2.16"
+    },
+    {
+      "name": "@radix-ui/react-dialog",
+      "version": "1.1.15",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-dialog@1.1.15"
+    },
+    {
+      "name": "@radix-ui/react-dialog",
+      "version": "1.1.18",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-dialog@1.1.18"
+    },
+    {
+      "name": "@radix-ui/react-direction",
+      "version": "1.1.1",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-direction@1.1.1"
+    },
+    {
+      "name": "@radix-ui/react-dismissable-layer",
+      "version": "1.1.11",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-dismissable-layer@1.1.11"
+    },
+    {
+      "name": "@radix-ui/react-dismissable-layer",
+      "version": "1.1.14",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-dismissable-layer@1.1.14"
+    },
+    {
+      "name": "@radix-ui/react-dropdown-menu",
+      "version": "2.1.16",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-dropdown-menu@2.1.16"
+    },
+    {
+      "name": "@radix-ui/react-focus-guards",
+      "version": "1.1.3",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-focus-guards@1.1.3"
+    },
+    {
+      "name": "@radix-ui/react-focus-guards",
+      "version": "1.1.4",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-focus-guards@1.1.4"
+    },
+    {
+      "name": "@radix-ui/react-focus-scope",
+      "version": "1.1.11",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-focus-scope@1.1.11"
+    },
+    {
+      "name": "@radix-ui/react-focus-scope",
+      "version": "1.1.7",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-focus-scope@1.1.7"
+    },
+    {
+      "name": "@radix-ui/react-form",
+      "version": "0.1.8",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-form@0.1.8"
+    },
+    {
+      "name": "@radix-ui/react-hover-card",
+      "version": "1.1.15",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-hover-card@1.1.15"
+    },
+    {
+      "name": "@radix-ui/react-id",
+      "version": "1.1.1",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-id@1.1.1"
+    },
+    {
+      "name": "@radix-ui/react-id",
+      "version": "1.1.2",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-id@1.1.2"
+    },
+    {
+      "name": "@radix-ui/react-label",
+      "version": "2.1.7",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-label@2.1.7"
+    },
+    {
+      "name": "@radix-ui/react-menu",
+      "version": "2.1.16",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-menu@2.1.16"
+    },
+    {
+      "name": "@radix-ui/react-menubar",
+      "version": "1.1.16",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-menubar@1.1.16"
+    },
+    {
+      "name": "@radix-ui/react-navigation-menu",
+      "version": "1.2.14",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-navigation-menu@1.2.14"
+    },
+    {
+      "name": "@radix-ui/react-one-time-password-field",
+      "version": "0.1.8",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-one-time-password-field@0.1.8"
+    },
+    {
+      "name": "@radix-ui/react-password-toggle-field",
+      "version": "0.1.3",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-password-toggle-field@0.1.3"
+    },
+    {
+      "name": "@radix-ui/react-popover",
+      "version": "1.1.15",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-popover@1.1.15"
+    },
+    {
+      "name": "@radix-ui/react-popper",
+      "version": "1.2.8",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-popper@1.2.8"
+    },
+    {
+      "name": "@radix-ui/react-portal",
+      "version": "1.1.13",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-portal@1.1.13"
+    },
+    {
+      "name": "@radix-ui/react-portal",
+      "version": "1.1.9",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-portal@1.1.9"
+    },
+    {
+      "name": "@radix-ui/react-presence",
+      "version": "1.1.5",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-presence@1.1.5"
+    },
+    {
+      "name": "@radix-ui/react-presence",
+      "version": "1.1.6",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-presence@1.1.6"
+    },
+    {
+      "name": "@radix-ui/react-primitive",
+      "version": "2.1.3",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-primitive@2.1.3"
+    },
+    {
+      "name": "@radix-ui/react-primitive",
+      "version": "2.1.7",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-primitive@2.1.7"
+    },
+    {
+      "name": "@radix-ui/react-progress",
+      "version": "1.1.7",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-progress@1.1.7"
+    },
+    {
+      "name": "@radix-ui/react-radio-group",
+      "version": "1.3.8",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-radio-group@1.3.8"
+    },
+    {
+      "name": "@radix-ui/react-roving-focus",
+      "version": "1.1.11",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-roving-focus@1.1.11"
+    },
+    {
+      "name": "@radix-ui/react-scroll-area",
+      "version": "1.2.10",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-scroll-area@1.2.10"
+    },
+    {
+      "name": "@radix-ui/react-select",
+      "version": "2.2.6",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-select@2.2.6"
+    },
+    {
+      "name": "@radix-ui/react-separator",
+      "version": "1.1.7",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-separator@1.1.7"
+    },
+    {
+      "name": "@radix-ui/react-slider",
+      "version": "1.3.6",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-slider@1.3.6"
+    },
+    {
+      "name": "@radix-ui/react-slot",
+      "version": "1.2.3",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-slot@1.2.3"
+    },
+    {
+      "name": "@radix-ui/react-slot",
+      "version": "1.3.0",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-slot@1.3.0"
+    },
+    {
+      "name": "@radix-ui/react-switch",
+      "version": "1.2.6",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-switch@1.2.6"
+    },
+    {
+      "name": "@radix-ui/react-tabs",
+      "version": "1.1.13",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-tabs@1.1.13"
+    },
+    {
+      "name": "@radix-ui/react-toast",
+      "version": "1.2.15",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-toast@1.2.15"
+    },
+    {
+      "name": "@radix-ui/react-toggle",
+      "version": "1.1.10",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-toggle@1.1.10"
+    },
+    {
+      "name": "@radix-ui/react-toggle-group",
+      "version": "1.1.11",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-toggle-group@1.1.11"
+    },
+    {
+      "name": "@radix-ui/react-toolbar",
+      "version": "1.1.11",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-toolbar@1.1.11"
+    },
+    {
+      "name": "@radix-ui/react-tooltip",
+      "version": "1.2.8",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-tooltip@1.2.8"
+    },
+    {
+      "name": "@radix-ui/react-use-callback-ref",
+      "version": "1.1.1",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-use-callback-ref@1.1.1"
+    },
+    {
+      "name": "@radix-ui/react-use-callback-ref",
+      "version": "1.1.2",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-use-callback-ref@1.1.2"
+    },
+    {
+      "name": "@radix-ui/react-use-controllable-state",
+      "version": "1.2.2",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-use-controllable-state@1.2.2"
+    },
+    {
+      "name": "@radix-ui/react-use-controllable-state",
+      "version": "1.2.3",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-use-controllable-state@1.2.3"
+    },
+    {
+      "name": "@radix-ui/react-use-effect-event",
+      "version": "0.0.2",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-use-effect-event@0.0.2"
+    },
+    {
+      "name": "@radix-ui/react-use-effect-event",
+      "version": "0.0.3",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-use-effect-event@0.0.3"
+    },
+    {
+      "name": "@radix-ui/react-use-escape-keydown",
+      "version": "1.1.1",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-use-escape-keydown@1.1.1"
+    },
+    {
+      "name": "@radix-ui/react-use-is-hydrated",
+      "version": "0.1.0",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-use-is-hydrated@0.1.0"
+    },
+    {
+      "name": "@radix-ui/react-use-layout-effect",
+      "version": "1.1.1",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-use-layout-effect@1.1.1"
+    },
+    {
+      "name": "@radix-ui/react-use-layout-effect",
+      "version": "1.1.2",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-use-layout-effect@1.1.2"
+    },
+    {
+      "name": "@radix-ui/react-use-previous",
+      "version": "1.1.1",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-use-previous@1.1.1"
+    },
+    {
+      "name": "@radix-ui/react-use-rect",
+      "version": "1.1.1",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-use-rect@1.1.1"
+    },
+    {
+      "name": "@radix-ui/react-use-size",
+      "version": "1.1.1",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-use-size@1.1.1"
+    },
+    {
+      "name": "@radix-ui/react-visually-hidden",
+      "version": "1.2.3",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/react-visually-hidden@1.2.3"
+    },
+    {
+      "name": "@radix-ui/rect",
+      "version": "1.1.1",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40radix-ui/rect@1.1.1"
+    },
+    {
+      "name": "@types/dom-mediacapture-record",
+      "version": "1.0.22",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40types/dom-mediacapture-record@1.0.22"
+    },
+    {
+      "name": "@types/react",
+      "version": "19.2.14",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40types/react@19.2.14"
+    },
+    {
+      "name": "@types/react-dom",
+      "version": "19.2.3",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/%40types/react-dom@19.2.3"
+    },
+    {
+      "name": "aria-hidden",
+      "version": "1.2.6",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/aria-hidden@1.2.6"
+    },
+    {
+      "name": "class-variance-authority",
+      "version": "0.7.1",
+      "license": "Apache-2.0",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/class-variance-authority@0.7.1"
+    },
+    {
+      "name": "clsx",
+      "version": "2.1.1",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/clsx@2.1.1"
+    },
+    {
+      "name": "cookie",
+      "version": "1.1.1",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/cookie@1.1.1"
+    },
+    {
+      "name": "csstype",
+      "version": "3.2.3",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/csstype@3.2.3"
+    },
+    {
+      "name": "detect-node-es",
+      "version": "1.1.0",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/detect-node-es@1.1.0"
+    },
+    {
+      "name": "events",
+      "version": "3.3.0",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/events@3.3.0"
+    },
+    {
+      "name": "get-nonce",
+      "version": "1.0.1",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/get-nonce@1.0.1"
+    },
+    {
+      "name": "jose",
+      "version": "6.2.2",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/jose@6.2.2"
+    },
+    {
+      "name": "livekit-client",
+      "version": "2.18.6",
+      "license": "Apache-2.0",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/livekit-client@2.18.6"
+    },
+    {
+      "name": "lodash.debounce",
+      "version": "4.0.8",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/lodash.debounce@4.0.8"
+    },
+    {
+      "name": "loglevel",
+      "version": "1.9.1",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/loglevel@1.9.1"
+    },
+    {
+      "name": "loglevel",
+      "version": "1.9.2",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/loglevel@1.9.2"
+    },
+    {
+      "name": "lucide-react",
+      "version": "0.460.0",
+      "license": "ISC",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/lucide-react@0.460.0"
+    },
+    {
+      "name": "next-themes",
+      "version": "0.4.6",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/next-themes@0.4.6"
+    },
+    {
+      "name": "radix-ui",
+      "version": "1.4.3",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/radix-ui@1.4.3"
+    },
+    {
+      "name": "react",
+      "version": "19.2.5",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/react@19.2.5"
+    },
+    {
+      "name": "react-dom",
+      "version": "19.2.5",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/react-dom@19.2.5"
+    },
+    {
+      "name": "react-remove-scroll",
+      "version": "2.7.2",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/react-remove-scroll@2.7.2"
+    },
+    {
+      "name": "react-remove-scroll-bar",
+      "version": "2.3.8",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/react-remove-scroll-bar@2.3.8"
+    },
+    {
+      "name": "react-router",
+      "version": "7.14.2",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/react-router@7.14.2"
+    },
+    {
+      "name": "react-router-dom",
+      "version": "7.14.2",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/react-router-dom@7.14.2"
+    },
+    {
+      "name": "react-style-singleton",
+      "version": "2.2.3",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/react-style-singleton@2.2.3"
+    },
+    {
+      "name": "rxjs",
+      "version": "7.8.2",
+      "license": "Apache-2.0",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/rxjs@7.8.2"
+    },
+    {
+      "name": "scheduler",
+      "version": "0.27.0",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/scheduler@0.27.0"
+    },
+    {
+      "name": "sdp",
+      "version": "3.2.2",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/sdp@3.2.2"
+    },
+    {
+      "name": "sdp-transform",
+      "version": "2.15.0",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/sdp-transform@2.15.0"
+    },
+    {
+      "name": "set-cookie-parser",
+      "version": "2.7.2",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/set-cookie-parser@2.7.2"
+    },
+    {
+      "name": "sonner",
+      "version": "2.0.7",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/sonner@2.0.7"
+    },
+    {
+      "name": "tailwind-merge",
+      "version": "2.6.1",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/tailwind-merge@2.6.1"
+    },
+    {
+      "name": "taskorbit-frontend",
+      "version": "0.1.0",
+      "license": "UNKNOWN",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/taskorbit-frontend@0.1.0"
+    },
+    {
+      "name": "tslib",
+      "version": "2.8.1",
+      "license": "0BSD",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/tslib@2.8.1"
+    },
+    {
+      "name": "typed-emitter",
+      "version": "2.1.0",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/typed-emitter@2.1.0"
+    },
+    {
+      "name": "use-callback-ref",
+      "version": "1.3.3",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/use-callback-ref@1.3.3"
+    },
+    {
+      "name": "use-sidecar",
+      "version": "1.1.3",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/use-sidecar@1.1.3"
+    },
+    {
+      "name": "use-sync-external-store",
+      "version": "1.6.0",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/use-sync-external-store@1.6.0"
+    },
+    {
+      "name": "usehooks-ts",
+      "version": "3.1.1",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/usehooks-ts@3.1.1"
+    },
+    {
+      "name": "webrtc-adapter",
+      "version": "9.0.5",
+      "license": "BSD-3-Clause",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/webrtc-adapter@9.0.5"
+    },
+    {
+      "name": "aiofiles",
+      "version": "25.1.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/aiofiles@25.1.0"
+    },
+    {
+      "name": "aiohappyeyeballs",
+      "version": "2.6.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/aiohappyeyeballs@2.6.1"
+    },
+    {
+      "name": "aiohttp",
+      "version": "3.13.5",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/aiohttp@3.13.5"
+    },
+    {
+      "name": "aiosignal",
+      "version": "1.4.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/aiosignal@1.4.0"
+    },
+    {
+      "name": "aiosqlite",
+      "version": "0.22.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/aiosqlite@0.22.1"
+    },
+    {
+      "name": "alembic",
+      "version": "1.18.4",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/alembic@1.18.4"
+    },
+    {
+      "name": "annotated-doc",
+      "version": "0.0.4",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/annotated-doc@0.0.4"
+    },
+    {
+      "name": "annotated-types",
+      "version": "0.7.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/annotated-types@0.7.0"
+    },
+    {
+      "name": "anyio",
+      "version": "4.13.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/anyio@4.13.0"
+    },
+    {
+      "name": "attrs",
+      "version": "26.1.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/attrs@26.1.0"
+    },
+    {
+      "name": "av",
+      "version": "17.0.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/av@17.0.1"
+    },
+    {
+      "name": "certifi",
+      "version": "2026.4.22",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/certifi@2026.4.22"
+    },
+    {
+      "name": "cffi",
+      "version": "2.0.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/cffi@2.0.0"
+    },
+    {
+      "name": "cfgv",
+      "version": "3.5.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/cfgv@3.5.0"
+    },
+    {
+      "name": "charset-normalizer",
+      "version": "3.4.7",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/charset-normalizer@3.4.7"
+    },
+    {
+      "name": "click",
+      "version": "8.3.3",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/click@8.3.3"
+    },
+    {
+      "name": "colorama",
+      "version": "0.4.6",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/colorama@0.4.6"
+    },
+    {
+      "name": "cryptography",
+      "version": "47.0.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/cryptography@47.0.0"
+    },
+    {
+      "name": "distlib",
+      "version": "0.4.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/distlib@0.4.0"
+    },
+    {
+      "name": "distro",
+      "version": "1.9.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/distro@1.9.0"
+    },
+    {
+      "name": "docstring-parser",
+      "version": "0.18.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/docstring-parser@0.18.0"
+    },
+    {
+      "name": "eval-type-backport",
+      "version": "0.3.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/eval-type-backport@0.3.1"
+    },
+    {
+      "name": "fastapi",
+      "version": "0.115.14",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/fastapi@0.115.14"
+    },
+    {
+      "name": "filelock",
+      "version": "3.29.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/filelock@3.29.0"
+    },
+    {
+      "name": "flatbuffers",
+      "version": "25.12.19",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/flatbuffers@25.12.19"
+    },
+    {
+      "name": "frozenlist",
+      "version": "1.8.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/frozenlist@1.8.0"
+    },
+    {
+      "name": "google-api-core",
+      "version": "2.30.3",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/google-api-core@2.30.3"
+    },
+    {
+      "name": "google-auth",
+      "version": "2.49.2",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/google-auth@2.49.2"
+    },
+    {
+      "name": "google-cloud-speech",
+      "version": "2.38.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/google-cloud-speech@2.38.0"
+    },
+    {
+      "name": "google-cloud-texttospeech",
+      "version": "2.36.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/google-cloud-texttospeech@2.36.0"
+    },
+    {
+      "name": "google-genai",
+      "version": "1.73.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/google-genai@1.73.1"
+    },
+    {
+      "name": "googleapis-common-protos",
+      "version": "1.74.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/googleapis-common-protos@1.74.0"
+    },
+    {
+      "name": "greenlet",
+      "version": "3.5.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/greenlet@3.5.1"
+    },
+    {
+      "name": "grpcio",
+      "version": "1.80.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/grpcio@1.80.0"
+    },
+    {
+      "name": "grpcio-status",
+      "version": "1.80.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/grpcio-status@1.80.0"
+    },
+    {
+      "name": "h11",
+      "version": "0.16.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/h11@0.16.0"
+    },
+    {
+      "name": "httpcore",
+      "version": "1.0.9",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/httpcore@1.0.9"
+    },
+    {
+      "name": "httptools",
+      "version": "0.7.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/httptools@0.7.1"
+    },
+    {
+      "name": "httpx",
+      "version": "0.28.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/httpx@0.28.1"
+    },
+    {
+      "name": "identify",
+      "version": "2.6.19",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/identify@2.6.19"
+    },
+    {
+      "name": "idna",
+      "version": "3.13",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/idna@3.13"
+    },
+    {
+      "name": "importlib-metadata",
+      "version": "8.7.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/importlib-metadata@8.7.1"
+    },
+    {
+      "name": "iniconfig",
+      "version": "2.3.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/iniconfig@2.3.0"
+    },
+    {
+      "name": "jiter",
+      "version": "0.14.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/jiter@0.14.0"
+    },
+    {
+      "name": "jsonpath-python",
+      "version": "1.1.6",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/jsonpath-python@1.1.6"
+    },
+    {
+      "name": "jsonschema",
+      "version": "4.26.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/jsonschema@4.26.0"
+    },
+    {
+      "name": "jsonschema-specifications",
+      "version": "2025.9.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/jsonschema-specifications@2025.9.1"
+    },
+    {
+      "name": "librt",
+      "version": "0.9.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/librt@0.9.0"
+    },
+    {
+      "name": "livekit",
+      "version": "1.1.5",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/livekit@1.1.5"
+    },
+    {
+      "name": "livekit-agents",
+      "version": "1.5.6",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/livekit-agents@1.5.6"
+    },
+    {
+      "name": "livekit-api",
+      "version": "1.1.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/livekit-api@1.1.0"
+    },
+    {
+      "name": "livekit-blingfire",
+      "version": "1.1.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/livekit-blingfire@1.1.0"
+    },
+    {
+      "name": "livekit-plugins-deepgram",
+      "version": "1.5.6",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/livekit-plugins-deepgram@1.5.6"
+    },
+    {
+      "name": "livekit-plugins-elevenlabs",
+      "version": "1.5.6",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/livekit-plugins-elevenlabs@1.5.6"
+    },
+    {
+      "name": "livekit-plugins-google",
+      "version": "1.5.6",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/livekit-plugins-google@1.5.6"
+    },
+    {
+      "name": "livekit-plugins-openai",
+      "version": "1.5.6",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/livekit-plugins-openai@1.5.6"
+    },
+    {
+      "name": "livekit-plugins-silero",
+      "version": "1.5.6",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/livekit-plugins-silero@1.5.6"
+    },
+    {
+      "name": "livekit-protocol",
+      "version": "1.1.6",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/livekit-protocol@1.1.6"
+    },
+    {
+      "name": "mako",
+      "version": "1.3.11",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/mako@1.3.11"
+    },
+    {
+      "name": "markdown-it-py",
+      "version": "4.0.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/markdown-it-py@4.0.0"
+    },
+    {
+      "name": "markupsafe",
+      "version": "3.0.3",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/markupsafe@3.0.3"
+    },
+    {
+      "name": "mdurl",
+      "version": "0.1.2",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/mdurl@0.1.2"
+    },
+    {
+      "name": "multidict",
+      "version": "6.7.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/multidict@6.7.1"
+    },
+    {
+      "name": "mypy",
+      "version": "1.20.2",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/mypy@1.20.2"
+    },
+    {
+      "name": "mypy-extensions",
+      "version": "1.1.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/mypy-extensions@1.1.0"
+    },
+    {
+      "name": "nest-asyncio",
+      "version": "1.6.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/nest-asyncio@1.6.0"
+    },
+    {
+      "name": "nodeenv",
+      "version": "1.10.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/nodeenv@1.10.0"
+    },
+    {
+      "name": "numpy",
+      "version": "2.4.4",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/numpy@2.4.4"
+    },
+    {
+      "name": "onnxruntime",
+      "version": "1.25.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/onnxruntime@1.25.0"
+    },
+    {
+      "name": "openai",
+      "version": "2.32.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/openai@2.32.0"
+    },
+    {
+      "name": "openrouter",
+      "version": "0.10.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/openrouter@0.10.0"
+    },
+    {
+      "name": "opentelemetry-api",
+      "version": "1.39.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/opentelemetry-api@1.39.1"
+    },
+    {
+      "name": "opentelemetry-exporter-otlp",
+      "version": "1.39.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/opentelemetry-exporter-otlp@1.39.1"
+    },
+    {
+      "name": "opentelemetry-exporter-otlp-proto-common",
+      "version": "1.39.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/opentelemetry-exporter-otlp-proto-common@1.39.1"
+    },
+    {
+      "name": "opentelemetry-exporter-otlp-proto-grpc",
+      "version": "1.39.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/opentelemetry-exporter-otlp-proto-grpc@1.39.1"
+    },
+    {
+      "name": "opentelemetry-exporter-otlp-proto-http",
+      "version": "1.39.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/opentelemetry-exporter-otlp-proto-http@1.39.1"
+    },
+    {
+      "name": "opentelemetry-proto",
+      "version": "1.39.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/opentelemetry-proto@1.39.1"
+    },
+    {
+      "name": "opentelemetry-sdk",
+      "version": "1.39.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/opentelemetry-sdk@1.39.1"
+    },
+    {
+      "name": "opentelemetry-semantic-conventions",
+      "version": "0.60b1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/opentelemetry-semantic-conventions@0.60b1"
+    },
+    {
+      "name": "packaging",
+      "version": "26.2",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/packaging@26.2"
+    },
+    {
+      "name": "pathspec",
+      "version": "1.1.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/pathspec@1.1.0"
+    },
+    {
+      "name": "pillow",
+      "version": "12.2.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/pillow@12.2.0"
+    },
+    {
+      "name": "platformdirs",
+      "version": "4.9.6",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/platformdirs@4.9.6"
+    },
+    {
+      "name": "pluggy",
+      "version": "1.6.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/pluggy@1.6.0"
+    },
+    {
+      "name": "pre-commit",
+      "version": "4.6.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/pre-commit@4.6.0"
+    },
+    {
+      "name": "prometheus-client",
+      "version": "0.22.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/prometheus-client@0.22.1"
+    },
+    {
+      "name": "prometheus-fastapi-instrumentator",
+      "version": "7.1.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/prometheus-fastapi-instrumentator@7.1.0"
+    },
+    {
+      "name": "propcache",
+      "version": "0.4.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/propcache@0.4.1"
+    },
+    {
+      "name": "proto-plus",
+      "version": "1.27.2",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/proto-plus@1.27.2"
+    },
+    {
+      "name": "protobuf",
+      "version": "6.33.6",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/protobuf@6.33.6"
+    },
+    {
+      "name": "psutil",
+      "version": "7.2.2",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/psutil@7.2.2"
+    },
+    {
+      "name": "psycopg",
+      "version": "3.3.3",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/psycopg@3.3.3"
+    },
+    {
+      "name": "psycopg-binary",
+      "version": "3.3.3",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/psycopg-binary@3.3.3"
+    },
+    {
+      "name": "pyasn1",
+      "version": "0.6.3",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/pyasn1@0.6.3"
+    },
+    {
+      "name": "pyasn1-modules",
+      "version": "0.4.2",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/pyasn1-modules@0.4.2"
+    },
+    {
+      "name": "pycparser",
+      "version": "3.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/pycparser@3.0"
+    },
+    {
+      "name": "pydantic",
+      "version": "2.13.3",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/pydantic@2.13.3"
+    },
+    {
+      "name": "pydantic-core",
+      "version": "2.46.3",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/pydantic-core@2.46.3"
+    },
+    {
+      "name": "pydantic-settings",
+      "version": "2.14.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/pydantic-settings@2.14.0"
+    },
+    {
+      "name": "pygments",
+      "version": "2.20.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/pygments@2.20.0"
+    },
+    {
+      "name": "pyjwt",
+      "version": "2.12.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/pyjwt@2.12.1"
+    },
+    {
+      "name": "pytest",
+      "version": "8.4.2",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/pytest@8.4.2"
+    },
+    {
+      "name": "pytest-asyncio",
+      "version": "0.24.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/pytest-asyncio@0.24.0"
+    },
+    {
+      "name": "python-discovery",
+      "version": "1.2.2",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/python-discovery@1.2.2"
+    },
+    {
+      "name": "python-dotenv",
+      "version": "1.2.2",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/python-dotenv@1.2.2"
+    },
+    {
+      "name": "pyyaml",
+      "version": "6.0.3",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/pyyaml@6.0.3"
+    },
+    {
+      "name": "referencing",
+      "version": "0.37.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/referencing@0.37.0"
+    },
+    {
+      "name": "requests",
+      "version": "2.33.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/requests@2.33.1"
+    },
+    {
+      "name": "rich",
+      "version": "15.0.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/rich@15.0.0"
+    },
+    {
+      "name": "rpds-py",
+      "version": "0.30.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/rpds-py@0.30.0"
+    },
+    {
+      "name": "ruff",
+      "version": "0.7.4",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/ruff@0.7.4"
+    },
+    {
+      "name": "shellingham",
+      "version": "1.5.4",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/shellingham@1.5.4"
+    },
+    {
+      "name": "sniffio",
+      "version": "1.3.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/sniffio@1.3.1"
+    },
+    {
+      "name": "sounddevice",
+      "version": "0.5.5",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/sounddevice@0.5.5"
+    },
+    {
+      "name": "sqlalchemy",
+      "version": "2.0.49",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/sqlalchemy@2.0.49"
+    },
+    {
+      "name": "starlette",
+      "version": "0.46.2",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/starlette@0.46.2"
+    },
+    {
+      "name": "structlog",
+      "version": "24.4.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/structlog@24.4.0"
+    },
+    {
+      "name": "tenacity",
+      "version": "9.1.4",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/tenacity@9.1.4"
+    },
+    {
+      "name": "tqdm",
+      "version": "4.67.3",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/tqdm@4.67.3"
+    },
+    {
+      "name": "typer",
+      "version": "0.25.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/typer@0.25.0"
+    },
+    {
+      "name": "types-protobuf",
+      "version": "7.34.1.20260408",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/types-protobuf@7.34.1.20260408"
+    },
+    {
+      "name": "typing-extensions",
+      "version": "4.15.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/typing-extensions@4.15.0"
+    },
+    {
+      "name": "typing-inspection",
+      "version": "0.4.2",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/typing-inspection@0.4.2"
+    },
+    {
+      "name": "tzdata",
+      "version": "2026.2",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/tzdata@2026.2"
+    },
+    {
+      "name": "urllib3",
+      "version": "2.6.3",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/urllib3@2.6.3"
+    },
+    {
+      "name": "uvicorn",
+      "version": "0.32.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/uvicorn@0.32.1"
+    },
+    {
+      "name": "uvloop",
+      "version": "0.22.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/uvloop@0.22.1"
+    },
+    {
+      "name": "virtualenv",
+      "version": "21.2.4",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/virtualenv@21.2.4"
+    },
+    {
+      "name": "watchfiles",
+      "version": "1.1.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/watchfiles@1.1.1"
+    },
+    {
+      "name": "websockets",
+      "version": "15.0.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/websockets@15.0.1"
+    },
+    {
+      "name": "yarl",
+      "version": "1.23.0",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/yarl@1.23.0"
+    },
+    {
+      "name": "zipp",
+      "version": "3.23.1",
+      "license": "UNKNOWN",
+      "ecosystem": "python",
+      "purl": "pkg:pypi/zipp@3.23.1"
+    }
+  ]
+}

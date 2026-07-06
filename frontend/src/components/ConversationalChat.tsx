@@ -517,7 +517,17 @@ export function ConversationalChat() {
                 }
               }
             } else if (event.type === "error") {
-              call.upsertTurnById(assistantTurnId, "assistant", `[Error: ${event.message}]`, true);
+              // Prefer the polite reply from #197 for the assistant bubble.
+              // Fall back to the technical message only for legacy backend
+              // paths that predate the reply-on-error contract.
+              const politeReply = event.reply?.trim();
+              const errorBubble = politeReply || `[Error: ${event.message}]`;
+              call.upsertTurnById(assistantTurnId, "assistant", errorBubble, true);
+              // Route the polite reply through TTS as well so voice users hear
+              // it. `replyText` is what the speaker branch below reads.
+              if (politeReply) {
+                replyText = politeReply;
+              }
             }
           }
 
