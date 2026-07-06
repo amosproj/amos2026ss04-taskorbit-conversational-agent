@@ -147,6 +147,34 @@ async def test_generic_api_error_maps_to_llm_api_error(
             await client.generate("sys", [Message(role=MessageRole.USER, content="hi")], llm_config)
 
 
+@pytest.mark.asyncio
+async def test_unknown_api_response_error_maps_to_llm_api_error(
+    client: GeminiClient, llm_config: LLMConfig
+) -> None:
+    """UnknownApiResponseError inherits from ValueError (not APIError), so it
+    slips past `except genai_errors.APIError`. Fires when the SDK cannot parse
+    the API response into its known schema (protocol drift, unexpected shape,
+    malformed JSON boundary). Regression guard for the parity extension of
+    Vineesh's #197 review to Gemini."""
+    unknown_exc = genai_errors.UnknownApiResponseError("could not parse response")
+    mock_metrics = MagicMock()
+
+    with patch("taskorbit.integrations.llm.gemini_client.get_metrics", return_value=mock_metrics):
+        with patch.object(
+            client._client.aio.models,
+            "generate_content",
+            new=AsyncMock(side_effect=unknown_exc),
+        ):
+            with pytest.raises(LLMAPIError, match="unparseable"):
+                await client.generate(
+                    "sys", [Message(role=MessageRole.USER, content="hi")], llm_config
+                )
+
+    mock_metrics.llm_requests_total.labels.assert_any_call(
+        provider="google", model=llm_config.model, status="unknown_response"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Empty response handling
 # ---------------------------------------------------------------------------

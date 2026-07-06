@@ -135,6 +135,55 @@ async def test_generic_api_error_maps_to_llm_api_error(
             await client.generate("sys", [Message(role=MessageRole.USER, content="hi")], llm_config)
 
 
+@pytest.mark.asyncio
+async def test_content_filter_finish_reason_maps_to_llm_api_error(
+    client: OpenAIClient, llm_config: LLMConfig
+) -> None:
+    """ContentFilterFinishReasonError inherits OpenAIError but NOT APIError, so
+    without the OpenAIError catch it would escape openai_client and land in the
+    orchestrator's generic runtime_error bucket instead of llm_provider_error.
+    Regression guard for the Vineesh review follow-up on #197."""
+    content_filter_exc = openai.ContentFilterFinishReasonError()
+    mock_metrics = MagicMock()
+
+    with patch("taskorbit.integrations.llm.openai_client.get_metrics", return_value=mock_metrics):
+        with patch.object(
+            client._client.chat.completions, "create", new=AsyncMock(side_effect=content_filter_exc)
+        ):
+            with pytest.raises(LLMAPIError, match="SDK error"):
+                await client.generate(
+                    "sys", [Message(role=MessageRole.USER, content="hi")], llm_config
+                )
+
+    mock_metrics.llm_requests_total.labels.assert_any_call(
+        provider="openai", model="gpt-4o-mini", status="api"
+    )
+
+
+@pytest.mark.asyncio
+async def test_length_finish_reason_maps_to_llm_api_error(
+    client: OpenAIClient, llm_config: LLMConfig
+) -> None:
+    """LengthFinishReasonError inherits OpenAIError but NOT APIError, so it also
+    needs the explicit OpenAIError catch. Regression guard for the Vineesh review
+    follow-up on #197."""
+    length_exc = openai.LengthFinishReasonError(completion=MagicMock())
+    mock_metrics = MagicMock()
+
+    with patch("taskorbit.integrations.llm.openai_client.get_metrics", return_value=mock_metrics):
+        with patch.object(
+            client._client.chat.completions, "create", new=AsyncMock(side_effect=length_exc)
+        ):
+            with pytest.raises(LLMAPIError, match="SDK error"):
+                await client.generate(
+                    "sys", [Message(role=MessageRole.USER, content="hi")], llm_config
+                )
+
+    mock_metrics.llm_requests_total.labels.assert_any_call(
+        provider="openai", model="gpt-4o-mini", status="api"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Empty response handling
 # ---------------------------------------------------------------------------
@@ -344,6 +393,39 @@ async def test_generate_stream_timeout_raises_llm_timeout_error(
         new=AsyncMock(side_effect=openai.APITimeoutError(request=MagicMock())),
     ):
         with pytest.raises(LLMTimeoutError):
+            async for _ in client.generate_stream(
+                "sys", [Message(role=MessageRole.USER, content="hi")], llm_config
+            ):
+                pass
+
+
+@pytest.mark.asyncio
+async def test_generate_stream_content_filter_finish_reason_maps_to_llm_api_error(
+    client: OpenAIClient, llm_config: LLMConfig
+) -> None:
+    """Stream-path parity for the ContentFilterFinishReasonError guard, so voice
+    and SSE consumers see the polite reply instead of the generic bucket."""
+    content_filter_exc = openai.ContentFilterFinishReasonError()
+    with patch.object(
+        client._client.chat.completions, "create", new=AsyncMock(side_effect=content_filter_exc)
+    ):
+        with pytest.raises(LLMAPIError, match="SDK error"):
+            async for _ in client.generate_stream(
+                "sys", [Message(role=MessageRole.USER, content="hi")], llm_config
+            ):
+                pass
+
+
+@pytest.mark.asyncio
+async def test_generate_stream_length_finish_reason_maps_to_llm_api_error(
+    client: OpenAIClient, llm_config: LLMConfig
+) -> None:
+    """Stream-path parity for the LengthFinishReasonError guard."""
+    length_exc = openai.LengthFinishReasonError(completion=MagicMock())
+    with patch.object(
+        client._client.chat.completions, "create", new=AsyncMock(side_effect=length_exc)
+    ):
+        with pytest.raises(LLMAPIError, match="SDK error"):
             async for _ in client.generate_stream(
                 "sys", [Message(role=MessageRole.USER, content="hi")], llm_config
             ):

@@ -1,0 +1,44 @@
+# Verify SBOM workflow: regenerate the CycloneDX SBOM and the frontend
+# legal-notices.json then verify the committed artifacts are up-to-date.
+# Run only on pushes to main/prod and on PRs to avoid double-runs on feature
+# branches; use concurrency to cancel in-progress runs on force-push.
+name: Verify SBOM
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [main, prod]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify-sbom:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Verify the PR branch tip, not the ephemeral merge commit with base.
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Install Syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+            | sh -s -- -b /usr/local/bin v1.38.2
+
+      - name: Regenerate SBOM artifacts
+        run: ./scripts/generate-sbom.sh
+
+      - name: Verify committed artifacts are up to date
+        run: |
+          git diff --exit-code \
+            Documentation/sbom.cyclonedx.json \
+            frontend/src/generated/legal-notices.json \
+          || (echo "::error::SBOM artifacts are stale. Run ./scripts/generate-sbom.sh and commit." && exit 1)

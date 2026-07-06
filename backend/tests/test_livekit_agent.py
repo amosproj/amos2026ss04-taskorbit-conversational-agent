@@ -577,3 +577,122 @@ async def test_llm_node_persists_slots_when_tool_invoked_is_set() -> None:
     call_kwargs = mock_create.call_args.kwargs
     assert call_kwargs["tool_id"] == "data_extraction"
     assert call_kwargs["slots"] == {"email": "alice@example.com"}
+
+
+# ---------------------------------------------------------------------------
+# #197: voice-path LLMError response handling
+# ---------------------------------------------------------------------------
+
+
+def _make_streaming_agent(
+    chunks: list[str],
+    final_response: ConversationResponse,
+) -> tuple[OrchestratorAgent, MagicMock]:
+    """Variant of _make_agent that streams `chunks` as str items before yielding
+    the final ConversationResponse. Used to reproduce the mid-stream LLMError
+    voice-worker scenario."""
+    orchestrator = MagicMock()
+
+    async def _process_message_stream(request: Any, db: Any = None, user_id: Any = None):
+        for c in chunks:
+            yield c
+        yield final_response
+
+    orchestrator.process_message_stream = _process_message_stream
+    agent = OrchestratorAgent(
+        orchestrator=orchestrator,
+        agent_config=AgentConfig(
+            id="agent-1",
+            name="TestBot",
+            persona="A test bot.",
+            greeting="Hi!",
+        ),
+        conversation_id="test-conv",
+    )
+    return agent, orchestrator
+
+
+@pytest.mark.asyncio
+async def test_llm_node_speaks_polite_reply_on_mid_stream_error() -> None:
+    """#197 regression: when the orchestrator streams partial chunks and then
+    yields an error ConversationResponse (mid-stream provider failure), the
+    voice worker must speak the polite reply AFTER the partial chunks so the
+    user does not hear a half-sentence trail off into silence.
+    """
+    error_response = ConversationResponse(
+        conversation_id="test-conv",
+        reply=Message(
+            role=MessageRole.ASSISTANT,
+            content=(
+                "I'm having trouble reaching my language model provider right now. "
+                "Please try again in a moment."
+            ),
+        ),
+        status="error",
+        error="OpenAI rate-limited: 429 quota exceeded",
+    )
+    agent, _ = _make_streaming_agent(chunks=["Hello ", "there"], final_response=error_response)
+    chat_ctx = _make_chat_ctx([("user", "Hi")])
+
+    agent.request_reply()
+    out = [c async for c in agent.llm_node(chat_ctx, [], MagicMock())]
+
+    # The partial chunks flow first (TTS is already speaking them), then the
+    # polite fallback is appended so the reply concludes gracefully.
+    assert out[:2] == ["Hello ", "there"]
+    assert "language model provider" in out[-1]
+
+
+@pytest.mark.asyncio
+async def test_llm_node_speaks_polite_reply_on_early_error() -> None:
+    """When the orchestrator yields an error response with NO chunks (auth
+    failure at the intent-detection step, for example), the voice worker
+    speaks the polite reply as the only TTS output for that turn."""
+    error_response = ConversationResponse(
+        conversation_id="test-conv",
+        reply=Message(
+            role=MessageRole.ASSISTANT,
+            content=(
+                "I'm having trouble reaching my language model provider right now. "
+                "Please try again in a moment."
+            ),
+        ),
+        status="error",
+        error="OpenAI authentication failed: 401",
+    )
+    agent, _ = _make_streaming_agent(chunks=[], final_response=error_response)
+    chat_ctx = _make_chat_ctx([("user", "Hi")])
+
+    agent.request_reply()
+    out = [c async for c in agent.llm_node(chat_ctx, [], MagicMock())]
+
+    assert len(out) == 1
+    assert "language model provider" in out[0]
+
+
+@pytest.mark.asyncio
+async def test_llm_node_preserves_workflow_state_on_error_response() -> None:
+    """#197: an error ConversationResponse must not clobber the voice worker's
+    locked intent, completed workflow steps, or routed agent. The orchestrator
+    emits a bare response on error paths, so overwriting stateful fields with
+    its defaults would strand the session mid-workflow."""
+    agent, _ = _make_streaming_agent(
+        chunks=[],
+        final_response=ConversationResponse(
+            conversation_id="test-conv",
+            reply=Message(role=MessageRole.ASSISTANT, content="polite fallback."),
+            status="error",
+            error="OpenAI request timed out",
+        ),
+    )
+    # Session is mid-workflow with intent locked + one step done + routed agent set.
+    agent._locked_intent_name = "book_appointment"
+    agent._completed_workflow_steps = ["collect_email"]
+    agent._current_routed_agent = "booking_agent"
+
+    agent.request_reply()
+    [_ async for _ in agent.llm_node(_make_chat_ctx([("user", "yes")]), [], MagicMock())]
+
+    assert agent._locked_intent_name == "book_appointment"
+    assert agent._completed_workflow_steps == ["collect_email"]
+    assert agent._current_routed_agent == "booking_agent"

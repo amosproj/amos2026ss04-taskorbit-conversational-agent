@@ -163,6 +163,13 @@ class OllamaClient:
             raise LLMAPIError(
                 f"Failed to list models at Ollama endpoint {self._base_url}: {exc}"
             ) from exc
+        except ValueError as exc:
+            # response.json() raises json.JSONDecodeError (a ValueError) when
+            # Ollama returns a malformed body, e.g. a reverse-proxy HTML error
+            # page fronting the endpoint or a truncated body on a socket close
+            # that still parses as HTTP 200. httpx catches above do not cover
+            # this. Parity extension of Vineesh's #197 review to Ollama.
+            raise LLMAPIError(f"Ollama returned malformed JSON at {self._base_url}: {exc}") from exc
 
         available = [m.get("name", "") for m in data.get("models", [])]
         if model not in available:
@@ -232,6 +239,16 @@ class OllamaClient:
                 provider="ollama", model=llm_config.model, status="api"
             ).inc()
             raise LLMAPIError(f"Ollama API error: {exc}") from exc
+        except ValueError as exc:
+            # response.json() raises json.JSONDecodeError (a ValueError) when
+            # Ollama returns a malformed body, e.g. a reverse-proxy HTML error
+            # page or a truncated body. Parity extension of Vineesh's #197
+            # review to Ollama.
+            _log.error("llm_call_failed", provider="ollama", error_type="decode", error=str(exc))
+            get_metrics().llm_requests_total.labels(
+                provider="ollama", model=llm_config.model, status="decode_error"
+            ).inc()
+            raise LLMAPIError(f"Ollama returned malformed JSON: {exc}") from exc
 
         text = data.get("message", {}).get("content", "")
         if not text:

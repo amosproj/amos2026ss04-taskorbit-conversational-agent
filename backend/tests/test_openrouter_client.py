@@ -20,6 +20,7 @@ from taskorbit.integrations.llm.errors import (
     LLMAPIError,
     LLMAuthError,
     LLMConfigError,
+    LLMRateLimitError,
     LLMTimeoutError,
 )
 from taskorbit.integrations.llm.factory import _guard_provider_model_match, get_llm_client
@@ -113,6 +114,198 @@ async def test_openrouter_client_generate_raises_llm_auth_error(openrouter_setti
 
 
 @pytest.mark.asyncio
+async def test_openrouter_client_generate_raises_llm_auth_error_on_unauthorized_response(
+    openrouter_settings: None,
+) -> None:
+    """Invalid or revoked API keys surface as UnauthorizedResponseError from
+    the SDK and must map to LLMAuthError so the orchestrator returns the
+    auth-specific user message (#197)."""
+    from openrouter.errors import UnauthorizedResponseError
+
+    settings = get_settings()
+    llm_config = _make_llm_config()
+
+    with patch("taskorbit.integrations.llm.openrouter_client.OpenRouter") as mock_cls:
+        mock_sdk = MagicMock()
+        mock_sdk.chat.send_async = AsyncMock(
+            side_effect=UnauthorizedResponseError(MagicMock(), MagicMock())
+        )
+        mock_cls.return_value = mock_sdk
+
+        client = OpenRouterClient(llm_config=llm_config, settings=settings)
+        with pytest.raises(LLMAuthError):
+            await client.generate("You are helpful.", [], llm_config)
+
+
+@pytest.mark.asyncio
+async def test_openrouter_client_generate_raises_llm_rate_limit_error_on_too_many_requests(
+    openrouter_settings: None,
+) -> None:
+    """OpenRouter's own 429 throttling surfaces as TooManyRequestsResponseError
+    and must map to LLMRateLimitError so the orchestrator returns the
+    rate-limit-specific user message (#197)."""
+    from openrouter.errors import TooManyRequestsResponseError
+
+    settings = get_settings()
+    llm_config = _make_llm_config()
+
+    with patch("taskorbit.integrations.llm.openrouter_client.OpenRouter") as mock_cls:
+        mock_sdk = MagicMock()
+        mock_sdk.chat.send_async = AsyncMock(
+            side_effect=TooManyRequestsResponseError(MagicMock(), MagicMock())
+        )
+        mock_cls.return_value = mock_sdk
+
+        client = OpenRouterClient(llm_config=llm_config, settings=settings)
+        with pytest.raises(LLMRateLimitError):
+            await client.generate("You are helpful.", [], llm_config)
+
+
+@pytest.mark.asyncio
+async def test_openrouter_client_unauthorized_response_increments_auth_metric(
+    openrouter_settings: None,
+) -> None:
+    """UnauthorizedResponseError must increment llm_requests_total with status='auth'
+    so Grafana / alerting can distinguish key-invalid from other auth failures (#197)."""
+    from openrouter.errors import UnauthorizedResponseError
+
+    settings = get_settings()
+    llm_config = _make_llm_config()
+    mock_metrics = MagicMock()
+
+    with patch(
+        "taskorbit.integrations.llm.openrouter_client.get_metrics", return_value=mock_metrics
+    ):
+        with patch("taskorbit.integrations.llm.openrouter_client.OpenRouter") as mock_cls:
+            mock_sdk = MagicMock()
+            mock_sdk.chat.send_async = AsyncMock(
+                side_effect=UnauthorizedResponseError(MagicMock(), MagicMock())
+            )
+            mock_cls.return_value = mock_sdk
+
+            client = OpenRouterClient(llm_config=llm_config, settings=settings)
+            with pytest.raises(LLMAuthError):
+                await client.generate("You are helpful.", [], llm_config)
+
+    mock_metrics.llm_requests_total.labels.assert_any_call(
+        provider="openrouter", model=llm_config.model, status="auth"
+    )
+
+
+@pytest.mark.asyncio
+async def test_openrouter_client_too_many_requests_uses_body_and_increments_rate_limit_metric(
+    openrouter_settings: None,
+) -> None:
+    """TooManyRequestsResponseError.body carries the actual reason; the client must
+    copy it into the raised LLMRateLimitError (#197) and emit status='rate_limit'."""
+    from openrouter.errors import TooManyRequestsResponseError
+
+    settings = get_settings()
+    llm_config = _make_llm_config()
+    mock_metrics = MagicMock()
+
+    tm_exc = TooManyRequestsResponseError(MagicMock(), MagicMock())
+    tm_exc.body = "rate limit exceeded, retry after 30s"
+
+    with patch(
+        "taskorbit.integrations.llm.openrouter_client.get_metrics", return_value=mock_metrics
+    ):
+        with patch("taskorbit.integrations.llm.openrouter_client.OpenRouter") as mock_cls:
+            mock_sdk = MagicMock()
+            mock_sdk.chat.send_async = AsyncMock(side_effect=tm_exc)
+            mock_cls.return_value = mock_sdk
+
+            client = OpenRouterClient(llm_config=llm_config, settings=settings)
+            with pytest.raises(LLMRateLimitError, match="rate limit exceeded"):
+                await client.generate("You are helpful.", [], llm_config)
+
+    mock_metrics.llm_requests_total.labels.assert_any_call(
+        provider="openrouter", model=llm_config.model, status="rate_limit"
+    )
+
+
+@pytest.mark.asyncio
+async def test_openrouter_client_openrouter_error_uses_body_when_available(
+    openrouter_settings: None,
+) -> None:
+    """Generic OpenRouterError.body must be used in the raised LLMAPIError message
+    when populated, so the operator sees the real upstream reason rather than the
+    SDK's generic 'Provider returned error'."""
+    from openrouter.errors import OpenRouterError
+
+    settings = get_settings()
+    llm_config = _make_llm_config()
+
+    api_exc = OpenRouterError("api error", MagicMock())
+    api_exc.body = "upstream returned 502 bad gateway from anthropic"
+
+    with patch("taskorbit.integrations.llm.openrouter_client.OpenRouter") as mock_cls:
+        mock_sdk = MagicMock()
+        mock_sdk.chat.send_async = AsyncMock(side_effect=api_exc)
+        mock_cls.return_value = mock_sdk
+
+        client = OpenRouterClient(llm_config=llm_config, settings=settings)
+        with pytest.raises(LLMAPIError, match="upstream returned 502 bad gateway"):
+            await client.generate("You are helpful.", [], llm_config)
+
+
+@pytest.mark.asyncio
+async def test_openrouter_client_bounded_detail_truncates_large_bodies(
+    openrouter_settings: None,
+) -> None:
+    """_bounded_detail must cap exc.body at 500 chars so an oversized upstream
+    response body cannot bloat logs or the user-visible LLMError message."""
+    from openrouter.errors import OpenRouterError
+
+    settings = get_settings()
+    llm_config = _make_llm_config()
+
+    huge_body = "x" * 2000
+    api_exc = OpenRouterError("api error", MagicMock())
+    api_exc.body = huge_body
+
+    with patch("taskorbit.integrations.llm.openrouter_client.OpenRouter") as mock_cls:
+        mock_sdk = MagicMock()
+        mock_sdk.chat.send_async = AsyncMock(side_effect=api_exc)
+        mock_cls.return_value = mock_sdk
+
+        client = OpenRouterClient(llm_config=llm_config, settings=settings)
+        with pytest.raises(LLMAPIError) as excinfo:
+            await client.generate("You are helpful.", [], llm_config)
+
+    raised_msg = str(excinfo.value)
+    assert "[truncated]" in raised_msg
+    # Bound: 500 chars of body + a prefix and the truncation marker; nowhere near 2000.
+    assert len(raised_msg) < 800, f"expected truncation, got {len(raised_msg)} char message"
+
+
+@pytest.mark.asyncio
+async def test_openrouter_client_generate_raises_llm_rate_limit_error_on_provider_overloaded(
+    openrouter_settings: None,
+) -> None:
+    """Upstream provider throttling on :free-tier models surfaces as
+    ProviderOverloadedResponseError. The body carries the actual reason
+    (str(exc) is a generic "Provider returned error"), so the client copies
+    exc.body into the raised LLMRateLimitError message for diagnosability (#197)."""
+    from openrouter.errors import ProviderOverloadedResponseError
+
+    settings = get_settings()
+    llm_config = _make_llm_config()
+
+    overloaded_exc = ProviderOverloadedResponseError(MagicMock(), MagicMock())
+    overloaded_exc.body = "upstream provider is currently overloaded, please retry"
+
+    with patch("taskorbit.integrations.llm.openrouter_client.OpenRouter") as mock_cls:
+        mock_sdk = MagicMock()
+        mock_sdk.chat.send_async = AsyncMock(side_effect=overloaded_exc)
+        mock_cls.return_value = mock_sdk
+
+        client = OpenRouterClient(llm_config=llm_config, settings=settings)
+        with pytest.raises(LLMRateLimitError, match="overloaded"):
+            await client.generate("You are helpful.", [], llm_config)
+
+
+@pytest.mark.asyncio
 async def test_openrouter_client_generate_raises_llm_timeout_error(
     openrouter_settings: None,
 ) -> None:
@@ -132,6 +325,41 @@ async def test_openrouter_client_generate_raises_llm_timeout_error(
         client = OpenRouterClient(llm_config=llm_config, settings=settings)
         with pytest.raises(LLMTimeoutError):
             await client.generate("You are helpful.", [], llm_config)
+
+
+@pytest.mark.asyncio
+async def test_openrouter_client_no_response_error_maps_to_llm_timeout_error(
+    openrouter_settings: None,
+) -> None:
+    """NoResponseError is the only openrouter SDK class that does NOT inherit
+    from OpenRouterError, so both the specific-subclass catches and the broad
+    OpenRouterError backstop would miss it. Fires on transport-layer failures
+    (TCP reset, DNS failure, TLS handshake, upstream close-before-headers).
+    Regression guard for the parity extension of Vineesh's #197 review to
+    the remaining providers."""
+    from openrouter.errors import NoResponseError
+
+    settings = get_settings()
+    llm_config = _make_llm_config()
+    mock_metrics = MagicMock()
+
+    with patch(
+        "taskorbit.integrations.llm.openrouter_client.get_metrics", return_value=mock_metrics
+    ):
+        with patch("taskorbit.integrations.llm.openrouter_client.OpenRouter") as mock_cls:
+            mock_sdk = MagicMock()
+            mock_sdk.chat.send_async = AsyncMock(
+                side_effect=NoResponseError("connection reset by peer")
+            )
+            mock_cls.return_value = mock_sdk
+
+            client = OpenRouterClient(llm_config=llm_config, settings=settings)
+            with pytest.raises(LLMTimeoutError, match="no response"):
+                await client.generate("You are helpful.", [], llm_config)
+
+    mock_metrics.llm_requests_total.labels.assert_any_call(
+        provider="openrouter", model=llm_config.model, status="no_response"
+    )
 
 
 @pytest.mark.asyncio

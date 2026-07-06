@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from taskorbit.integrations.llm.errors import LLMRateLimitError
 from taskorbit.intent import (
     _KNOWN_INTENTS,
     CONFIDENCE_THRESHOLD,
@@ -57,6 +58,15 @@ async def test_invalid_json_falls_back_to_keyword_detector(router: IntentRouter)
     result = await router.detect("I have a complaint", [], llm_fn, Mock())
     assert result.confidence == 0.5
     assert result.name == "customer_dissatisfaction_inquiry"
+
+
+async def test_provider_error_propagates_not_swallowed(router: IntentRouter) -> None:
+    """A provider failure (quota/auth/timeout/API) must PROPAGATE so the
+    orchestration surfaces a clear error, not be masked as a low-confidence
+    clarification (which hid real outages like an exhausted OpenAI quota, #197)."""
+    llm_fn = AsyncMock(side_effect=LLMRateLimitError("OpenAI rate-limited: 429 insufficient_quota"))
+    with pytest.raises(LLMRateLimitError):
+        await router.detect("What are your opening hours?", [], llm_fn, Mock())
 
 
 # ---------------------------------------------------------------------------

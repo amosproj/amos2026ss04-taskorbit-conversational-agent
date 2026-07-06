@@ -80,7 +80,7 @@ The frontend ships a ChatGPT-style mic button: tap to record, **Stop** mutes wit
 
 5. Open <http://localhost:5173>, click **Start session**, allow the mic prompt, then tap the mic to start a turn.
 
-See [`backend/README.md`](backend/README.md) and [`frontend/README.md`](frontend/README.md) for module-level details, and [`Documentation/livekit-cloud-setup.md`](Documentation/livekit-cloud-setup.md) for the full LiveKit setup walkthrough.
+See [`backend/README.md`](backend/README.md) and [`frontend/README.md`](frontend/README.md) for module-level details, [`Documentation/livekit-cloud-setup.md`](Documentation/livekit-cloud-setup.md) for the full LiveKit setup walkthrough, and [`Documentation/llm-providers.md`](Documentation/llm-providers.md) for the LLM provider abstraction, error taxonomy, and metric labels.
 
 ---
 
@@ -119,6 +119,12 @@ Three quality-gate workflows run on every push and pull request. A fourth deploy
 | **Deploy to GCP**     | [`deploy.yml`](.github/workflows/deploy.yml)                                          | Builds Docker images, pushes to Artifact Registry, deploys to Cloud Run (runs after all three above pass) |
 
 Each workflow is split into named stages chained with `needs:`, so a single failing stage shows up clearly in the GitHub Checks UI. The full team-facing guide — local commands, troubleshooting, and how to extend the pipeline — lives in [`Documentation/ci-cd.md`](Documentation/ci-cd.md). 
+
+## SBOM & Legal Notices
+
+Third-party dependencies are tracked with [Syft](https://github.com/anchore/syft).
+See [Documentation/sbom.md](Documentation/sbom.md). Legal Notices are available
+in the application footer.
 
 ### Pre-commit Hooks
 
