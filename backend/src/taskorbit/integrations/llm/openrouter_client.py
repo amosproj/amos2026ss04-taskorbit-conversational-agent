@@ -21,6 +21,7 @@ from openrouter import OpenRouter
 from openrouter.errors import (
     EdgeNetworkTimeoutResponseError,
     ForbiddenResponseError,
+    NoResponseError,
     OpenRouterError,
     ProviderOverloadedResponseError,
     TooManyRequestsResponseError,
@@ -120,6 +121,20 @@ class OpenRouterClient:
                 provider="openrouter", model=llm_config.model, status="timeout"
             ).inc()
             raise LLMTimeoutError(f"OpenRouter request timed out: {exc}") from exc
+        except NoResponseError as exc:
+            # NoResponseError is the only SDK class that does not inherit from
+            # OpenRouterError, so neither the specific subclass catches above
+            # nor the broad OpenRouterError backstop below would catch it.
+            # Fires on transport-layer failures (TCP reset, DNS, TLS handshake,
+            # upstream close-before-headers). Semantically a timeout, so we
+            # map to LLMTimeoutError for consistent user-facing behaviour.
+            _log.error(
+                "llm_call_failed", provider="openrouter", error_type="no_response", error=str(exc)
+            )
+            get_metrics().llm_requests_total.labels(
+                provider="openrouter", model=llm_config.model, status="no_response"
+            ).inc()
+            raise LLMTimeoutError(f"OpenRouter returned no response: {exc}") from exc
         except (TooManyRequestsResponseError, ProviderOverloadedResponseError) as exc:
             # str(exc) is just "Provider returned error", exc.body carries the
             # actual reason (e.g. "model X is temporarily rate-limited upstream,
