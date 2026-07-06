@@ -96,3 +96,30 @@ def test_aggregator_writes_single_summary_csv() -> None:
         assert len(csv_rows) == 4
         assert csv_rows[0]["Section"] == "Overall"
         assert csv_rows[0]["STT (ms)"] == "100.0"
+
+
+def test_by_category_reliability_matches_authoritative_summary() -> None:
+    passing = _voice_row("oss-ollama-deepgram-deepgram", "long_with_tool", 5000.0)
+    failing = _voice_row("oss-ollama-deepgram-deepgram", "long_with_tool", 5100.0)
+
+    for row, incorporated in ((passing, True), (failing, False)):
+        row["prompt"]["expects_tool"] = True
+        row["prompt"]["expected_tool_type"] = "data_extraction"
+        row["tool_reliability"] = {
+            "tool_was_invoked": True,
+            "invoked_tool_type": "data_extraction",
+            "correct_tool_selected": True,
+            "result_incorporated_in_reply": incorporated,
+        }
+
+    export = build_export_rows([passing, failing], row_succeeded_fn=_row_succeeded)
+
+    by_category = next(
+        row
+        for row in export
+        if row["Section"] == "By category"
+        and row["Configuration"] == "OSS (Ollama + Deepgram)"
+        and row["Path"] == "voice"
+        and row["Category"] == "long_with_tool"
+    )
+    assert by_category["Tool reliability"] == "50.0%"

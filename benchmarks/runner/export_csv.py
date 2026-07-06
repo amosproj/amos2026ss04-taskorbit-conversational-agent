@@ -180,7 +180,8 @@ def build_export_rows(
                 cat_trials = len(group)
                 cat_success_rate = cat_success / cat_trials if cat_trials else 0.0
                 rel = summarize_reliability(group)
-                rel_rate = (rel.get(category) or {}).get("reliability_rate", 0.0)
+                rel_key = f"{config_label}__{category}"
+                rel_rate = (rel.get(rel_key) or {}).get("reliability_rate", 0.0)
 
                 export_rows.append(
                     {

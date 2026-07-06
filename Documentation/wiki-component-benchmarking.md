@@ -60,6 +60,7 @@ Ollama runs on a team GCE VM at `http://35.231.129.211:11434/`. Before timed run
 | **Environment** | Local backend (`localhost:8000`) + Ollama GCE VM |
 | **Repetitions** | 1 per config/path |
 | **Path** | text + voice |
+| **Row accounting** | 2 configs × 2 paths × 12 turn-level rows = 48 |
 | **Total rows** | 48 |
 | **Success rate** | **100%** (48/48) |
 
@@ -82,10 +83,10 @@ Ollama runs on a team GCE VM at `http://35.231.129.211:11434/`. Before timed run
 
 #### Per-stage averages (voice)
 
-| Config | llm_call (ms) | tool_call (ms) | total (ms) |
-|--------|---------------|----------------|------------|
-| `oss-ollama-gemma4-deepgram` | 1,569 | 1.0 | 4,658 |
-| `oss-ollama-qwen3-deepgram` | 1,908 | 0.1 | 4,983 |
+| Config | STT (ms) | llm_call (ms) | tool_call (ms) | TTS (ms) | total (ms) |
+|--------|----------|---------------|----------------|----------|------------|
+| `oss-ollama-gemma4-deepgram` | N/A | 1,569 | 1.0 | N/A | 4,658 |
+| `oss-ollama-qwen3-deepgram` | N/A | 1,908 | 0.1 | N/A | 4,983 |
 
 #### Latency by category (text)
 

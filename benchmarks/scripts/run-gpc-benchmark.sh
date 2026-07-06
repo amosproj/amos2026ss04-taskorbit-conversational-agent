@@ -6,19 +6,23 @@
 #   export DEEPGRAM_API_KEY=<key>
 #   export ELEVENLABS_API_KEY=<key>
 #   ./benchmarks/scripts/run-gpc-benchmark.sh
+# Optional:
+#   export BENCHMARK_CONFIG=benchmarks/configs/component-benchmark.yaml
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 STAMP="$(date +%Y%m%dT%H%M%S)"
 RESULTS_DIR="${RESULTS_DIR:-$REPO_ROOT/benchmarks/results/gpc-$STAMP}"
+BENCHMARK_CONFIG="${BENCHMARK_CONFIG:-benchmarks/configs/component-benchmark-oss-only.yaml}"
 
 cd "$REPO_ROOT"
 export PYTHONPATH=benchmarks/runner
 
 echo "==> Results dir: $RESULTS_DIR"
+echo "==> Config: $BENCHMARK_CONFIG"
 python3 benchmarks/runner/run_component_benchmark.py \
-  --config benchmarks/configs/component-benchmark.yaml \
+  --config "$BENCHMARK_CONFIG" \
   --results-dir "$RESULTS_DIR/component"
 
 python3 benchmarks/runner/aggregate.py \

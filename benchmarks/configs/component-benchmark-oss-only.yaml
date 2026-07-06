@@ -14,7 +14,7 @@ description: "Compare Ollama gemma4:26b vs qwen3.5:9b across #68 prompt categori
 
 prompt_set: benchmarks/prompts/component_prompts.json
 
-repetitions: 2
+repetitions: 1
 concurrency: 1
 timeout_seconds: 180
 

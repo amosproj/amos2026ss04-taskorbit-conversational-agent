@@ -54,7 +54,7 @@ Open `Documentation/wiki-component-benchmarking.md` and paste the `--report` out
 | File | Purpose |
 |------|---------|
 | `benchmarks/configs/component-benchmark.yaml` | Production config (cloud + OSS, text + voice, 5 reps) |
-| `benchmarks/configs/component-benchmark-oss-only.yaml` | OSS smoke config (1 rep, text only) |
+| `benchmarks/configs/component-benchmark-oss-only.yaml` | GPC standardized run config (1 rep, text + voice, OSS-only) |
 | `benchmarks/scripts/run-gpc-benchmark.sh` | Wrapper script for GPC standardized run |
 | `benchmarks/runner/run_component_benchmark.py` | Main benchmark harness |
 | `benchmarks/runner/aggregate.py` | Result aggregation + report generator |
