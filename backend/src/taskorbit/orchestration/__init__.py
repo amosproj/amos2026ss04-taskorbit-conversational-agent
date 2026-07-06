@@ -666,6 +666,11 @@ class ConversationOrchestrator:
                 completed_workflow_steps=updated_completed_steps,
             )
 
+        # Handler-order note (#197): LLMConfigError and LLMTimeoutError both
+        # inherit from LLMError. The subclass handlers must stay BEFORE the
+        # LLMError base handler, otherwise config errors would silently
+        # downgrade to the generic "llm_provider_error" label and lose their
+        # dedicated user message. See test_handler_ordering_regression.
         except LLMConfigError as exc:
             get_metrics().conversation_errors_total.labels(error_type="llm_config").inc()
             logger.error(
@@ -682,9 +687,13 @@ class ConversationOrchestrator:
                 status="error",
                 error=str(exc),
             )
-        except (TimeoutError, LLMTimeoutError):
+        except (TimeoutError, LLMTimeoutError) as exc:
             get_metrics().conversation_errors_total.labels(error_type="llm_timeout").inc()
-            logger.warning("llm_timeout", conversation_id=request.conversation_id)
+            logger.warning(
+                "llm_timeout",
+                error=str(exc),
+                conversation_id=request.conversation_id,
+            )
             return ConversationResponse(
                 conversation_id=request.conversation_id,
                 reply=self._make_assistant_message(
@@ -1250,6 +1259,11 @@ class ConversationOrchestrator:
                 completed_workflow_steps=updated_completed_steps,
             )
 
+        # Handler-order note (#197): LLMConfigError and LLMTimeoutError both
+        # inherit from LLMError. The subclass handlers must stay BEFORE the
+        # LLMError base handler, otherwise config errors would silently
+        # downgrade to the generic "llm_provider_error" label and lose their
+        # dedicated user message. See test_handler_ordering_regression.
         except LLMConfigError as exc:
             get_metrics().conversation_errors_total.labels(error_type="llm_config").inc()
             logger.error(
@@ -1266,9 +1280,13 @@ class ConversationOrchestrator:
                 status="error",
                 error=str(exc),
             )
-        except (TimeoutError, LLMTimeoutError):
+        except (TimeoutError, LLMTimeoutError) as exc:
             get_metrics().conversation_errors_total.labels(error_type="llm_timeout").inc()
-            logger.warning("llm_timeout", conversation_id=request.conversation_id)
+            logger.warning(
+                "llm_timeout",
+                error=str(exc),
+                conversation_id=request.conversation_id,
+            )
             yield ConversationResponse(
                 conversation_id=request.conversation_id,
                 reply=self._make_assistant_message(

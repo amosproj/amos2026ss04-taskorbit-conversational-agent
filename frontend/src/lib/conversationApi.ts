@@ -134,7 +134,15 @@ export type StreamEvent =
       /** Full assistant reply when no stream chunks were sent (e.g. workflow confirmation). */
       reply?: string | null;
     }
-  | { type: "error"; message: string };
+  | {
+      type: "error";
+      /** Technical error string from the LLM SDK. For on-call / debug UI only. */
+      message: string;
+      /** Polite user-facing reply from ConversationResponse.reply (#197). Render this
+       * in the assistant bubble instead of `message`. Nullable for legacy error
+       * paths that predate the polite-reply pattern (never on LLMError paths). */
+      reply?: string | null;
+    };
 
 type ConversationsResponse = {
   conversations: Array<{

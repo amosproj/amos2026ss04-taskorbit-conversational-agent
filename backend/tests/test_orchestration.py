@@ -794,31 +794,43 @@ async def test_process_message_stream_confirmation_required_does_not_dispatch_to
 async def test_process_message_stream_mid_stream_error_yields_error_response(
     mock_good_intent: Any,
 ) -> None:
-    """A provider that raises mid-stream produces an error ConversationResponse."""
+    """A provider that raises mid-stream produces an error ConversationResponse
+    with the #197 polite reply, the llm_provider_error metric label, and the
+    original SDK message in the .error field for on-call debugging."""
     from taskorbit.integrations.llm.errors import LLMAPIError
 
     orch = ConversationOrchestrator()
+    mock_metrics = MagicMock()
 
     async def _failing_stream(*args: Any, **kwargs: Any):
         yield "Hello "
         raise LLMAPIError("provider blew up")
 
-    with patch.object(
-        ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="{}"
-    ):
+    with patch("taskorbit.orchestration.get_metrics", return_value=mock_metrics):
         with patch.object(
-            ConversationOrchestrator, "_call_llm_stream", return_value=_failing_stream()
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="{}"
         ):
-            events = []
-            async for event in orch.process_message_stream(_make_request("hi")):
-                events.append(event)
+            with patch.object(
+                ConversationOrchestrator, "_call_llm_stream", return_value=_failing_stream()
+            ):
+                events = []
+                async for event in orch.process_message_stream(_make_request("hi")):
+                    events.append(event)
 
     # The partial "Hello " chunk may or may not have been yielded before the
-    # error; what must always be true is that the final event is an error response.
+    # error; what must always be true is that the final event is an error response
+    # and it carries the polite reply + metric label required by #197.
     assert len(events) >= 1
     final = events[-1]
     assert not isinstance(final, str)
     assert final.status == "error"
+    assert final.reply is not None
+    assert "language model provider" in final.reply.content
+    assert final.error is not None
+    assert "provider blew up" in final.error
+    mock_metrics.conversation_errors_total.labels(
+        error_type="llm_provider_error"
+    ).inc.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -1587,3 +1599,77 @@ async def test_slot_extraction_reraises_provider_errors() -> None:
                 [{"name": "email", "type": "email", "required": True}],
                 request.agent_config.llm,
             )
+
+
+@pytest.mark.asyncio
+async def test_llm_timeout_error_in_stream_maps_to_timeout_handler(
+    mock_good_intent: Any,
+) -> None:
+    """The process_message_stream path must map LLMTimeoutError to the
+    dedicated llm_timeout bucket and the connectivity-focused user message,
+    not to the generic llm_provider_error bucket (#197). Mirrors the text-path
+    test above."""
+    from taskorbit.integrations.llm.errors import LLMTimeoutError
+
+    orch = ConversationOrchestrator()
+    mock_metrics = MagicMock()
+
+    with patch("taskorbit.orchestration.get_metrics", return_value=mock_metrics):
+        with patch.object(
+            ConversationOrchestrator,
+            "_call_llm_json",
+            new_callable=AsyncMock,
+            side_effect=LLMTimeoutError("OpenAI request timed out"),
+        ):
+            events = []
+            async for event in orch.process_message_stream(_make_request()):
+                events.append(event)
+
+    responses = [e for e in events if isinstance(e, ConversationResponse)]
+    assert len(responses) == 1
+    assert responses[0].status == "error"
+    assert "trouble connecting to my brain" in responses[0].reply.content
+    mock_metrics.conversation_errors_total.labels(error_type="llm_timeout").inc.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handler_ordering_llm_config_still_routes_to_llm_config_bucket(
+    mock_good_intent: Any,
+) -> None:
+    """Regression guard for the #197 handler-order contract: LLMConfigError
+    inherits from LLMError, so it MUST be caught by the LLMConfigError handler
+    (label='llm_config'), not by the LLMError base handler (label='llm_provider_error').
+    A future refactor that swaps the handler order would silently downgrade
+    config errors, hiding onboarding problems ('did you set the API key?')
+    behind the generic provider-error label."""
+    from taskorbit.integrations.llm.errors import LLMConfigError
+
+    orch = ConversationOrchestrator()
+    mock_metrics = MagicMock()
+
+    with patch("taskorbit.orchestration.get_metrics", return_value=mock_metrics):
+        with patch.object(
+            ConversationOrchestrator,
+            "_call_llm_json",
+            new_callable=AsyncMock,
+            side_effect=LLMConfigError("OPENAI_API_KEY not set"),
+        ):
+            events = []
+            async for event in orch.process_message_stream(_make_request()):
+                events.append(event)
+
+    responses = [e for e in events if isinstance(e, ConversationResponse)]
+    assert len(responses) == 1
+    assert responses[0].status == "error"
+    assert "not properly configured" in responses[0].reply.content
+    mock_metrics.conversation_errors_total.labels(error_type="llm_config").inc.assert_called_once()
+    # And crucially, NOT the generic provider_error bucket.
+    provider_error_calls = [
+        c
+        for c in mock_metrics.conversation_errors_total.labels.call_args_list
+        if c.kwargs.get("error_type") == "llm_provider_error"
+    ]
+    assert not provider_error_calls, (
+        "LLMConfigError leaked into the llm_provider_error bucket — check handler ordering "
+        "in orchestration/__init__.py: LLMConfigError must be caught BEFORE LLMError base."
+    )
