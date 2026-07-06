@@ -445,7 +445,7 @@ export function InCallControls({
                 ? "Use the mic to speak during a voice call."
                 : awaitingConfirmation
                   ? "Approve or deny the action above to continue…"
-                  : "Ask from Orbit."
+                  : "Type a message…"
             }
             autoComplete="off"
             disabled={textDisabled}

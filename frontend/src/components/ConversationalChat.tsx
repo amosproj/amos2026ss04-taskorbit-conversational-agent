@@ -254,7 +254,6 @@ export function ConversationalChat() {
 
   const handleSegment = useCallback(
     (segment: TranscriptionSegment) => {
-      // console.log("[greeting] handleSegment:", segment.role, segment.id, JSON.stringify(segment.text).slice(0, 60), "final:", segment.isFinal);
       if (segment.role === "assistant") {
         const greeting = agent.first_message.message?.trim();
         if (greeting) {
@@ -715,7 +714,6 @@ export function ConversationalChat() {
   }, [call]);
 
   const handleStartSession = useCallback(() => {
-    // console.log("[greeting] handleStartSession fired");
     lockedIntentRef.current = null;
     pendingConfirmationIdRef.current = null;
     greetingEstablishedRef.current = false;
@@ -752,8 +750,7 @@ export function ConversationalChat() {
         </p>
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{appName}</h1>
         <p className="text-sm text-muted-foreground">
-          I'm here to help with your needs. Start chatting by sending a message or using the mic
-          button to speak.
+          Start a session to talk with your agent by voice, or use the text option.
         </p>
       </header>
 

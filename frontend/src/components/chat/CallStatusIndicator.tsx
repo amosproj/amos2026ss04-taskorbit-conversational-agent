@@ -28,7 +28,7 @@ function visualFor(status: CallStatus): Visual | null {
         label: "Reconnecting…",
       };
     case "idle_in_call":
-      return { kind: "icon", Icon: MicOff, spin: false, label: "Muted" };
+      return { kind: "icon", Icon: MicOff, spin: false, label: "Mic off" };
     case "recording":
     case "listening":
       return { kind: "pulse", label: "Listening…" };

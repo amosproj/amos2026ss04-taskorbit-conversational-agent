@@ -2,37 +2,13 @@ import { NavLink, Outlet } from "react-router-dom";
 
 import { ModeToggle } from "@/components/mode-toggle";
 import { cn } from "@/lib/utils";
+import logoUrl from "@/assets/taskorbit-logo.png";
 
 const NAV_ITEMS = [
   { to: "/", label: "Chat", end: true },
   { to: "/config", label: "Agent Config", end: false },
   { to: "/history", label: "History", end: false },
 ] as const;
-
-function BrandMark() {
-  // Three concentric arcs nodding at "TaskOrbit" — orbital paths around a
-  // central node. Inline SVG so it inherits currentColor and stays crisp on
-  // any background.
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="20"
-      height="20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-      className="text-primary"
-    >
-      <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none" />
-      <ellipse cx="12" cy="12" rx="9" ry="3.5" />
-      <ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(60 12 12)" />
-      <ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(-60 12 12)" />
-    </svg>
-  );
-}
 
 export function Layout() {
   const appName = import.meta.env.VITE_APP_NAME ?? "TaskOrbit";
@@ -54,7 +30,7 @@ export function Layout() {
             className="flex items-center gap-2 text-sm font-semibold tracking-tight"
             aria-label={`${appName} home`}
           >
-            <BrandMark />
+            <img src={logoUrl} alt="" className="size-6 shrink-0" />
             <span>{appName}</span>
           </NavLink>
 

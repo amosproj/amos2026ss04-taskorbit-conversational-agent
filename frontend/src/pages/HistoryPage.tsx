@@ -171,7 +171,7 @@ export function HistoryPage() {
               <p className="py-8 text-center text-sm text-destructive">{listError}</p>
             ) : conversations.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
-                No conversations yet.
+                No conversations yet. Start a call from the home screen and it will appear here.
               </p>
             ) : (
               <ul className="flex flex-col gap-3">

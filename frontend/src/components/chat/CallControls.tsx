@@ -65,7 +65,7 @@ export function CallControls({ status, onStart, onSendText, onRestart }: Props) 
                 id={inputId}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
-                placeholder="Type a message (debug / fallback)…"
+                placeholder="Type a message instead…"
                 autoComplete="off"
                 className="min-w-0 flex-1"
               />
