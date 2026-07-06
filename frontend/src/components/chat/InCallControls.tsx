@@ -17,16 +17,7 @@
  */
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import {
-  ArrowUp,
-  Check,
-  Mic,
-  PhoneOff,
-  UserRoundCog,
-  Volume2,
-  VolumeX,
-  X,
-} from "lucide-react";
+import { ArrowUp, Check, Mic, PhoneOff, UserRoundCog, Volume2, VolumeX, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useMicRecorder } from "@/hooks/useMicRecorder";
@@ -461,6 +452,8 @@ export function InCallControls({
             className={cn(
               "flex-1 resize-none bg-transparent py-2 text-sm outline-none",
               "max-h-[160px] overflow-y-auto leading-relaxed",
+              // Textarea still scrolls past 160px, but the scrollbar chrome is hidden so the input never shows a bar (#181).
+              "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
               "placeholder:text-muted-foreground/60",
               "disabled:cursor-not-allowed disabled:opacity-50",
             )}

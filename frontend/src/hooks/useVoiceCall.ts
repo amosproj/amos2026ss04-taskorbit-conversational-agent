@@ -35,6 +35,8 @@ export type VoiceCallApi = {
   micError: string | null;
   sessionEndReason: string | null;
   clearSessionEndReason: () => void;
+  /** Tear down the session with a reason banner when the room/agent drops unexpectedly. */
+  reportConnectionLost: (reason: string) => void;
 
   /** Begin a new call: fetch token, transition to `connecting`. */
   start: (options?: VoiceCallStartOptions) => string;
@@ -189,6 +191,15 @@ export function useVoiceCall(): VoiceCallApi {
       setStatus("idle");
     },
     [clearTimer, clearSessionTimers],
+  );
+
+  // Called by the room bridge when the LiveKit room drops or the agent
+  // participant leaves after having joined (e.g. the worker crashed). Reuses
+  // the timeout teardown so the user gets a clear reason banner and a clean
+  // pre-call surface instead of a frozen "live" session with a stale pill.
+  const reportConnectionLost = useCallback(
+    (reason: string) => handleSessionTimeout(reason),
+    [handleSessionTimeout],
   );
 
   const appendUserTurn = useCallback((text: string) => {
@@ -385,6 +396,7 @@ export function useVoiceCall(): VoiceCallApi {
     micError,
     sessionEndReason,
     clearSessionEndReason,
+    reportConnectionLost,
     start,
     end,
     restart,

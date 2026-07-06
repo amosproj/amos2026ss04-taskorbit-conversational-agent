@@ -884,6 +884,7 @@ export function ConversationalChat() {
             onHandoff={handleVoiceHandoff}
             onAgentRouted={handleVoiceAgentRouted}
             onSessionEnded={call.end}
+            onConnectionLost={call.reportConnectionLost}
           />
           <WorkflowVoiceSyncBridge onRegister={registerWorkflowVoiceSync} />
           {body}
