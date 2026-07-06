@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
 
+import { LegalNoticesDialog } from "@/components/LegalNoticesDialog";
 import { ModeToggle } from "@/components/mode-toggle";
 import { cn } from "@/lib/utils";
 
@@ -38,7 +39,7 @@ export function Layout() {
   const appName = import.meta.env.VITE_APP_NAME ?? "TaskOrbit";
 
   return (
-    <div className="min-h-svh bg-background text-foreground">
+    <div className="flex min-h-svh flex-col bg-background text-foreground">
       <a
         href="#main"
         className="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:left-4 focus-visible:top-4 focus-visible:z-50 focus-visible:rounded-md focus-visible:bg-primary focus-visible:px-3 focus-visible:py-2 focus-visible:text-sm focus-visible:text-primary-foreground"
@@ -109,9 +110,16 @@ export function Layout() {
         </nav>
       </header>
 
-      <main id="main">
+      <main id="main" className="flex-1">
         <Outlet />
       </main>
+
+      <footer className="flex items-center justify-center gap-4 border-t px-4 py-3">
+        <LegalNoticesDialog />
+        <span className="text-xs text-muted-foreground">
+          © {new Date().getFullYear()} {appName}
+        </span>
+      </footer>
     </div>
   );
 }
