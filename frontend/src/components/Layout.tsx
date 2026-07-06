@@ -47,7 +47,7 @@ export function Layout() {
       </a>
 
       <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="mx-auto flex h-14 max-w-5xl items-center gap-6 px-4 sm:px-6">
+        <div className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-4 sm:px-6">
           <NavLink
             to="/"
             end
@@ -87,7 +87,7 @@ export function Layout() {
         </div>
 
         <nav aria-label="Main mobile" className="border-t sm:hidden">
-          <ul className="mx-auto flex max-w-5xl items-center gap-1 overflow-x-auto px-4 py-2">
+          <ul className="mx-auto flex max-w-6xl items-center gap-1 overflow-x-auto px-4 py-2">
             {NAV_ITEMS.map((item) => (
               <li key={item.to}>
                 <NavLink

@@ -3,11 +3,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { AgentIdentityCard } from "@/components/chat/AgentIdentityCard";
+import { AgentSwitcher } from "@/components/chat/AgentSwitcher";
 import { CallControls } from "@/components/chat/CallControls";
 import { CallStatusIndicator } from "@/components/chat/CallStatusIndicator";
 import { ConfirmationPrompt } from "@/components/chat/ConfirmationPrompt";
 import { InCallControls } from "@/components/chat/InCallControls";
 import { PreCallDiagnostics } from "@/components/chat/PreCallDiagnostics";
+import {
+  RecentConversations,
+  type RecentConversation,
+} from "@/components/chat/RecentConversations";
 import { VoiceSessionBridge } from "@/components/chat/VoiceSessionBridge";
 import { TranscriptBubble } from "@/components/history/TranscriptBubble";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -145,9 +150,7 @@ export function ConversationalChat() {
       console.warn("[ConversationalChat] workflow voice sync failed", err);
     }
   }, []);
-  const [previousConversations, setPreviousConversations] = useState<
-    Record<string, string | null>[]
-  >([]);
+  const [previousConversations, setPreviousConversations] = useState<RecentConversation[]>([]);
 
   // Load previous conversations on page load (reload restores conversations)
   useEffect(() => {
@@ -737,7 +740,12 @@ export function ConversationalChat() {
   );
 
   const body: ReactNode = (
-    <div className="mx-auto flex min-h-svh max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
+    <div
+      className={cn(
+        "mx-auto flex min-h-svh flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10",
+        isPreCall ? "max-w-6xl" : "max-w-5xl",
+      )}
+    >
       <header className="space-y-1">
         <p className="text-sm font-medium tracking-widest text-muted-foreground uppercase">
           Conversational agent
@@ -749,26 +757,29 @@ export function ConversationalChat() {
         </p>
       </header>
 
-      {previousConversations.length > 0 && isPreCall && (
-        <Card className="animate-in fade-in slide-in-from-bottom-2 duration-500 ease-out">
-          <CardHeader>
-            <CardTitle>Previous Conversations</CardTitle>
-            <CardDescription>
-              You have {previousConversations.length} previous conversation
-              {previousConversations.length !== 1 ? "s" : ""}. Start a new call to continue.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      )}
-
       {isPreCall ? (
-        <>
-          <AgentIdentityCard
-            agent={agent}
-            className="animate-in fade-in slide-in-from-bottom-2 duration-500 ease-out"
-          />
-          <PreCallDiagnostics className="animate-in fade-in slide-in-from-bottom-2 duration-500 ease-out" />
-        </>
+        <div className="grid animate-in gap-6 fade-in slide-in-from-bottom-2 duration-500 ease-out lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <div className="flex flex-col gap-6">
+            <AgentIdentityCard agent={agent} />
+            <CallControls
+              status="idle"
+              onStart={handleStartSession}
+              onSendText={handleSendText}
+              onRestart={handleRestart}
+            />
+            <AgentSwitcher
+              activeAgentId={agent.agent_id}
+              activeAgentName={agent.name}
+              onSelect={(entry) =>
+                setActiveAgent(backendToFrontendAgent(entry), `ua:${entry.template_id ?? entry.id}`)
+              }
+            />
+          </div>
+          <div className="flex flex-col gap-6">
+            <RecentConversations conversations={previousConversations} />
+            <PreCallDiagnostics />
+          </div>
+        </div>
       ) : null}
 
       {isInCall ? (
@@ -865,14 +876,14 @@ export function ConversationalChat() {
             onAgentMutedChange={setAgentMuted}
           />
         </div>
-      ) : isInCall ? null : (
+      ) : isInCall ? null : isPostCall ? (
         <CallControls
           status={call.status}
           onStart={handleStartSession}
           onSendText={handleSendText}
           onRestart={handleRestart}
         />
-      )}
+      ) : null}
     </div>
   );
 
