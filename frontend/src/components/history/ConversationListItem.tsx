@@ -48,7 +48,7 @@ export function ConversationListItem({
           "relative block w-full rounded-lg border bg-card text-left text-card-foreground transition-colors",
           "hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           selected &&
-            "bg-muted/40 ring-2 ring-primary/60 before:absolute before:inset-y-2 before:left-0 before:w-1 before:rounded-r before:bg-primary",
+            "bg-muted/40 before:absolute before:inset-y-2 before:left-0 before:w-1 before:rounded-r before:bg-primary",
         )}
       >
         {/* pr-10 keeps text clear of the absolutely-positioned delete button. */}
