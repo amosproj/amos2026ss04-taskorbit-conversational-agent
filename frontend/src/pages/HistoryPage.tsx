@@ -155,7 +155,7 @@ export function HistoryPage() {
     })) ?? [];
 
   return (
-    <section className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+    <section className="mx-auto max-w-6xl animate-in fade-in slide-in-from-bottom-2 px-4 py-10 duration-500 ease-out sm:px-6">
       <header className="space-y-1">
         <p className="text-sm font-medium tracking-widest text-muted-foreground uppercase">
           History

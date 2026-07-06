@@ -41,7 +41,7 @@ export function CallControls({ status, onStart, onSendText, onRestart }: Props) 
 
   if (status === "idle") {
     return (
-      <Card>
+      <Card className="animate-in fade-in slide-in-from-bottom-2 duration-500 ease-out">
         <CardContent className="flex flex-col gap-3 py-4">
           <Button size="lg" onClick={onStart} type="button" className="w-full">
             <Play data-icon="inline-start" />
@@ -82,10 +82,10 @@ export function CallControls({ status, onStart, onSendText, onRestart }: Props) 
 
   if (status === "ended") {
     return (
-      <Card>
+      <Card className="animate-in fade-in slide-in-from-bottom-2 duration-500 ease-out">
         <CardContent className="flex flex-col items-stretch gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
-            Call ended — the transcript and any extracted data are now available in History.
+            Your transcript and any extracted data are saved to History.
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm" asChild>

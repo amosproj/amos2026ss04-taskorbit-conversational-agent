@@ -76,6 +76,10 @@ export type VoiceCallApi = {
 
 const CONV_ID_STORAGE_KEY = "taskorbit_conversation_id";
 const CONNECTING_TIMEOUT_MS = 800;
+// Brief wind-down after End is pressed: the room is torn down immediately, but
+// we hold an "ending" state this long before the ended summary so the hang-up
+// feels intentional instead of an instant cut.
+const ENDING_BEAT_MS = 600;
 const INACTIVITY_TIMEOUT_MS =
   Number(import.meta.env.VITE_INACTIVITY_TIMEOUT_MINUTES ?? 7) * 60 * 1000;
 const SESSION_MAX_MS = Number(import.meta.env.VITE_SESSION_MAX_MINUTES ?? 30) * 60 * 1000;
@@ -103,6 +107,7 @@ export function useVoiceCall(): VoiceCallApi {
   const [sessionEndReason, setSessionEndReason] = useState<string | null>(null);
 
   const timerRef = useRef<number | null>(null);
+  const endingTimerRef = useRef<number | null>(null);
   const sessionTimerRef = useRef<number | null>(null);
   const inactivityTimerRef = useRef<number | null>(null);
   const statusRef = useRef<CallStatus>(status);
@@ -115,6 +120,7 @@ export function useVoiceCall(): VoiceCallApi {
   useEffect(() => {
     return () => {
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+      if (endingTimerRef.current !== null) window.clearTimeout(endingTimerRef.current);
       if (sessionTimerRef.current !== null) window.clearTimeout(sessionTimerRef.current);
       if (inactivityTimerRef.current !== null) window.clearTimeout(inactivityTimerRef.current);
       abortRef.current?.abort();
@@ -160,6 +166,10 @@ export function useVoiceCall(): VoiceCallApi {
     if (timerRef.current !== null) {
       window.clearTimeout(timerRef.current);
       timerRef.current = null;
+    }
+    if (endingTimerRef.current !== null) {
+      window.clearTimeout(endingTimerRef.current);
+      endingTimerRef.current = null;
     }
   }, []);
 
@@ -324,8 +334,14 @@ export function useVoiceCall(): VoiceCallApi {
     abortRef.current?.abort();
     setConversationId("");
     setConfirmation(null);
+    // Tear the room down immediately (audio + mic stop now), but hold a brief
+    // "ending" wind-down before the ended summary so the hang-up feels smooth
+    // instead of an instant cut.
     setLivekitCredentials(null);
-    setStatus("ended");
+    setStatus("ending");
+    endingTimerRef.current = window.setTimeout(() => {
+      setStatus("ended");
+    }, ENDING_BEAT_MS);
   }, [clearTimer, clearSessionTimers]);
 
   const restart = useCallback(() => {

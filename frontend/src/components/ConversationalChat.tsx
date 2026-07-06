@@ -12,6 +12,7 @@ import { VoiceSessionBridge } from "@/components/chat/VoiceSessionBridge";
 import { TranscriptBubble } from "@/components/history/TranscriptBubble";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 import { useVoiceCall } from "@/hooks/useVoiceCall";
 import {
   WorkflowVoiceSyncBridge,
@@ -749,7 +750,7 @@ export function ConversationalChat() {
       </header>
 
       {previousConversations.length > 0 && isPreCall && (
-        <Card>
+        <Card className="animate-in fade-in slide-in-from-bottom-2 duration-500 ease-out">
           <CardHeader>
             <CardTitle>Previous Conversations</CardTitle>
             <CardDescription>
@@ -762,20 +763,30 @@ export function ConversationalChat() {
 
       {isPreCall ? (
         <>
-          <AgentIdentityCard agent={agent} />
-          <PreCallDiagnostics />
+          <AgentIdentityCard
+            agent={agent}
+            className="animate-in fade-in slide-in-from-bottom-2 duration-500 ease-out"
+          />
+          <PreCallDiagnostics className="animate-in fade-in slide-in-from-bottom-2 duration-500 ease-out" />
         </>
       ) : null}
 
       {isInCall ? (
-        <Card>
+        <Card
+          className={cn(
+            "transition-all duration-500 ease-out",
+            call.status === "ending" && "scale-[0.98] opacity-50",
+          )}
+        >
           <CardHeader className="flex flex-row items-start justify-between gap-3 border-b">
             <div className="space-y-1">
               <CardTitle>{agent.name}</CardTitle>
               <CardDescription>
                 {call.status === "connecting"
                   ? "Connecting to your agent…"
-                  : "Voice session active · live transcript below."}
+                  : call.status === "ending"
+                    ? "Ending call…"
+                    : "Voice session active · live transcript below."}
               </CardDescription>
             </div>
             <div className="flex flex-col items-end gap-2">
@@ -808,7 +819,7 @@ export function ConversationalChat() {
       ) : null}
 
       {isPostCall ? (
-        <Card>
+        <Card className="animate-in fade-in slide-in-from-bottom-2 duration-500 ease-out">
           <CardHeader>
             <CardTitle>Call ended</CardTitle>
             <CardDescription>

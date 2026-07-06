@@ -27,7 +27,7 @@ const toneClasses: Record<CheckTone, string> = {
  * technical detail (env-var values, error messages) lives behind the
  * disclosure so it's available without dominating the surface.
  */
-export function PreCallDiagnostics() {
+export function PreCallDiagnostics({ className }: { className?: string }) {
   const { health } = useBackendHealth();
   const apiUrl = import.meta.env.VITE_API_URL ?? "";
   const livekitUrl = import.meta.env.VITE_LIVEKIT_URL ?? "";
@@ -60,7 +60,7 @@ export function PreCallDiagnostics() {
   const hasIssue = checks.some((c) => c.tone === "error" || c.tone === "warn");
 
   return (
-    <Card>
+    <Card className={className}>
       <CardContent className="flex flex-col gap-3 py-4">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           {checks.map((check) => (
