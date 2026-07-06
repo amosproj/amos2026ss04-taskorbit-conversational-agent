@@ -205,7 +205,14 @@ export function PipelineSection({ value, onChange }: Props) {
                   const provider = v as TtsProvider;
                   onChange({
                     ...value,
-                    tts: { ...value.tts, provider, model: TTS_MODEL_DEFAULTS[provider] },
+                    tts: {
+                      provider,
+                      model: TTS_MODEL_DEFAULTS[provider],
+                      // Deepgram encodes the voice in the model name; carrying a
+                      // stale ElevenLabs voice_id would persist inconsistent
+                      // provider/voice state (#166).
+                      voice_id: provider === "deepgram" ? "" : value.tts.voice_id,
+                    },
                   });
                 }}
               >
