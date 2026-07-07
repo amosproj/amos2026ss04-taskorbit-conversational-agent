@@ -19,6 +19,7 @@ import {
   STT_MODELS,
   TTS_MODELS,
   TTS_VOICES,
+  TTS_VOICE_DEFAULT,
   withCurrent,
 } from "@/lib/pipelineOptions";
 import type { AgentConfig, LlmProvider, SttProvider, TtsProvider } from "@/types/agentConfig";
