@@ -211,7 +211,8 @@ export function PipelineSection({ value, onChange }: Props) {
                       // Deepgram encodes the voice in the model name; carrying a
                       // stale ElevenLabs voice_id would persist inconsistent
                       // provider/voice state (#166).
-                      voice_id: provider === "deepgram" ? "" : value.tts.voice_id,
+                      voice_id:
+                        provider === "deepgram" ? "" : value.tts.voice_id || TTS_VOICE_DEFAULT,
                     },
                   });
                 }}

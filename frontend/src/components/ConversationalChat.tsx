@@ -27,11 +27,13 @@ import { backendToFrontendAgent, fetchUserAgents } from "@/lib/userAgentsApi";
 import type { AgentConfig } from "@/types/agentConfig";
 import type { LiveTranscriptTurn } from "@/types/callState";
 
-// POST /v1/tts/synthesize is ElevenLabs-only. Forwarding a Deepgram agent's
-// voice/model (e.g. "aura-2-andromeda-en" as model_id) makes ElevenLabs
-// reject the request and text-mode read-aloud fails silently (#166). For
-// non-ElevenLabs agents, omit both so the env-default ElevenLabs voice
-// speaks instead of erroring.
+/**
+ * Returns ElevenLabs-specific TTS options only when the provider is elevenlabs.
+ * The REST /v1/tts/synthesize endpoint is ElevenLabs-only — passing Deepgram
+ * model names causes silent failures. Returns {} for all other providers so
+ * the env-default ElevenLabs voice is used as fallback.
+ * @param tts - the agent TTS config
+ */
 function restTtsOptions(tts: AgentConfig["tts"]): { voiceId?: string; modelId?: string } {
   if (tts.provider !== "elevenlabs") return {};
   return { voiceId: tts.voice_id, modelId: tts.model };
