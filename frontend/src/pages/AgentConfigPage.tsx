@@ -289,7 +289,7 @@ export function AgentConfigPage() {
   };
 
   return (
-    <section className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+    <section className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <header className="space-y-1">
         <p className="text-sm font-medium tracking-widest text-muted-foreground uppercase">
           Configuration

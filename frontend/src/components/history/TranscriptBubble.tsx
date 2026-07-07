@@ -2,10 +2,16 @@ import { ArrowRightLeft } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
-import type { TranscriptTurn } from "@/lib/mockConversations";
 
 /** ~155 WPM — only used when the full text arrives at once with no prior streaming. */
 const MS_PER_WORD = 390;
+
+/** One turn of a persisted transcript, as shown in the History view. */
+type TranscriptTurn = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+};
 
 type Props = {
   turn: TranscriptTurn & { isFinal?: boolean };

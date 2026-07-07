@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 
 import { useBackendHealth } from "@/hooks/useBackendHealth";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 type CheckTone = "ok" | "warn" | "error" | "loading";
@@ -27,7 +27,7 @@ const toneClasses: Record<CheckTone, string> = {
  * technical detail (env-var values, error messages) lives behind the
  * disclosure so it's available without dominating the surface.
  */
-export function PreCallDiagnostics() {
+export function PreCallDiagnostics({ className }: { className?: string }) {
   const { health } = useBackendHealth();
   const apiUrl = import.meta.env.VITE_API_URL ?? "";
   const livekitUrl = import.meta.env.VITE_LIVEKIT_URL ?? "";
@@ -60,17 +60,23 @@ export function PreCallDiagnostics() {
   const hasIssue = checks.some((c) => c.tone === "error" || c.tone === "warn");
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-3 py-4">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+    <Card className={className}>
+      <CardHeader>
+        <CardTitle>System</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
           {checks.map((check) => (
             <div key={check.label} className="flex items-center gap-2 text-sm">
               <span
                 aria-hidden
-                className={cn("inline-block size-2.5 rounded-full", toneClasses[check.tone])}
+                className={cn(
+                  "inline-block size-2.5 shrink-0 rounded-full",
+                  toneClasses[check.tone],
+                )}
               />
               <span className="font-medium">{check.label}</span>
-              <span className="text-muted-foreground">
+              <span className="ml-auto text-muted-foreground">
                 {check.tone === "ok"
                   ? "ready"
                   : check.tone === "loading"
@@ -81,22 +87,22 @@ export function PreCallDiagnostics() {
               </span>
             </div>
           ))}
-          <button
-            type="button"
-            onClick={() => setShowDetail((v) => !v)}
-            className={cn(
-              "ml-auto flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground",
-              hasIssue && "text-foreground",
-            )}
-            aria-expanded={showDetail}
-          >
-            {showDetail ? "Hide" : "Show"} technical info
-            <ChevronDown
-              aria-hidden
-              className={cn("size-3 transition-transform", showDetail && "rotate-180")}
-            />
-          </button>
         </div>
+        <button
+          type="button"
+          onClick={() => setShowDetail((v) => !v)}
+          className={cn(
+            "flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground",
+            hasIssue && "text-foreground",
+          )}
+          aria-expanded={showDetail}
+        >
+          {showDetail ? "Hide" : "Show"} technical info
+          <ChevronDown
+            aria-hidden
+            className={cn("size-3 transition-transform", showDetail && "rotate-180")}
+          />
+        </button>
         {showDetail ? (
           <dl className="grid grid-cols-1 gap-2 border-t pt-3 text-xs sm:grid-cols-[8rem_minmax(0,1fr)]">
             {checks.map((check) => (

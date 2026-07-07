@@ -17,17 +17,7 @@
  */
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import {
-  ArrowUp,
-  Check,
-  Mic,
-  PhoneOff,
-  UserRoundCog,
-  Volume2,
-  VolumeX,
-  Wand2,
-  X,
-} from "lucide-react";
+import { ArrowUp, Check, Mic, PhoneOff, UserRoundCog, Volume2, VolumeX, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useMicRecorder } from "@/hooks/useMicRecorder";
@@ -57,7 +47,6 @@ type Props = {
   ) => void;
   /** Fires immediately when the user picks (or clears) an agent from the @route menu. */
   onRoutingTargetChange?: (target: { id: string; name: string } | null) => void;
-  onTriggerConfirmation: () => void;
   onMicError: (message: string | null) => void;
   agentMuted: boolean;
   onAgentMutedChange: (muted: boolean) => void;
@@ -72,7 +61,6 @@ export function InCallControls({
   onEnd,
   onSendText,
   onRoutingTargetChange,
-  onTriggerConfirmation,
   onMicError,
   agentMuted,
   onAgentMutedChange,
@@ -457,13 +445,15 @@ export function InCallControls({
                 ? "Use the mic to speak during a voice call."
                 : awaitingConfirmation
                   ? "Approve or deny the action above to continue…"
-                  : "Ask from Orbit."
+                  : "Type a message…"
             }
             autoComplete="off"
             disabled={textDisabled}
             className={cn(
               "flex-1 resize-none bg-transparent py-2 text-sm outline-none",
               "max-h-[160px] overflow-y-auto leading-relaxed",
+              // Textarea still scrolls past 160px, but the scrollbar chrome is hidden so the input never shows a bar (#181).
+              "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
               "placeholder:text-muted-foreground/60",
               "disabled:cursor-not-allowed disabled:opacity-50",
             )}
@@ -496,7 +486,7 @@ export function InCallControls({
             "disabled:cursor-not-allowed disabled:opacity-50",
             voiceBtnCls === "" && "border-border bg-card text-foreground hover:bg-muted",
             voiceBtnCls === "listening" &&
-              "border-transparent bg-primary text-primary-foreground shadow-[0_0_0_4px_hsl(var(--primary)/0.18)]",
+              "border-transparent bg-primary text-primary-foreground ring-4 ring-primary/20",
             voiceBtnCls === "speaking" &&
               "border-transparent bg-violet-500 text-white shadow-[0_0_0_4px_rgb(139_92_246/0.22)]",
             voiceBtnCls === "processing" &&
@@ -595,17 +585,6 @@ export function InCallControls({
             <UserRoundCog size={16} />
           </button>
         </div>
-
-        {/* ── Demo confirmation (icon-only) ── */}
-        <button
-          type="button"
-          onClick={onTriggerConfirmation}
-          aria-label="Demo: trigger agent confirmation"
-          title="Demo: simulate the agent asking for confirmation"
-          className="flex size-9 shrink-0 items-center justify-center rounded-full border bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <Wand2 size={15} />
-        </button>
 
         {/* ── End call ── */}
         <button

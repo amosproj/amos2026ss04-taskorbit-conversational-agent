@@ -172,10 +172,7 @@ export function PipelineSection({ value, onChange }: Props) {
               <FieldLabel htmlFor={idLlmModel}>Model</FieldLabel>
               <Select
                 value={value.llm.model}
-                onValueChange={(v) => {
-                  console.log(`[LLM] model selected → ${v} (provider: ${value.llm.provider})`);
-                  onChange({ ...value, llm: { ...value.llm, model: v } });
-                }}
+                onValueChange={(v) => onChange({ ...value, llm: { ...value.llm, model: v } })}
               >
                 <SelectTrigger id={idLlmModel} className="font-mono text-sm">
                   <SelectValue />
