@@ -70,7 +70,7 @@ export function RecentConversations({
             </ul>
             <Link
               to="/history"
-              className="px-0.5 pt-1 text-sm text-primary transition-colors hover:underline"
+              className="px-0.5 pt-1 text-sm text-primary underline underline-offset-2 transition-colors hover:text-primary/80"
             >
               View all {conversations.length} in History
             </Link>

@@ -154,16 +154,24 @@ export function ConversationalChat() {
   const [previousConversations, setPreviousConversations] = useState<RecentConversation[]>([]);
   const [recentLoading, setRecentLoading] = useState(true);
   const [recentError, setRecentError] = useState(false);
+  // Last-write-wins guard: the mount load and the on-call-end refresh can be
+  // in flight together, and on a slow network / cold start the older one may
+  // resolve last and clobber the fresher list. Ignore any load that a newer
+  // one has superseded.
+  const recentReqIdRef = useRef(0);
 
   const loadConversations = useCallback(async () => {
+    const reqId = ++recentReqIdRef.current;
     setRecentError(false);
     try {
       const data = await getConversations();
+      if (reqId !== recentReqIdRef.current) return;
       setPreviousConversations(data.conversations || []);
     } catch {
+      if (reqId !== recentReqIdRef.current) return;
       setRecentError(true);
     } finally {
-      setRecentLoading(false);
+      if (reqId === recentReqIdRef.current) setRecentLoading(false);
     }
   }, []);
 
