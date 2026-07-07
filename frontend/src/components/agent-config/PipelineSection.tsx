@@ -19,7 +19,6 @@ import {
   STT_MODELS,
   TTS_MODELS,
   TTS_VOICES,
-  TTS_VOICE_DEFAULT,
   withCurrent,
 } from "@/lib/pipelineOptions";
 import type { AgentConfig, LlmProvider, SttProvider, TtsProvider } from "@/types/agentConfig";
@@ -211,11 +210,8 @@ export function PipelineSection({ value, onChange }: Props) {
                       model: TTS_MODEL_DEFAULTS[provider],
                       // Deepgram encodes the voice in the model name; carrying a
                       // stale ElevenLabs voice_id would persist inconsistent
-                      // provider/voice state (#166). Switching back to ElevenLabs
-                      // after Deepgram cleared the voice needs a default, or the
-                      // voice dropdown renders blank.
-                      voice_id:
-                        provider === "deepgram" ? "" : value.tts.voice_id || TTS_VOICE_DEFAULT,
+                      // provider/voice state (#166).
+                      voice_id: provider === "deepgram" ? "" : value.tts.voice_id,
                     },
                   });
                 }}
