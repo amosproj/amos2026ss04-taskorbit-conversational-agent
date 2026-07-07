@@ -17,6 +17,33 @@ pip install -r requirements.txt
 python runner/run_benchmark.py --config configs/baseline-cloud.yaml
 ```
 
+### Component Benchmarks (#68)
+
+Compare STT / LLM / TTS pipeline combinations across the four AC prompt categories
+(short/long, with/without tool calls). Supports `text` and `voice` paths:
+
+```bash
+# Dry-run (no backend required — validates config + schema output)
+python runner/run_component_benchmark.py --config configs/component-benchmark.yaml --dry-run
+
+# Live run — text only (fast smoke)
+export BENCHMARK_API_URL=http://localhost:8000
+export BENCHMARK_API_TOKEN=<your-jwt>
+python runner/run_component_benchmark.py --config configs/component-benchmark.yaml --paths text
+
+# Live run — text + voice (needs DEEPGRAM_API_KEY, ELEVENLABS_API_KEY)
+export DEEPGRAM_API_KEY=<key>
+export ELEVENLABS_API_KEY=<key>
+python runner/run_component_benchmark.py --config configs/component-benchmark.yaml
+
+# Aggregate + default config recommendation
+python runner/aggregate.py --results-dir results --report
+```
+
+GPC standardized run: `./scripts/run-gpc-benchmark.sh`
+
+See `Documentation/component-benchmarking.md` for full details.
+
 ### View Results
 
 ```bash
@@ -39,7 +66,8 @@ python runner/compare.py --config baseline-local --limit 10
 benchmarks/
 ├── configs/              # Experiment specifications (YAML)
 │   ├── baseline-cloud.yaml
-│   └── baseline-local.yaml
+│   ├── baseline-local.yaml      # Qwen via OpenRouter (#67)
+│   └── baseline-oss-gemma.yaml  # Gemma via OpenRouter (#67)
 ├── runner/               # Runner and comparison tools
 │   ├── config.py         # Config schema + validation
 │   ├── storage.py        # Result serialization
@@ -82,11 +110,13 @@ tags:                                  # Optional: custom tags
 
 ### Valid Metrics
 
-- `latency_e2e` — End-to-end latency from input → response
-- `latency_components` — Per-component breakdown (STT, LLM, TTS)
-- `token_usage` — Prompt and completion tokens
+- `latency_e2e` — End-to-end latency from input → response (uses `latency_ms.total` from API when available)
+- `latency_components` — Per-component breakdown from `ConversationResponse.latency_ms` (`llm`, `tool_call`, `stt`, `tts`; text path typically has `llm` only)
+- `token_usage` — Prompt and completion tokens (see note below)
 - `errors` — Error counts and types
 - `throughput` — Requests per second
+
+**Note on token_usage:** The backend tracks tokens in Prometheus (`taskorbit_tokens_used_total`, #11). The harness records `token_usage` in results JSONL; live runs currently default to `0` until token counts are exposed on the API response. Use Grafana/Prometheus alongside benchmark JSONL for token analysis today.
 
 ## Results Format
 

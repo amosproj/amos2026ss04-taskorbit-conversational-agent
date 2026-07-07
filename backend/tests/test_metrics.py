@@ -171,6 +171,7 @@ def test_configure_default_metrics_preinits_all_pipeline_stages() -> None:
         "worker_turn",
         "total",
         "stt_processing",
+        "tool_call",
     }
     missing = expected - seeded_stages
     assert not missing, f"Pipeline stages not pre-initialized: {missing}"

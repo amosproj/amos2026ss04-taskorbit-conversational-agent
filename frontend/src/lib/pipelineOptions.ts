@@ -49,6 +49,10 @@ export const TTS_MODELS: Record<TtsProvider, string[]> = {
 // Voices are stored by id but shown by name; the dropdown renders the readable
 // name while `value.tts.voice_id` keeps the raw id the voice worker expects.
 export const TTS_VOICES: { name: string; id: string }[] = [
+  // Rachel + George are the seeded/default agent voices; without them the
+  // dropdown fell back to showing the raw voice id instead of a name (#181).
+  { name: "Rachel", id: "21m00Tcm4TlvDq8ikWAM" },
+  { name: "George", id: "JBFqnCBsd6RMkjVDRZzb" },
   { name: "Roger", id: "CwhRBWXzGAHq8TQ4Fs17" },
   { name: "Jessica", id: "cgSgspJ2msm6clMCkdW9" },
   { name: "Chris", id: "iP95p4xoKVk53GoZ742B" },

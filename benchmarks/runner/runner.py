@@ -13,7 +13,12 @@ from typing import Any
 import httpx
 
 from config import ExperimentConfig
-from metrics import capture_component_latencies, capture_system_metrics
+from metrics import (
+    capture_component_latencies,
+    capture_system_metrics,
+    component_latencies_from_api_response,
+    pipeline_total_ms_from_api_response,
+)
 from storage import ResultWriter, RunMetadata, TrialMetrics
 
 # Default prompt used when the input JSONL is missing or exhausted.
@@ -172,9 +177,9 @@ class BenchmarkRunner:
             )
 
             return self._build_trial_metrics(
-                latency_ms=elapsed_ms,
+                latency_ms=pipeline_total_ms_from_api_response(data, elapsed_ms),
                 success=True,
-                component_latencies=capture_component_latencies(),
+                component_latencies=component_latencies_from_api_response(data),
                 token_usage={"prompt": 0, "completion": 0},
             )
 

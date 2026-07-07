@@ -1,0 +1,52 @@
+# Component benchmark — compare STT/LLM/TTS pipeline combinations (#68)
+#
+# Requirements:
+#   Running backend at BENCHMARK_API_URL (default http://localhost:8000)
+#   BENCHMARK_API_TOKEN set for authenticated /v1/conversations/process calls when auth enabled
+#   OLLAMA_BASE_URL + OLLAMA_MODEL on backend for the OSS config
+#
+# Run:
+#   python runner/run_component_benchmark.py --config configs/component-benchmark.yaml
+#   python runner/run_component_benchmark.py --config configs/component-benchmark.yaml --dry-run
+
+name: gpc-benchmark
+description: "Compare Ollama gemma4:26b vs qwen3.5:9b across #68 prompt categories (text + voice paths)"
+
+prompt_set: benchmarks/prompts/component_prompts.json
+
+repetitions: 1
+concurrency: 1
+timeout_seconds: 180
+
+# Prime Ollama GPU VRAM before timed runs (cold first request can take 20s+).
+ollama_warmup:
+  enabled: true
+  buffer_seconds: 30
+  timeout_seconds: 300
+
+paths:
+  - text
+  - voice
+
+configs:
+  - name: oss-ollama-gemma4-deepgram
+    stt_provider: deepgram
+    stt_model: nova-2
+    llm_provider: ollama
+    llm_model: gemma4:26b
+    tts_provider: deepgram
+    tts_voice_id: aura-2-andromeda-en
+    tts_model: aura-2-andromeda-en
+
+  - name: oss-ollama-qwen3-deepgram
+    stt_provider: deepgram
+    stt_model: nova-2
+    llm_provider: ollama
+    llm_model: qwen3.5:9b
+    tts_provider: deepgram
+    tts_voice_id: aura-2-andromeda-en
+    tts_model: aura-2-andromeda-en
+
+tags:
+  ticket: "68"
+  version: gpc-v1

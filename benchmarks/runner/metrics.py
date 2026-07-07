@@ -102,6 +102,7 @@ def capture_component_latencies(
     stt_ms: float = 0.0,
     llm_ms: float = 0.0,
     tts_ms: float = 0.0,
+    tool_ms: float = 0.0,
 ) -> dict[str, float]:
     """Build a component latency dict from pre-measured stage durations.
 
@@ -112,15 +113,50 @@ def capture_component_latencies(
         stt_ms: Speech-to-text stage latency in milliseconds.
         llm_ms: LLM inference stage latency in milliseconds.
         tts_ms: Text-to-speech synthesis latency in milliseconds.
+        tool_ms: Tool dispatch stage latency in milliseconds (#68).
 
     Returns:
         Dict matching the TrialMetrics.component_latencies schema.
+        Keys with zero values are omitted so null/unmeasured stages stay absent.
     """
-    return {
-        "stt": stt_ms,
-        "llm": llm_ms,
-        "tts": tts_ms,
-    }
+    result: dict[str, float] = {}
+    if stt_ms:
+        result["stt"] = stt_ms
+    if llm_ms:
+        result["llm"] = llm_ms
+    if tts_ms:
+        result["tts"] = tts_ms
+    if tool_ms:
+        result["tool_call"] = tool_ms
+    return result
+
+
+def component_latencies_from_api_response(data: dict[str, Any]) -> dict[str, float]:
+    """Map ConversationResponse.latency_ms into benchmark component_latencies (#11).
+
+    Aligns harness output with backend Prometheus/structlog stage names:
+    stt_processing → stt, llm_call → llm, tool_call → tool_call, tts_synthesis → tts.
+    """
+    raw = data.get("latency_ms") or {}
+    mapping = (
+        ("stt_processing", "stt"),
+        ("llm_call", "llm"),
+        ("tool_call", "tool_call"),
+        ("tts_synthesis", "tts"),
+    )
+    result: dict[str, float] = {}
+    for api_key, bench_key in mapping:
+        value = raw.get(api_key)
+        if value is not None:
+            result[bench_key] = float(value)
+    return result
+
+
+def pipeline_total_ms_from_api_response(data: dict[str, Any], fallback_ms: float) -> float:
+    """Prefer orchestrator-measured total latency over HTTP wall-clock when available."""
+    raw = data.get("latency_ms") or {}
+    total = raw.get("total")
+    return float(total) if total is not None else fallback_ms
 
 
 # ---------------------------------------------------------------------------

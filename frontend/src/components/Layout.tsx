@@ -1,8 +1,8 @@
 import { NavLink, Outlet } from "react-router-dom";
 
-import { LegalNoticesDialog } from "@/components/LegalNoticesDialog";
 import { ModeToggle } from "@/components/mode-toggle";
 import { cn } from "@/lib/utils";
+import logoUrl from "@/assets/taskorbit-logo.png";
 
 const NAV_ITEMS = [
   { to: "/", label: "Chat", end: true },
@@ -10,36 +10,11 @@ const NAV_ITEMS = [
   { to: "/history", label: "History", end: false },
 ] as const;
 
-function BrandMark() {
-  // Three concentric arcs nodding at "TaskOrbit" — orbital paths around a
-  // central node. Inline SVG so it inherits currentColor and stays crisp on
-  // any background.
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="20"
-      height="20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-      className="text-primary"
-    >
-      <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none" />
-      <ellipse cx="12" cy="12" rx="9" ry="3.5" />
-      <ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(60 12 12)" />
-      <ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(-60 12 12)" />
-    </svg>
-  );
-}
-
 export function Layout() {
   const appName = import.meta.env.VITE_APP_NAME ?? "TaskOrbit";
 
   return (
-    <div className="flex min-h-svh flex-col bg-background text-foreground">
+    <div className="min-h-svh bg-background text-foreground">
       <a
         href="#main"
         className="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:left-4 focus-visible:top-4 focus-visible:z-50 focus-visible:rounded-md focus-visible:bg-primary focus-visible:px-3 focus-visible:py-2 focus-visible:text-sm focus-visible:text-primary-foreground"
@@ -48,14 +23,14 @@ export function Layout() {
       </a>
 
       <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="mx-auto flex h-14 max-w-5xl items-center gap-6 px-4 sm:px-6">
+        <div className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-4 sm:px-6">
           <NavLink
             to="/"
             end
             className="flex items-center gap-2 text-sm font-semibold tracking-tight"
             aria-label={`${appName} home`}
           >
-            <BrandMark />
+            <img src={logoUrl} alt="" className="size-6 shrink-0" />
             <span>{appName}</span>
           </NavLink>
 
@@ -88,7 +63,7 @@ export function Layout() {
         </div>
 
         <nav aria-label="Main mobile" className="border-t sm:hidden">
-          <ul className="mx-auto flex max-w-5xl items-center gap-1 overflow-x-auto px-4 py-2">
+          <ul className="mx-auto flex max-w-6xl items-center gap-1 overflow-x-auto px-4 py-2">
             {NAV_ITEMS.map((item) => (
               <li key={item.to}>
                 <NavLink
@@ -110,16 +85,9 @@ export function Layout() {
         </nav>
       </header>
 
-      <main id="main" className="flex-1">
+      <main id="main">
         <Outlet />
       </main>
-
-      <footer className="flex items-center justify-center gap-4 border-t px-4 py-3">
-        <LegalNoticesDialog />
-        <span className="text-xs text-muted-foreground">
-          © {new Date().getFullYear()} {appName}
-        </span>
-      </footer>
     </div>
   );
 }

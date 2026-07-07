@@ -100,6 +100,7 @@ def configure_default_metrics() -> None:
         "worker_turn",
         "total",
         "stt_processing",
+        "tool_call",
     ):
         m.pipeline_latency_seconds.labels(stage=stage)
     for error_type in (

@@ -507,6 +507,9 @@ class OrchestratorAgent(Agent):
                         slots=response.extracted_slots,
                     )
                 if response.tool_invoked:
+                    tool_duration_ms = (
+                        response.latency_ms.tool_call if response.latency_ms is not None else None
+                    )
                     await create_tool_execution(
                         db,
                         conversation_id=conv_id,
@@ -515,6 +518,7 @@ class OrchestratorAgent(Agent):
                         result={"extracted_slots": response.extracted_slots}
                         if response.extracted_slots
                         else None,
+                        duration_ms=tool_duration_ms,
                     )
         except Exception as exc:
             log.error(

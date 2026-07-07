@@ -8,7 +8,7 @@
  *
  * Audio levels are sampled from a `WebAudio AnalyserNode` attached to the
  * published `MediaStreamTrack`. We poll on `requestAnimationFrame` and
- * keep the latest levels in a ref so the Waveform component can read
+ * keep the latest levels in a ref so the call controls can read
  * them without re-rendering this hook on every frame (which would
  * cascade re-renders into the whole call surface).
  */

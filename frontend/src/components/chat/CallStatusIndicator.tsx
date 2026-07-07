@@ -1,4 +1,4 @@
-import { Loader2, MicOff, ShieldCheck, WifiOff } from "lucide-react";
+import { Loader2, MicOff, PhoneOff, ShieldCheck, WifiOff } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -18,6 +18,8 @@ function visualFor(status: CallStatus): Visual | null {
   switch (status) {
     case "connecting":
       return { kind: "icon", Icon: Loader2, spin: true, label: "Connecting…" };
+    case "ending":
+      return { kind: "icon", Icon: PhoneOff, spin: false, label: "Ending…" };
     case "reconnecting":
       return {
         kind: "icon",
@@ -26,7 +28,7 @@ function visualFor(status: CallStatus): Visual | null {
         label: "Reconnecting…",
       };
     case "idle_in_call":
-      return { kind: "icon", Icon: MicOff, spin: false, label: "Muted" };
+      return { kind: "icon", Icon: MicOff, spin: false, label: "Mic off" };
     case "recording":
     case "listening":
       return { kind: "pulse", label: "Listening…" };
