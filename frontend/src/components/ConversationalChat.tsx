@@ -32,7 +32,10 @@ import type { LiveTranscriptTurn } from "@/types/callState";
 // reject the request and text-mode read-aloud fails silently (#166). For
 // non-ElevenLabs agents, omit both so the env-default ElevenLabs voice
 // speaks instead of erroring.
-function restTtsOptions(tts: AgentConfig["tts"]): { voiceId?: string; modelId?: string } {
+// Exported for unit tests only; fast refresh falling back to a full reload
+// for this file is acceptable.
+// eslint-disable-next-line react-refresh/only-export-components
+export function restTtsOptions(tts: AgentConfig["tts"]): { voiceId?: string; modelId?: string } {
   if (tts.provider !== "elevenlabs") return {};
   return { voiceId: tts.voice_id, modelId: tts.model };
 }
