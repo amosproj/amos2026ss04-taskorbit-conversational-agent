@@ -328,6 +328,41 @@ async def test_openrouter_client_generate_raises_llm_timeout_error(
 
 
 @pytest.mark.asyncio
+async def test_openrouter_client_no_response_error_maps_to_llm_timeout_error(
+    openrouter_settings: None,
+) -> None:
+    """NoResponseError is the only openrouter SDK class that does NOT inherit
+    from OpenRouterError, so both the specific-subclass catches and the broad
+    OpenRouterError backstop would miss it. Fires on transport-layer failures
+    (TCP reset, DNS failure, TLS handshake, upstream close-before-headers).
+    Regression guard for the parity extension of Vineesh's #197 review to
+    the remaining providers."""
+    from openrouter.errors import NoResponseError
+
+    settings = get_settings()
+    llm_config = _make_llm_config()
+    mock_metrics = MagicMock()
+
+    with patch(
+        "taskorbit.integrations.llm.openrouter_client.get_metrics", return_value=mock_metrics
+    ):
+        with patch("taskorbit.integrations.llm.openrouter_client.OpenRouter") as mock_cls:
+            mock_sdk = MagicMock()
+            mock_sdk.chat.send_async = AsyncMock(
+                side_effect=NoResponseError("connection reset by peer")
+            )
+            mock_cls.return_value = mock_sdk
+
+            client = OpenRouterClient(llm_config=llm_config, settings=settings)
+            with pytest.raises(LLMTimeoutError, match="no response"):
+                await client.generate("You are helpful.", [], llm_config)
+
+    mock_metrics.llm_requests_total.labels.assert_any_call(
+        provider="openrouter", model=llm_config.model, status="no_response"
+    )
+
+
+@pytest.mark.asyncio
 async def test_openrouter_client_generate_raises_llm_api_error_on_openrouter_error(
     openrouter_settings: None,
 ) -> None:

@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from sqlalchemy import delete, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -222,45 +224,45 @@ async def create_slot_extractions(
 ) -> list[SlotExtraction]:
     """Upsert one row per extracted field, recording which tool extracted it.
 
-    A field is keyed by ``(conversation_id, tool_id, field_name)``: an existing
-    row is updated in place, a new field is inserted. Extraction tools fire
-    repeatedly over a call with the cumulative slot set, so inserting every time
-    floods the history view with duplicate rows (the same field repeated once
-    per turn). Upserting keeps a single current value per field.
+    Keyed on ``(conversation_id, tool_id, field_name)`` — the DB unique constraint
+    guarantees atomicity so concurrent voice turns cannot produce duplicate rows.
+    Uses dialect-specific INSERT … ON CONFLICT DO UPDATE (PostgreSQL in prod,
+    SQLite in tests).
     """
     if not slots:
         return []
     try:
-        field_names = [str(name) for name in slots]
-        existing_result = await db.execute(
+        rows_data = [
+            {
+                "conversation_id": conversation_id,
+                "user_id": user_id,
+                "tool_id": tool_id,
+                "field_name": str(name),
+                "field_value": str(value) if value is not None else None,
+            }
+            for name, value in slots.items()
+        ]
+
+        # Detect dialect and pick the right insert construct.
+        dialect_name = db.bind.dialect.name if db.bind else "postgresql"  # type: ignore[attr-defined]
+        insert = sqlite_insert if dialect_name == "sqlite" else pg_insert
+
+        stmt = insert(SlotExtraction).values(rows_data)
+        upsert_stmt = stmt.on_conflict_do_update(
+            index_elements=["conversation_id", "tool_id", "field_name"],
+            set_={"field_value": stmt.excluded.field_value},
+        )
+        await db.execute(upsert_stmt)
+        await db.commit()
+
+        result = await db.execute(
             select(SlotExtraction).where(
                 SlotExtraction.conversation_id == conversation_id,
                 SlotExtraction.tool_id == tool_id,
-                SlotExtraction.field_name.in_(field_names),
+                SlotExtraction.field_name.in_([str(n) for n in slots]),
             )
         )
-        existing = {row.field_name: row for row in existing_result.scalars().all()}
-
-        extractions: list[SlotExtraction] = []
-        for name, value in slots.items():
-            field_name = str(name)
-            field_value = str(value) if value is not None else None
-            row = existing.get(field_name)
-            if row is not None:
-                row.field_value = field_value
-            else:
-                row = SlotExtraction(
-                    conversation_id=conversation_id,
-                    user_id=user_id,
-                    tool_id=tool_id,
-                    field_name=field_name,
-                    field_value=field_value,
-                )
-                db.add(row)
-            extractions.append(row)
-        await db.commit()
-        for extraction in extractions:
-            await db.refresh(extraction)
+        extractions = list(result.scalars().all())
         logger.info(
             "slot_extractions_saved",
             conversation_id=conversation_id,
@@ -286,13 +288,13 @@ async def get_slot_extractions(db: AsyncSession, conversation_id: str) -> list[S
         result = await db.execute(
             select(SlotExtraction)
             .where(SlotExtraction.conversation_id == conversation_id)
-            .order_by(SlotExtraction.extracted_at.asc())
+            .order_by(SlotExtraction.extracted_at.asc(), SlotExtraction.id.asc())
         )
         rows = list(result.scalars().all())
         latest: dict[tuple[str, str], SlotExtraction] = {}
         for row in rows:
-            # Ascending order means a later row overwrites an earlier one, so the
-            # dict ends with the most recent value while preserving first-seen order.
+            # Ascending order + id tie-breaker: later rows overwrite earlier ones,
+            # so the dict ends with the highest-id value per field.
             latest[(row.tool_id, row.field_name)] = row
         return list(latest.values())
     except SQLAlchemyError as e:
@@ -327,12 +329,7 @@ async def get_conversation_history(db: AsyncSession, conversation_id: str) -> di
         )
         tool_executions = list(tools_result.scalars().all())
 
-        slots_result = await db.execute(
-            select(SlotExtraction)
-            .where(SlotExtraction.conversation_id == conversation_id)
-            .order_by(SlotExtraction.extracted_at.asc())
-        )
-        slot_extractions = list(slots_result.scalars().all())
+        slot_extractions = await get_slot_extractions(db, conversation_id)
 
         return {
             "conversation_id": conv.id,
