@@ -27,8 +27,10 @@ export function RecentConversations({
   error?: boolean;
   className?: string;
 }) {
+  // Sort by actual instant (timezone-agnostic) so mixed ISO offsets still order
+  // correctly; newest first.
   const recent = [...conversations]
-    .sort((a, b) => b.started_at.localeCompare(a.started_at))
+    .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
     .slice(0, MAX_RECENT);
 
   return (
