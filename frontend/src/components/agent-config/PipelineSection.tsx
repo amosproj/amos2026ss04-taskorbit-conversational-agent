@@ -19,6 +19,7 @@ import {
   STT_MODELS,
   TTS_MODELS,
   TTS_VOICES,
+  TTS_VOICE_DEFAULT,
   withCurrent,
 } from "@/lib/pipelineOptions";
 import type { AgentConfig, LlmProvider, SttProvider, TtsProvider } from "@/types/agentConfig";
@@ -171,10 +172,7 @@ export function PipelineSection({ value, onChange }: Props) {
               <FieldLabel htmlFor={idLlmModel}>Model</FieldLabel>
               <Select
                 value={value.llm.model}
-                onValueChange={(v) => {
-                  console.log(`[LLM] model selected → ${v} (provider: ${value.llm.provider})`);
-                  onChange({ ...value, llm: { ...value.llm, model: v } });
-                }}
+                onValueChange={(v) => onChange({ ...value, llm: { ...value.llm, model: v } })}
               >
                 <SelectTrigger id={idLlmModel} className="font-mono text-sm">
                   <SelectValue />
@@ -205,7 +203,15 @@ export function PipelineSection({ value, onChange }: Props) {
                   const provider = v as TtsProvider;
                   onChange({
                     ...value,
-                    tts: { ...value.tts, provider, model: TTS_MODEL_DEFAULTS[provider] },
+                    tts: {
+                      provider,
+                      model: TTS_MODEL_DEFAULTS[provider],
+                      // Deepgram encodes the voice in the model name; carrying a
+                      // stale ElevenLabs voice_id would persist inconsistent
+                      // provider/voice state (#166).
+                      voice_id:
+                        provider === "deepgram" ? "" : value.tts.voice_id || TTS_VOICE_DEFAULT,
+                    },
                   });
                 }}
               >

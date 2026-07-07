@@ -15,6 +15,16 @@ import {
   WorkflowSection,
   type WorkflowValidationState,
 } from "@/components/agent-config/WorkflowSection";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -72,6 +82,10 @@ export function AgentConfigPage() {
   // true when the loaded agent is a built-in template (not a user copy).
   // Update button is hidden for built-in agents — use Save to create a copy.
   const [isLoadedBuiltIn, setIsLoadedBuiltIn] = useState(false);
+  const [loadMenuOpen, setLoadMenuOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
+
   const [workflowValidation, setWorkflowValidation] = useState<WorkflowValidationState>({
     valid: true,
     error: null,
@@ -161,16 +175,31 @@ export function AgentConfigPage() {
     }
   };
 
-  const handleDelete = async (e: React.MouseEvent, id: string, name: string) => {
-    e.stopPropagation(); // Don't trigger the loadById parent
-    if (!window.confirm(`Are you sure you want to delete "${name}"?`)) return;
+  const handleDelete = (e: React.MouseEvent, id: string, name: string) => {
+    e.stopPropagation();
+    // Close the Load agent dropdown first, then open the dialog on the next tick.
+    // If the dialog opens while the DropdownMenu is still mounted/focused, Radix's
+    // focus management conflicts and leaves the dropdown in a broken state after close.
+    setLoadMenuOpen(false);
+    setPendingDelete({ id, name });
+    setTimeout(() => setDeleteDialogOpen(true), 0);
+  };
 
+  const confirmDelete = async (target: { id: string; name: string }) => {
     try {
-      await deleteAgentConfig(id);
-      toast.success("Configuration deleted.");
-      if (loadedConfigId === id) {
-        // Keep current form contents but unlink from the deleted DB row.
-        setActiveAgent(agent, null);
+      await deleteAgentConfig(target.id);
+      toast.success(`"${target.name}" deleted.`);
+      if (loadedConfigId === target.id) {
+        const fresh = await fetchUserAgents();
+        setUserAgents(fresh);
+        const defaultEntry = fresh.find((a) => a.is_default) ?? fresh[0];
+        if (defaultEntry) {
+          loadUserAgent(defaultEntry);
+        } else {
+          setActiveAgent(JOHN_DOE_AGENT, null);
+          setActiveUserAgentId(null);
+          setIsLoadedBuiltIn(false);
+        }
       }
       void refreshList();
     } catch (err) {
@@ -260,7 +289,7 @@ export function AgentConfigPage() {
   };
 
   return (
-    <section className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+    <section className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <header className="space-y-1">
         <p className="text-sm font-medium tracking-widest text-muted-foreground uppercase">
           Configuration
@@ -333,7 +362,7 @@ export function AgentConfigPage() {
 
         <div className="sticky bottom-4 z-10 mt-2 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background/90 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70">
           <div className="flex flex-wrap items-center gap-2">
-            <DropdownMenu>
+            <DropdownMenu open={loadMenuOpen} onOpenChange={setLoadMenuOpen}>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" type="button">
                   {isListLoading ? (
@@ -467,6 +496,34 @@ export function AgentConfigPage() {
           </div>
         </div>
       </div>
+      <AlertDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent onCloseAutoFocus={(e) => e.preventDefault()}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete agent configuration?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong>&ldquo;{pendingDelete?.name}&rdquo;</strong> will be permanently deleted. This
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingDelete) void confirmDelete(pendingDelete);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }

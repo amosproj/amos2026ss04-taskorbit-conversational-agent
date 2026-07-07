@@ -134,7 +134,15 @@ export type StreamEvent =
       /** Full assistant reply when no stream chunks were sent (e.g. workflow confirmation). */
       reply?: string | null;
     }
-  | { type: "error"; message: string };
+  | {
+      type: "error";
+      /** Technical error string from the LLM SDK. For on-call / debug UI only. */
+      message: string;
+      /** Polite user-facing reply from ConversationResponse.reply (#197). Render this
+       * in the assistant bubble instead of `message`. Nullable for legacy error
+       * paths that predate the polite-reply pattern (never on LLMError paths). */
+      reply?: string | null;
+    };
 
 type ConversationsResponse = {
   conversations: Array<{
@@ -400,6 +408,18 @@ export async function* sendMessageStream(
     }
   } finally {
     reader.releaseLock();
+  }
+}
+
+/**
+ * Permanently delete a conversation and all its messages.
+ * Throws on network error or non-2xx response.
+ */
+export async function deleteConversation(conversationId: string): Promise<void> {
+  const res = await fetch(`/api/v1/conversations/${conversationId}`, { method: "DELETE" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(String(err.detail ?? `HTTP ${res.status}`));
   }
 }
 

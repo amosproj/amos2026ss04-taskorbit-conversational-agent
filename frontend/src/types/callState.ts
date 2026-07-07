@@ -18,6 +18,8 @@
  * - `reconnecting`       — transient LiveKit drop; client is retrying.
  * - `awaiting_confirmation` — agent paused on a sensitive tool call until
  *                            the user explicitly approves or denies it.
+ * - `ending`             — End pressed; brief wind-down beat before the ended
+ *                          summary (the room is already torn down).
  * - `ended`              — call closed; transcript is read-only and routes
  *                          to History.
  */
@@ -31,6 +33,7 @@ export type CallStatus =
   | "speaking"
   | "reconnecting"
   | "awaiting_confirmation"
+  | "ending"
   | "ended";
 
 /**

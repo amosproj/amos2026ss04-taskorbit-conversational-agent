@@ -3,15 +3,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { AgentIdentityCard } from "@/components/chat/AgentIdentityCard";
+import { AgentSwitcher } from "@/components/chat/AgentSwitcher";
 import { CallControls } from "@/components/chat/CallControls";
 import { CallStatusIndicator } from "@/components/chat/CallStatusIndicator";
 import { ConfirmationPrompt } from "@/components/chat/ConfirmationPrompt";
 import { InCallControls } from "@/components/chat/InCallControls";
 import { PreCallDiagnostics } from "@/components/chat/PreCallDiagnostics";
+import {
+  RecentConversations,
+  type RecentConversation,
+} from "@/components/chat/RecentConversations";
 import { VoiceSessionBridge } from "@/components/chat/VoiceSessionBridge";
+import logoUrl from "@/assets/taskorbit-logo.png";
 import { TranscriptBubble } from "@/components/history/TranscriptBubble";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 import { useVoiceCall } from "@/hooks/useVoiceCall";
 import {
   WorkflowVoiceSyncBridge,
@@ -24,7 +31,20 @@ import { buildLiveKitWorkerMetadata } from "@/lib/livekitAgentMetadata";
 import { sendMessage, sendMessageStream, getConversations } from "@/lib/conversationApi";
 import { playSynthesizedSpeech } from "@/lib/ttsApi";
 import { backendToFrontendAgent, fetchUserAgents } from "@/lib/userAgentsApi";
+import type { AgentConfig } from "@/types/agentConfig";
 import type { LiveTranscriptTurn } from "@/types/callState";
+
+/**
+ * Returns ElevenLabs-specific TTS options only when the provider is elevenlabs.
+ * The REST /v1/tts/synthesize endpoint is ElevenLabs-only — passing Deepgram
+ * model names causes silent failures. Returns {} for all other providers so
+ * the env-default ElevenLabs voice is used as fallback.
+ * @param tts - the agent TTS config
+ */
+function restTtsOptions(tts: AgentConfig["tts"]): { voiceId?: string; modelId?: string } {
+  if (tts.provider !== "elevenlabs") return {};
+  return { voiceId: tts.voice_id, modelId: tts.model };
+}
 
 function normaliseUserText(text: string): string {
   // Lowercase email domains: Bob@Gmail.com → Bob@gmail.com
@@ -144,22 +164,39 @@ export function ConversationalChat() {
       console.warn("[ConversationalChat] workflow voice sync failed", err);
     }
   }, []);
-  const [previousConversations, setPreviousConversations] = useState<
-    Record<string, string | null>[]
-  >([]);
+  const [previousConversations, setPreviousConversations] = useState<RecentConversation[]>([]);
+  const [recentLoading, setRecentLoading] = useState(true);
+  const [recentError, setRecentError] = useState(false);
+  // Last-write-wins guard: the mount load and the on-call-end refresh can be
+  // in flight together, and on a slow network / cold start the older one may
+  // resolve last and clobber the fresher list. Ignore any load that a newer
+  // one has superseded.
+  const recentReqIdRef = useRef(0);
 
-  // Load previous conversations on page load (reload restores conversations)
-  useEffect(() => {
-    const loadConversations = async () => {
-      try {
-        const data = await getConversations();
-        setPreviousConversations(data.conversations || []);
-      } catch (error) {
-        console.error("Failed to load conversations:", error);
-      }
-    };
-    loadConversations();
+  const loadConversations = useCallback(async () => {
+    const reqId = ++recentReqIdRef.current;
+    setRecentError(false);
+    try {
+      const data = await getConversations();
+      if (reqId !== recentReqIdRef.current) return;
+      setPreviousConversations(data.conversations || []);
+    } catch {
+      if (reqId !== recentReqIdRef.current) return;
+      setRecentError(true);
+    } finally {
+      if (reqId === recentReqIdRef.current) setRecentLoading(false);
+    }
   }, []);
+
+  // Load on mount, then refresh whenever a call ends so the just-finished
+  // conversation appears in the Recent panel without a manual reload.
+  useEffect(() => {
+    void loadConversations();
+  }, [loadConversations]);
+
+  useEffect(() => {
+    if (call.status === "ended") void loadConversations();
+  }, [call.status, loadConversations]);
 
   // Agent segment merging: livekit-agents emits one stream per TTS chunk,
   // each with a unique lk.segment_id. We collapse them into a single turn
@@ -250,7 +287,6 @@ export function ConversationalChat() {
 
   const handleSegment = useCallback(
     (segment: TranscriptionSegment) => {
-      // console.log("[greeting] handleSegment:", segment.role, segment.id, JSON.stringify(segment.text).slice(0, 60), "final:", segment.isFinal);
       if (segment.role === "assistant") {
         const greeting = agent.first_message.message?.trim();
         if (greeting) {
@@ -466,8 +502,7 @@ export function ConversationalChat() {
                   await playSynthesizedSpeech(replyText, {
                     signal: controller.signal,
                     volumeRef: agentVolumeRef,
-                    voiceId: agent.tts.voice_id,
-                    modelId: agent.tts.model,
+                    ...restTtsOptions(agent.tts),
                   }).catch(() => {});
                 }
                 call.end();
@@ -502,7 +537,17 @@ export function ConversationalChat() {
                 }
               }
             } else if (event.type === "error") {
-              call.upsertTurnById(assistantTurnId, "assistant", `[Error: ${event.message}]`, true);
+              // Prefer the polite reply from #197 for the assistant bubble.
+              // Fall back to the technical message only for legacy backend
+              // paths that predate the reply-on-error contract.
+              const politeReply = event.reply?.trim();
+              const errorBubble = politeReply || `[Error: ${event.message}]`;
+              call.upsertTurnById(assistantTurnId, "assistant", errorBubble, true);
+              // Route the polite reply through TTS as well so voice users hear
+              // it. `replyText` is what the speaker branch below reads.
+              if (politeReply) {
+                replyText = politeReply;
+              }
             }
           }
 
@@ -516,8 +561,7 @@ export function ConversationalChat() {
               await playSynthesizedSpeech(replyText, {
                 signal: controller.signal,
                 volumeRef: agentVolumeRef,
-                voiceId: agent.tts.voice_id,
-                modelId: agent.tts.model,
+                ...restTtsOptions(agent.tts),
               });
             } catch (audioErr) {
               if ((audioErr as Error).name !== "AbortError") {
@@ -585,17 +629,10 @@ export function ConversationalChat() {
       setRoutedAgent(badgeName);
       const transferMsg = `Transferring you to ${target.name} upon your request.`;
       call.appendAssistantTurn(transferMsg);
-      playSynthesizedSpeech(transferMsg, {
-        voiceId: agent.tts.voice_id,
-        modelId: agent.tts.model,
-      }).catch(() => {});
+      playSynthesizedSpeech(transferMsg, restTtsOptions(agent.tts)).catch(() => {});
     },
     [call],
   );
-
-  const handleTriggerConfirmation = useCallback(() => {
-    // Confirmation is triggered by the backend response, not a UI button.
-  }, []);
 
   const handleSendDecision = useCallback(
     (confirmationId: string, decision: "confirm" | "reject") => {
@@ -665,8 +702,7 @@ export function ConversationalChat() {
               await playSynthesizedSpeech(replyText, {
                 signal: controller.signal,
                 volumeRef: agentVolumeRef,
-                voiceId: agent.tts.voice_id,
-                modelId: agent.tts.model,
+                ...restTtsOptions(agent.tts),
               });
             } catch (audioErr) {
               if ((audioErr as Error).name !== "AbortError") {
@@ -715,7 +751,6 @@ export function ConversationalChat() {
   }, [call]);
 
   const handleStartSession = useCallback(() => {
-    // console.log("[greeting] handleStartSession fired");
     lockedIntentRef.current = null;
     pendingConfirmationIdRef.current = null;
     greetingEstablishedRef.current = false;
@@ -740,46 +775,70 @@ export function ConversationalChat() {
   );
 
   const body: ReactNode = (
-    <div className="mx-auto flex min-h-svh max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
+    <div
+      className={cn(
+        "mx-auto flex min-h-svh flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10",
+        isPreCall ? "max-w-6xl" : "max-w-5xl",
+      )}
+    >
       <header className="space-y-1">
         <p className="text-sm font-medium tracking-widest text-muted-foreground uppercase">
           Conversational agent
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{appName}</h1>
+        <div className="flex items-center gap-3">
+          <img src={logoUrl} alt="" className="size-9 shrink-0" />
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{appName}</h1>
+        </div>
         <p className="text-sm text-muted-foreground">
-          I'm here to help with your needs. Start chatting by sending a message or using the mic
-          button to speak.
+          Start a session to talk with your agent by voice, or use the text option.
         </p>
       </header>
 
-      {previousConversations.length > 0 && isPreCall && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Previous Conversations</CardTitle>
-            <CardDescription>
-              You have {previousConversations.length} previous conversation
-              {previousConversations.length !== 1 ? "s" : ""}. Start a new call to continue.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      )}
-
       {isPreCall ? (
-        <>
-          <AgentIdentityCard agent={agent} />
-          <PreCallDiagnostics />
-        </>
+        <div className="grid animate-in gap-6 fade-in slide-in-from-bottom-2 duration-500 ease-out lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <div className="flex flex-col gap-6">
+            <AgentIdentityCard agent={agent} />
+            <CallControls
+              status="idle"
+              onStart={handleStartSession}
+              onSendText={handleSendText}
+              onRestart={handleRestart}
+            />
+            <AgentSwitcher
+              activeAgentId={agent.agent_id}
+              activeAgentName={agent.name}
+              onSelect={(entry) =>
+                setActiveAgent(backendToFrontendAgent(entry), `ua:${entry.template_id ?? entry.id}`)
+              }
+            />
+          </div>
+          <div className="flex flex-col gap-6">
+            <RecentConversations
+              conversations={previousConversations}
+              isLoading={recentLoading}
+              error={recentError}
+            />
+            <PreCallDiagnostics />
+          </div>
+        </div>
       ) : null}
 
       {isInCall ? (
-        <Card>
+        <Card
+          className={cn(
+            "transition-all duration-500 ease-out",
+            call.status === "ending" && "scale-[0.98] opacity-50",
+          )}
+        >
           <CardHeader className="flex flex-row items-start justify-between gap-3 border-b">
             <div className="space-y-1">
               <CardTitle>{agent.name}</CardTitle>
               <CardDescription>
                 {call.status === "connecting"
                   ? "Connecting to your agent…"
-                  : "Voice session active · live transcript below."}
+                  : call.status === "ending"
+                    ? "Ending call…"
+                    : "Voice session active · live transcript below."}
               </CardDescription>
             </div>
             <div className="flex flex-col items-end gap-2">
@@ -812,7 +871,7 @@ export function ConversationalChat() {
       ) : null}
 
       {isPostCall ? (
-        <Card>
+        <Card className="animate-in fade-in slide-in-from-bottom-2 duration-500 ease-out">
           <CardHeader>
             <CardTitle>Call ended</CardTitle>
             <CardDescription>
@@ -853,25 +912,24 @@ export function ConversationalChat() {
             onEnd={call.end}
             onSendText={handleSendText}
             onRoutingTargetChange={handleRoutingTargetChange}
-            onTriggerConfirmation={handleTriggerConfirmation}
             onMicError={call.setMicError}
             agentMuted={agentMuted}
             onAgentMutedChange={setAgentMuted}
           />
         </div>
-      ) : isInCall ? null : (
+      ) : isInCall ? null : isPostCall ? (
         <CallControls
           status={call.status}
           onStart={handleStartSession}
           onSendText={handleSendText}
           onRestart={handleRestart}
         />
-      )}
+      ) : null}
     </div>
   );
 
   return (
-    <main className="min-h-svh bg-background text-foreground">
+    <div>
       {call.livekitCredentials !== null ? (
         <LiveKitRoom
           serverUrl={call.livekitCredentials.url}
@@ -889,6 +947,7 @@ export function ConversationalChat() {
             onHandoff={handleVoiceHandoff}
             onAgentRouted={handleVoiceAgentRouted}
             onSessionEnded={call.end}
+            onConnectionLost={call.reportConnectionLost}
           />
           <WorkflowVoiceSyncBridge onRegister={registerWorkflowVoiceSync} />
           {body}
@@ -912,6 +971,6 @@ export function ConversationalChat() {
           onDismiss={call.clearSessionEndReason}
         />
       )}
-    </main>
+    </div>
   );
 }

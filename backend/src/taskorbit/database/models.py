@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -64,6 +64,7 @@ class ToolExecution(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    duration_ms: Mapped[float | None] = mapped_column(nullable=True)
 
     conversation: Mapped[Conversation] = relationship(back_populates="tool_executions")
 
@@ -133,6 +134,9 @@ class SlotExtraction(Base):
     """
 
     __tablename__ = "slot_extractions"
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "tool_id", "field_name", name="uq_slot_extraction_key"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     conversation_id: Mapped[str] = mapped_column(

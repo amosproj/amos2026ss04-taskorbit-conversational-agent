@@ -151,9 +151,12 @@ resource "google_compute_instance" "ollama" {
           | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
           | tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
         apt-get update -y && apt-get install -y nvidia-container-toolkit
-        nvidia-ctk runtime configure --runtime=docker
-        systemctl restart docker
       fi
+      # Always configure the NVIDIA runtime — Deep Learning VM images ship with the toolkit
+      # pre-installed so the block above is skipped, but the runtime still needs wiring
+      # into /etc/docker/daemon.json before --gpus all works.
+      nvidia-ctk runtime configure --runtime=docker --set-as-default
+      systemctl restart docker
 
       # Run Ollama — models are pulled on first use and stored in /opt/ollama-models
       mkdir -p /opt/ollama-models

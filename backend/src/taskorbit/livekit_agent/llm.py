@@ -432,26 +432,38 @@ class OrchestratorAgent(Agent):
             )
             raise
 
-        # Early-exit paths (clarification, confirmation, handoff block, end-call, error)
-        # produce no str chunks — only a ConversationResponse. Speak the reply via TTS.
-        if chunk_index == 0 and response is not None and response.reply and response.reply.content:
-            yield response.reply.content
+        # Speak the ConversationResponse.reply via TTS when it carries the
+        # user-facing text. Two cases:
+        #  1) Early-exit paths (clarification, confirmation, handoff block,
+        #     end-call, error-before-any-chunk) produce no str chunks, so
+        #     chunk_index == 0 and the reply is all we have.
+        #  2) Mid-stream provider failure (#197): chunks already flowed to TTS,
+        #     then the orchestrator yielded status="error" with a polite reply.
+        #     Without this branch the user hears half a sentence then silence.
+        if response is not None and response.reply and response.reply.content:
+            if chunk_index == 0 or response.status == "error":
+                yield response.reply.content
 
         if response is None:
             return
 
-        self._locked_intent_name = response.locked_intent_name
-        self._completed_workflow_steps = response.completed_workflow_steps
-        if (
-            response.status in {"confirmation_required", "workflow_confirmation_required"}
-            and response.confirmation
-        ):
-            self._pending_confirmation_id = response.confirmation.confirmation_id
-        else:
-            self._pending_confirmation_id = None
+        # On error responses (#197) the orchestrator emits a bare
+        # ConversationResponse with defaults for workflow-state fields.
+        # Preserving the incoming state avoids stranding the session mid-flow
+        # after a transient provider blip.
+        if response.status != "error":
+            self._locked_intent_name = response.locked_intent_name
+            self._completed_workflow_steps = response.completed_workflow_steps
+            if (
+                response.status in {"confirmation_required", "workflow_confirmation_required"}
+                and response.confirmation
+            ):
+                self._pending_confirmation_id = response.confirmation.confirmation_id
+            else:
+                self._pending_confirmation_id = None
 
-        if response.selected_agent:
-            self._current_routed_agent = response.selected_agent
+            if response.selected_agent:
+                self._current_routed_agent = response.selected_agent
 
         # Persist the voice turn to the database so conversation history is
         # available regardless of whether the user interacted via text or voice.
@@ -482,15 +494,22 @@ class OrchestratorAgent(Agent):
                         role=response.reply.role.value,
                         content=response.reply.content,
                     )
-                if response.extracted_slots:
-                    tool_id = response.tool_invoked.id if response.tool_invoked else "orchestrator"
+                # Persist slot extractions only when the tool actually fired, and
+                # attribute them to that tool — mirrors the text path. Partial fills
+                # (extracted_slots set but no tool_invoked) are surfaced to the UI for
+                # progress but not saved, which also avoids the generic "orchestrator"
+                # provenance label and duplicate per-turn rows.
+                if response.extracted_slots and response.tool_invoked:
                     await create_slot_extractions(
                         db,
                         conversation_id=conv_id,
-                        tool_id=tool_id,
+                        tool_id=response.tool_invoked.id,
                         slots=response.extracted_slots,
                     )
                 if response.tool_invoked:
+                    tool_duration_ms = (
+                        response.latency_ms.tool_call if response.latency_ms is not None else None
+                    )
                     await create_tool_execution(
                         db,
                         conversation_id=conv_id,
@@ -499,6 +518,7 @@ class OrchestratorAgent(Agent):
                         result={"extracted_slots": response.extracted_slots}
                         if response.extracted_slots
                         else None,
+                        duration_ms=tool_duration_ms,
                     )
         except Exception as exc:
             log.error(

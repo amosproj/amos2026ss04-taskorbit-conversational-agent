@@ -111,6 +111,17 @@ class OpenAIClient:
                 provider="openai", model=llm_config.model, status="api"
             ).inc()
             raise LLMAPIError(f"OpenAI API error: {exc}") from exc
+        except openai.OpenAIError as exc:
+            # Catches OpenAI SDK errors that do not inherit from APIError,
+            # notably ContentFilterFinishReasonError and LengthFinishReasonError.
+            # Routing them into LLMAPIError gives them the llm_provider_error
+            # metric label + polite reply, matching how OpenRouter handles the
+            # same class of edge cases (#197 follow-up on Vineesh's review).
+            _log.error("llm_call_failed", provider="openai", error_type="api", error=str(exc))
+            get_metrics().llm_requests_total.labels(
+                provider="openai", model=llm_config.model, status="api"
+            ).inc()
+            raise LLMAPIError(f"OpenAI SDK error: {exc}") from exc
 
         text = response.choices[0].message.content if response.choices else None
         if not text:
@@ -206,6 +217,14 @@ class OpenAIClient:
                 provider="openai", model=llm_config.model, status="api"
             ).inc()
             raise LLMAPIError(f"OpenAI API error: {exc}") from exc
+        except openai.OpenAIError as exc:
+            # See generate() for the rationale. Catches non-APIError SDK errors
+            # so they map to llm_provider_error rather than the generic bucket.
+            _log.error("llm_stream_failed", provider="openai", error_type="api", error=str(exc))
+            get_metrics().llm_requests_total.labels(
+                provider="openai", model=llm_config.model, status="api"
+            ).inc()
+            raise LLMAPIError(f"OpenAI SDK error: {exc}") from exc
 
         char_count = 0
         usage_chunk = None
@@ -222,6 +241,11 @@ class OpenAIClient:
         except openai.APIError as exc:
             _log.error("llm_stream_failed", provider="openai", error_type="api", error=str(exc))
             raise LLMAPIError(f"OpenAI streaming error: {exc}") from exc
+        except openai.OpenAIError as exc:
+            # Mid-stream non-APIError SDK errors (ContentFilter, Length)
+            # surface here after chunks have already started flowing.
+            _log.error("llm_stream_failed", provider="openai", error_type="api", error=str(exc))
+            raise LLMAPIError(f"OpenAI streaming SDK error: {exc}") from exc
         finally:
             await stream.close()
             _api_elapsed = time.perf_counter() - _api_start

@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { DatabaseZap, Loader2, MessageSquareDashed } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import {
   ConversationListItem,
@@ -11,37 +23,20 @@ import { Empty } from "@/components/Empty";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  deleteConversation,
   getConversationHistory,
   getConversations,
   type ConversationHistory,
 } from "@/lib/conversationApi";
+import { formatRelativeStart } from "@/lib/formatTime";
 
 const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
 });
 
-const dayMs = 1000 * 60 * 60 * 24;
-
-function startOfDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
 function formatStartedAt(iso: string): string {
   return dateTimeFormatter.format(new Date(iso));
-}
-
-function formatRelativeStart(iso: string): string {
-  const now = new Date();
-  const then = new Date(iso);
-  const diffDays = Math.round((startOfDay(now).getTime() - startOfDay(then).getTime()) / dayMs);
-  const time = then.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  if (diffDays === 0) return `Today, ${time}`;
-  if (diffDays === 1) return `Yesterday, ${time}`;
-  if (diffDays > 1 && diffDays < 7) return `${diffDays}d ago, ${time}`;
-  return then.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
 function formatDuration(seconds: number): string {
@@ -65,6 +60,9 @@ export function HistoryPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedHistory, setSelectedHistory] = useState<ConversationHistory | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const detailRef = useRef<HTMLDivElement>(null);
 
@@ -97,13 +95,53 @@ export function HistoryPage() {
     getConversationHistory(id)
       .then((h) => {
         setSelectedHistory(h);
-        // Update tool_count in list once detail is loaded
+        // Update tool_count in list once detail is loaded. Count distinct tools:
+        // each different tool invoked (e.g. collect_user_info, end_call) adds one,
+        // but the same tool firing on multiple turns is not counted again.
+        const distinctTools = new Set(h.tool_executions.map((t) => t.tool_id)).size;
         setConversations((prev) =>
-          prev.map((c) => (c.id === id ? { ...c, tool_count: h.tool_executions.length } : c)),
+          prev.map((c) => (c.id === id ? { ...c, tool_count: distinctTools } : c)),
         );
       })
       .catch(() => setSelectedHistory(null))
       .finally(() => setDetailLoading(false));
+  };
+
+  // Deep-link: /history?c=<id> opens straight to that conversation (used by the
+  // home-screen recent list). Waits for the list to load, then only selects an
+  // id that actually exists, so a stale link degrades gracefully instead of
+  // flashing a failed-detail error. Fires once.
+  const [searchParams] = useSearchParams();
+  const deepLinkHandledRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkHandledRef.current || listLoading) return;
+    deepLinkHandledRef.current = true;
+    const id = searchParams.get("c");
+    if (id && conversations.some((c) => c.id === id)) handleSelect(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listLoading]);
+
+  const handleDeleteConfirmed = async () => {
+    if (!pendingDeleteId) return;
+    setDeleting(true);
+    try {
+      await deleteConversation(pendingDeleteId);
+      setConversations((prev) => prev.filter((c) => c.id !== pendingDeleteId));
+      if (selectedId === pendingDeleteId) {
+        setSelectedId(null);
+        setSelectedHistory(null);
+      }
+    } catch {
+      // If the conversation was already gone, still remove it from local state
+      setConversations((prev) => prev.filter((c) => c.id !== pendingDeleteId));
+      if (selectedId === pendingDeleteId) {
+        setSelectedId(null);
+        setSelectedHistory(null);
+      }
+    } finally {
+      setDeleting(false);
+      setPendingDeleteId(null);
+    }
   };
 
   const selectedMeta = conversations.find((c) => c.id === selectedId) ?? null;
@@ -117,7 +155,7 @@ export function HistoryPage() {
     })) ?? [];
 
   return (
-    <section className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+    <section className="mx-auto max-w-6xl animate-in fade-in slide-in-from-bottom-2 px-4 py-10 duration-500 ease-out sm:px-6">
       <header className="space-y-1">
         <p className="text-sm font-medium tracking-widest text-muted-foreground uppercase">
           History
@@ -132,7 +170,7 @@ export function HistoryPage() {
       <div className="mt-8 grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)_18rem]">
         {/* Left: conversation list */}
         <aside aria-label="Past conversations">
-          <ScrollArea className="h-[min(70vh,40rem)] pr-2">
+          <ScrollArea className="h-[min(70vh,40rem)] pr-2 [&>[data-slot=scroll-area-viewport]]:overflow-x-hidden">
             {listLoading ? (
               <div className="flex items-center justify-center py-12 text-muted-foreground">
                 <Loader2 className="size-5 animate-spin" />
@@ -141,7 +179,7 @@ export function HistoryPage() {
               <p className="py-8 text-center text-sm text-destructive">{listError}</p>
             ) : conversations.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
-                No conversations yet.
+                No conversations yet. Start a call from the home screen and it will appear here.
               </p>
             ) : (
               <ul className="flex flex-col gap-3">
@@ -151,6 +189,7 @@ export function HistoryPage() {
                       conversation={c}
                       selected={c.id === selectedId}
                       onSelect={() => handleSelect(c.id)}
+                      onDelete={() => setPendingDeleteId(c.id)}
                       formatRelativeStart={formatRelativeStart}
                       formatDuration={formatDuration}
                     />
@@ -240,6 +279,36 @@ export function HistoryPage() {
           )}
         </aside>
       </div>
+
+      <AlertDialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setPendingDeleteId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete conversation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove the conversation and all its messages. This cannot be
+              undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleDeleteConfirmed();
+              }}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? <Loader2 className="size-4 animate-spin" /> : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }

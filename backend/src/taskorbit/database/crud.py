@@ -3,7 +3,9 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -220,24 +222,47 @@ async def create_slot_extractions(
     slots: dict,
     user_id: int | None = None,
 ) -> list[SlotExtraction]:
-    """Bulk-insert one row per extracted field, recording which tool extracted it."""
+    """Upsert one row per extracted field, recording which tool extracted it.
+
+    Keyed on ``(conversation_id, tool_id, field_name)`` — the DB unique constraint
+    guarantees atomicity so concurrent voice turns cannot produce duplicate rows.
+    Uses dialect-specific INSERT … ON CONFLICT DO UPDATE (PostgreSQL in prod,
+    SQLite in tests).
+    """
     if not slots:
         return []
     try:
-        extractions = [
-            SlotExtraction(
-                conversation_id=conversation_id,
-                user_id=user_id,
-                tool_id=tool_id,
-                field_name=str(name),
-                field_value=str(value) if value is not None else None,
-            )
+        rows_data = [
+            {
+                "conversation_id": conversation_id,
+                "user_id": user_id,
+                "tool_id": tool_id,
+                "field_name": str(name),
+                "field_value": str(value) if value is not None else None,
+            }
             for name, value in slots.items()
         ]
-        db.add_all(extractions)
+
+        # Detect dialect and pick the right insert construct.
+        dialect_name = db.bind.dialect.name if db.bind else "postgresql"  # type: ignore[attr-defined]
+        insert = sqlite_insert if dialect_name == "sqlite" else pg_insert
+
+        stmt = insert(SlotExtraction).values(rows_data)
+        upsert_stmt = stmt.on_conflict_do_update(
+            index_elements=["conversation_id", "tool_id", "field_name"],
+            set_={"field_value": stmt.excluded.field_value},
+        )
+        await db.execute(upsert_stmt)
         await db.commit()
-        for extraction in extractions:
-            await db.refresh(extraction)
+
+        result = await db.execute(
+            select(SlotExtraction).where(
+                SlotExtraction.conversation_id == conversation_id,
+                SlotExtraction.tool_id == tool_id,
+                SlotExtraction.field_name.in_([str(n) for n in slots]),
+            )
+        )
+        extractions = list(result.scalars().all())
         logger.info(
             "slot_extractions_saved",
             conversation_id=conversation_id,
@@ -252,14 +277,26 @@ async def create_slot_extractions(
 
 
 async def get_slot_extractions(db: AsyncSession, conversation_id: str) -> list[SlotExtraction]:
-    """Return all slot extractions for a conversation ordered by extraction time."""
+    """Return the current slot extractions for a conversation.
+
+    Deduplicated to one row per ``(tool_id, field_name)`` keeping the latest
+    value, so conversations recorded before the write-side upsert (which stored
+    a new row per turn) still render cleanly in the history view. Fields keep
+    their first-seen order.
+    """
     try:
         result = await db.execute(
             select(SlotExtraction)
             .where(SlotExtraction.conversation_id == conversation_id)
-            .order_by(SlotExtraction.extracted_at.asc())
+            .order_by(SlotExtraction.extracted_at.asc(), SlotExtraction.id.asc())
         )
-        return list(result.scalars().all())
+        rows = list(result.scalars().all())
+        latest: dict[tuple[str, str], SlotExtraction] = {}
+        for row in rows:
+            # Ascending order + id tie-breaker: later rows overwrite earlier ones,
+            # so the dict ends with the highest-id value per field.
+            latest[(row.tool_id, row.field_name)] = row
+        return list(latest.values())
     except SQLAlchemyError as e:
         logger.error("get_slot_extractions_failed", error=str(e))
         return []
@@ -292,12 +329,7 @@ async def get_conversation_history(db: AsyncSession, conversation_id: str) -> di
         )
         tool_executions = list(tools_result.scalars().all())
 
-        slots_result = await db.execute(
-            select(SlotExtraction)
-            .where(SlotExtraction.conversation_id == conversation_id)
-            .order_by(SlotExtraction.extracted_at.asc())
-        )
-        slot_extractions = list(slots_result.scalars().all())
+        slot_extractions = await get_slot_extractions(db, conversation_id)
 
         return {
             "conversation_id": conv.id,
@@ -352,6 +384,7 @@ async def create_tool_execution(
     tool_id: str,
     tool_type: str,
     result: dict | None = None,
+    duration_ms: float | None = None,
 ) -> ToolExecution | None:
     """Record a tool invocation for the conversation history."""
     try:
@@ -360,6 +393,7 @@ async def create_tool_execution(
             tool_id=tool_id,
             tool_type=tool_type,
             result=result,
+            duration_ms=duration_ms,
         )
         db.add(execution)
         await db.commit()
@@ -1013,3 +1047,14 @@ async def list_user_agents_merged(db: AsyncSession, user_id: int) -> list[dict]:
         )
 
     return merged
+
+
+async def delete_conversation(db: AsyncSession, conversation_id: str) -> bool:
+    """Delete a conversation and all its child records (messages, tool executions, slot extractions).
+
+    Child rows are removed via SQLAlchemy cascade (all, delete-orphan) defined on the model.
+    Returns True when a row was deleted, False when the ID doesn't exist.
+    """
+    result = await db.execute(delete(Conversation).where(Conversation.id == conversation_id))
+    await db.commit()
+    return result.rowcount > 0

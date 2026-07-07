@@ -8,6 +8,25 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _no_real_llm_json_calls():
+    """Keep orchestrator JSON calls (slot extraction, intent routing) off the network.
+
+    _call_llm_json previously hit the real provider during slot extraction and
+    the resulting errors (e.g. OpenAI 429 insufficient_quota) were silently
+    swallowed — the exact masking #197 removes. Now that provider errors surface,
+    an unmocked call would fail the turn, so default to an empty JSON object
+    (= no slots found). Tests that need provider failures or custom JSON
+    re-patch the method inside their own scope.
+    """
+    from taskorbit.orchestration import ConversationOrchestrator
+
+    with patch.object(
+        ConversationOrchestrator, "_call_llm_json", new_callable=AsyncMock, return_value="{}"
+    ):
+        yield
+
+
 @pytest.fixture
 def mock_good_intent():
     """Patch IntentRouter.detect to return a valid intent result.

@@ -19,6 +19,11 @@ import { useRoutedAgent } from "@/hooks/useRoutedAgent";
 import { useSessionEnded } from "@/hooks/useSessionEnded";
 import type { CallStatus } from "@/types/callState";
 
+// A dead worker shows up as a sustained "connecting" agent state (LiveKit keeps
+// trying to redispatch it), so we wait this long before declaring the call
+// lost — long enough that a genuine transient reconnect recovers first.
+const CONNECTION_LOST_GRACE_MS = 8_000;
+
 type Props = {
   status: CallStatus;
   onPhase: (phase: CallStatus) => void;
@@ -26,6 +31,7 @@ type Props = {
   onHandoff?: (agentName: string) => void;
   onAgentRouted?: (agentName: string) => void;
   onSessionEnded?: () => void;
+  onConnectionLost: (reason: string) => void;
 };
 
 export function VoiceSessionBridge({
@@ -35,6 +41,7 @@ export function VoiceSessionBridge({
   onHandoff,
   onAgentRouted,
   onSessionEnded,
+  onConnectionLost,
 }: Props) {
   const connection = useConnectionStatus();
   const { state: agentState } = useVoiceAssistant();
@@ -57,6 +64,57 @@ export function VoiceSessionBridge({
       onPhase("idle_in_call");
     }
   }, [connection, onPhase]);
+
+  // Track whether the room and agent each fully came up. At startup the
+  // connection is briefly not-yet-connected and the agent briefly reports
+  // "disconnected" before it joins, so a drop only counts once each has
+  // actually been up — otherwise every call would self-terminate on connect.
+  const roomConnectedRef = useRef(false);
+  const agentJoinedRef = useRef(false);
+  const connectionLostFiredRef = useRef(false);
+  useEffect(() => {
+    if (connection === "connected") roomConnectedRef.current = true;
+  }, [connection]);
+  useEffect(() => {
+    if (
+      agentState === "initializing" ||
+      agentState === "listening" ||
+      agentState === "thinking" ||
+      agentState === "speaking"
+    ) {
+      agentJoinedRef.current = true;
+    }
+  }, [agentState]);
+
+  // Surface an unexpected loss so the status pill never freezes on a dead call
+  // (#181). Key subtlety: when the worker dies, LiveKit does NOT report the
+  // agent as "disconnected" — it reports "connecting" (it keeps trying to
+  // redispatch) and stays there. So once the agent has joined, a sustained
+  // "connecting"/"disconnected" agentState, or a full room drop, means the call
+  // is dead. We debounce by CONNECTION_LOST_GRACE_MS so a genuine transient
+  // reconnect (which recovers to an active state, clearing the timer) doesn't
+  // false-trigger. A deliberate hang-up unmounts this component first, so this
+  // fires only on real drops, once per session, and the reused timeout teardown
+  // shows a reason banner and returns to the pre-call surface.
+  useEffect(() => {
+    if (connectionLostFiredRef.current) return;
+    const roomDropped = connection === "disconnected" && roomConnectedRef.current;
+    const agentDropped =
+      agentJoinedRef.current && (agentState === "connecting" || agentState === "disconnected");
+    if (!roomDropped && !agentDropped) return;
+    if (statusRef.current === "idle" || statusRef.current === "ended") return;
+    const timer = window.setTimeout(() => {
+      if (connectionLostFiredRef.current) return;
+      if (statusRef.current === "idle" || statusRef.current === "ended") return;
+      connectionLostFiredRef.current = true;
+      onConnectionLost(
+        roomDropped
+          ? "The call disconnected unexpectedly. Please start a new session."
+          : "The agent disconnected unexpectedly. Please start a new session.",
+      );
+    }, CONNECTION_LOST_GRACE_MS);
+    return () => window.clearTimeout(timer);
+  }, [connection, agentState, onConnectionLost]);
 
   // Drive thinking/speaking purely from the agent's reported state. We
   // don't fight the user-driven `recording` / `idle_in_call` phases,

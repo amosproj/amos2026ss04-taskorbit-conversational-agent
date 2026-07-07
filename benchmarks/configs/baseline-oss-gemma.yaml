@@ -1,0 +1,36 @@
+# Open-source Gemma baseline — validates #67 Gemma model path via OpenRouter
+#
+# Pair with baseline-local.yaml (Qwen) to compare two OSS families against
+# baseline-cloud.yaml (OpenAI proprietary).
+#
+# Requirements:
+#   OPENROUTER_API_KEY must be set in the environment.
+#
+# Run:
+#   python runner/run_benchmark.py --config configs/baseline-oss-gemma.yaml
+
+name: baseline-oss-gemma
+description: "Open-source Gemma 4 31B via OpenRouter free tier (#67)"
+
+provider: openrouter
+model: google/gemma-4-31b-it:free
+
+input_set: benchmarks/inputs/short_prompts.jsonl
+
+repetitions: 3
+concurrency: 1
+
+metrics:
+  - latency_e2e
+  - latency_components
+  - token_usage
+  - errors
+
+timeout_seconds: 120
+
+tags:
+  tier: open-source
+  provider: openrouter
+  model_family: gemma
+  ticket: "67"
+  version: v1

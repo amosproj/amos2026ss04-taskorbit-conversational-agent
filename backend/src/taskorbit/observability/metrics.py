@@ -100,6 +100,7 @@ def configure_default_metrics() -> None:
         "worker_turn",
         "total",
         "stt_processing",
+        "tool_call",
     ):
         m.pipeline_latency_seconds.labels(stage=stage)
     for error_type in (
@@ -108,6 +109,8 @@ def configure_default_metrics() -> None:
         "invalid_input",
         "runtime_error",
         "llm_config",
+        "llm_provider_error",
+        "unhandled",
     ):
         m.conversation_errors_total.labels(error_type=error_type)
     for handler in ("/v1/conversations/process", "/v1/tts/synthesize"):

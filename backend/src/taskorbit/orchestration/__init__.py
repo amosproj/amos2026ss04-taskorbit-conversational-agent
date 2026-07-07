@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
 from taskorbit.agents import AgentRegistry
 from taskorbit.config import Settings, get_settings
-from taskorbit.integrations.llm.errors import LLMConfigError
+from taskorbit.integrations.llm.errors import LLMConfigError, LLMError, LLMTimeoutError
 from taskorbit.integrations.llm.scope_check import is_message_in_scope
 from taskorbit.intent import _KNOWN_INTENTS, IntentResult, IntentRouter
 from taskorbit.logging.setup import get_logger
@@ -49,6 +49,7 @@ from taskorbit.types import (
     LLMConfig,
     Message,
     MessageRole,
+    PipelineLatencyMs,
     ToolDefinition,
     ToolType,
 )
@@ -143,6 +144,25 @@ def _normalize_field_key(fields: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [{**f, "name": f.get("name") or f.get("variable_name", "")} for f in fields]
 
 
+def _seconds_to_ms(seconds: float | None) -> float | None:
+    """Convert perf_counter seconds to rounded milliseconds, or None when unset."""
+    return round(seconds * 1000, 1) if seconds is not None else None
+
+
+def _build_pipeline_latency_ms(
+    *,
+    llm_elapsed: float | None = None,
+    tool_elapsed: float | None = None,
+    total_elapsed: float | None = None,
+) -> PipelineLatencyMs:
+    """Assemble per-stage latency fields for ConversationResponse (#68)."""
+    return PipelineLatencyMs(
+        llm_call=_seconds_to_ms(llm_elapsed),
+        tool_call=_seconds_to_ms(tool_elapsed),
+        total=_seconds_to_ms(total_elapsed),
+    )
+
+
 @dataclass
 class _DispatchResult:
     """Result of _run_dispatch_step; non-None early_response means short-circuit."""
@@ -151,6 +171,7 @@ class _DispatchResult:
     tool_data: dict[str, Any]
     response_status: ConversationStatus
     llm_text_override: str | None
+    tool_call_elapsed: float | None = None
 
 
 class ConversationOrchestrator:
@@ -227,10 +248,11 @@ class ConversationOrchestrator:
                         conversation_id=request.conversation_id,
                         fallback=farewell,
                     )
-                await self._dispatch_tool(end_call_tool, {})
+                _, tool_elapsed = await self._dispatch_tool(end_call_tool, {})
                 logger.info(
                     "end_call_user_initiated",
                     conversation_id=request.conversation_id,
+                    tool_call_latency_ms=_seconds_to_ms(tool_elapsed),
                 )
                 return ConversationResponse(
                     conversation_id=request.conversation_id,
@@ -239,6 +261,7 @@ class ConversationOrchestrator:
                     selected_intent="",
                     selected_agent="",
                     tool_invoked=end_call_tool,
+                    latency_ms=_build_pipeline_latency_ms(tool_elapsed=tool_elapsed),
                 )
 
             # 0b. Pre-intent scope short-circuit: refuse clearly off-topic turns before
@@ -647,8 +670,9 @@ class ConversationOrchestrator:
             logger.info(
                 "pipeline_complete",
                 conversation_id=request.conversation_id,
-                llm_latency_ms=round(_llm_elapsed * 1000, 1),
-                total_latency_ms=round(_total_elapsed * 1000, 1),
+                llm_latency_ms=_seconds_to_ms(_llm_elapsed),
+                tool_call_latency_ms=_seconds_to_ms(dispatch.tool_call_elapsed),
+                total_latency_ms=_seconds_to_ms(_total_elapsed),
             )
 
             return ConversationResponse(
@@ -664,8 +688,18 @@ class ConversationOrchestrator:
                 locked_intent_name=intent.name,
                 next_active_tool_id=next_active_tool_id,
                 completed_workflow_steps=updated_completed_steps,
+                latency_ms=_build_pipeline_latency_ms(
+                    llm_elapsed=_llm_elapsed,
+                    tool_elapsed=dispatch.tool_call_elapsed,
+                    total_elapsed=_total_elapsed,
+                ),
             )
 
+        # Handler-order note (#197): LLMConfigError and LLMTimeoutError both
+        # inherit from LLMError. The subclass handlers must stay BEFORE the
+        # LLMError base handler, otherwise config errors would silently
+        # downgrade to the generic "llm_provider_error" label and lose their
+        # dedicated user message. See test_handler_ordering_regression.
         except LLMConfigError as exc:
             get_metrics().conversation_errors_total.labels(error_type="llm_config").inc()
             logger.error(
@@ -682,9 +716,13 @@ class ConversationOrchestrator:
                 status="error",
                 error=str(exc),
             )
-        except TimeoutError:
+        except (TimeoutError, LLMTimeoutError) as exc:
             get_metrics().conversation_errors_total.labels(error_type="llm_timeout").inc()
-            logger.warning("llm_timeout", conversation_id=request.conversation_id)
+            logger.warning(
+                "llm_timeout",
+                error=str(exc),
+                conversation_id=request.conversation_id,
+            )
             return ConversationResponse(
                 conversation_id=request.conversation_id,
                 reply=self._make_assistant_message(
@@ -692,6 +730,26 @@ class ConversationOrchestrator:
                 ),
                 status="error",
                 error=f"LLM call timed out after {self._settings.llm_timeout_seconds} seconds.",
+            )
+        except LLMError as exc:
+            # Provider failures (auth, quota/rate-limit, API outage) surfaced by the
+            # intent router and LLM call sites (#197). Distinct label + message so a
+            # real outage is never mistaken for a clarification or generic error.
+            get_metrics().conversation_errors_total.labels(error_type="llm_provider_error").inc()
+            logger.error(
+                "llm_provider_error",
+                error=str(exc),
+                conversation_id=request.conversation_id,
+                hint="Check provider status, API key validity, and remaining quota.",
+            )
+            return ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message(
+                    "I'm having trouble reaching my language model provider right now. "
+                    "Please try again in a moment."
+                ),
+                status="error",
+                error=str(exc),
             )
         except UnicodeEncodeError as exc:
             get_metrics().conversation_errors_total.labels(error_type="encoding_error").inc()
@@ -800,10 +858,11 @@ class ConversationOrchestrator:
                         conversation_id=request.conversation_id,
                         fallback=farewell,
                     )
-                await self._dispatch_tool(end_call_tool, {})
+                _, tool_elapsed = await self._dispatch_tool(end_call_tool, {})
                 logger.info(
                     "end_call_user_initiated",
                     conversation_id=request.conversation_id,
+                    tool_call_latency_ms=_seconds_to_ms(tool_elapsed),
                 )
                 yield ConversationResponse(
                     conversation_id=request.conversation_id,
@@ -812,6 +871,7 @@ class ConversationOrchestrator:
                     selected_intent="",
                     selected_agent="",
                     tool_invoked=end_call_tool,
+                    latency_ms=_build_pipeline_latency_ms(tool_elapsed=tool_elapsed),
                 )
                 return
 
@@ -1211,8 +1271,9 @@ class ConversationOrchestrator:
             logger.info(
                 "pipeline_complete",
                 conversation_id=request.conversation_id,
-                llm_latency_ms=round(_llm_elapsed * 1000, 1),
-                total_latency_ms=round(_total_elapsed * 1000, 1),
+                llm_latency_ms=_seconds_to_ms(_llm_elapsed),
+                tool_call_latency_ms=_seconds_to_ms(dispatch.tool_call_elapsed),
+                total_latency_ms=_seconds_to_ms(_total_elapsed),
             )
 
             yield ConversationResponse(
@@ -1228,8 +1289,18 @@ class ConversationOrchestrator:
                 locked_intent_name=intent.name,
                 next_active_tool_id=next_active_tool_id,
                 completed_workflow_steps=updated_completed_steps,
+                latency_ms=_build_pipeline_latency_ms(
+                    llm_elapsed=_llm_elapsed,
+                    tool_elapsed=dispatch.tool_call_elapsed,
+                    total_elapsed=_total_elapsed,
+                ),
             )
 
+        # Handler-order note (#197): LLMConfigError and LLMTimeoutError both
+        # inherit from LLMError. The subclass handlers must stay BEFORE the
+        # LLMError base handler, otherwise config errors would silently
+        # downgrade to the generic "llm_provider_error" label and lose their
+        # dedicated user message. See test_handler_ordering_regression.
         except LLMConfigError as exc:
             get_metrics().conversation_errors_total.labels(error_type="llm_config").inc()
             logger.error(
@@ -1246,9 +1317,13 @@ class ConversationOrchestrator:
                 status="error",
                 error=str(exc),
             )
-        except TimeoutError:
+        except (TimeoutError, LLMTimeoutError) as exc:
             get_metrics().conversation_errors_total.labels(error_type="llm_timeout").inc()
-            logger.warning("llm_timeout", conversation_id=request.conversation_id)
+            logger.warning(
+                "llm_timeout",
+                error=str(exc),
+                conversation_id=request.conversation_id,
+            )
             yield ConversationResponse(
                 conversation_id=request.conversation_id,
                 reply=self._make_assistant_message(
@@ -1256,6 +1331,25 @@ class ConversationOrchestrator:
                 ),
                 status="error",
                 error=f"LLM call timed out after {self._settings.llm_timeout_seconds} seconds.",
+            )
+        except LLMError as exc:
+            # Provider failures (auth, quota/rate-limit, API outage) surfaced by the
+            # intent router and LLM call sites (#197) — mirror of process_message.
+            get_metrics().conversation_errors_total.labels(error_type="llm_provider_error").inc()
+            logger.error(
+                "llm_provider_error",
+                error=str(exc),
+                conversation_id=request.conversation_id,
+                hint="Check provider status, API key validity, and remaining quota.",
+            )
+            yield ConversationResponse(
+                conversation_id=request.conversation_id,
+                reply=self._make_assistant_message(
+                    "I'm having trouble reaching my language model provider right now. "
+                    "Please try again in a moment."
+                ),
+                status="error",
+                error=str(exc),
             )
         except UnicodeEncodeError as exc:
             get_metrics().conversation_errors_total.labels(error_type="encoding_error").inc()
@@ -1577,6 +1671,10 @@ class ConversationOrchestrator:
         try:
             extractor = SlotExtractor(llm_fn=self._call_llm_json, llm_config=llm_config)
             return await extractor.extract(messages, required_inputs)
+        except LLMError:
+            # Provider failures must surface (#197) — treating them as "all slots
+            # missing" would make the agent re-ask for data the user already gave.
+            raise
         except Exception as exc:
             logger.warning(
                 "slot_extraction_error",
@@ -1665,6 +1763,7 @@ class ConversationOrchestrator:
         tool_data: dict[str, Any] = {}
         response_status = ConversationStatus.SUCCESS
         llm_text_override: str | None = None
+        tool_call_elapsed: float | None = None
 
         no_slots_tool_ready = active_tool is not None and active_tool.type in (
             ToolType.END_CALL,
@@ -1747,13 +1846,14 @@ class ConversationOrchestrator:
                         **active_tool.parameters,
                         "args": dict(slot_result.to_dict()),
                     }
-                tool_data = await self._dispatch_tool(
+                tool_data, tool_call_elapsed = await self._dispatch_tool(
                     active_tool, dispatch_context, db=db, user_id=user_id
                 )
                 logger.info(
                     "tool_dispatch_complete",
                     tool_type=active_tool.type,
                     conversation_id=request.conversation_id,
+                    tool_call_latency_ms=_seconds_to_ms(tool_call_elapsed),
                 )
                 if active_tool.type == ToolType.END_CALL:
                     response_status = ConversationStatus.ENDED
@@ -1770,6 +1870,7 @@ class ConversationOrchestrator:
             tool_data=tool_data,
             response_status=response_status,
             llm_text_override=llm_text_override,
+            tool_call_elapsed=tool_call_elapsed,
         )
 
     async def _dispatch_tool(
@@ -1778,14 +1879,19 @@ class ConversationOrchestrator:
         context: dict[str, Any],
         db: AsyncSession | None = None,
         user_id: int | None = None,
-    ) -> dict[str, Any]:
-        """Execute a tool after the user has confirmed (if required)."""
+    ) -> tuple[dict[str, Any], float]:
+        """Execute a tool after the user has confirmed (if required).
+
+        Returns (result_data, elapsed_seconds) for benchmark timing (#68).
+        """
         from taskorbit.tools import ToolResult
         from taskorbit.tools.agent_transfer import AgentTransferTool
         from taskorbit.tools.data_extraction import DataExtractionTool
         from taskorbit.tools.end_call import EndCallTool
         from taskorbit.tools.generic_api import GenericApiTool
         from taskorbit.types import ToolType
+
+        _tool_start = time.perf_counter()
 
         dispatch: dict[ToolType, type] = {
             ToolType.DATA_EXTRACTION: DataExtractionTool,
@@ -1796,13 +1902,17 @@ class ConversationOrchestrator:
 
         tool_cls = dispatch.get(tool.type)
         if tool_cls is None:
+            _tool_elapsed = time.perf_counter() - _tool_start
             logger.warning("unknown_tool_type", tool_type=tool.type, tool_id=tool.id)
-            return {}
+            return {}, _tool_elapsed
 
         if tool.type == ToolType.AGENT_TRANSFER:
             result: ToolResult = await AgentTransferTool(db=db, user_id=user_id).execute(context)
         else:
             result = await tool_cls().execute(context)
+
+        _tool_elapsed = time.perf_counter() - _tool_start
+        get_metrics().pipeline_latency_seconds.labels(stage="tool_call").observe(_tool_elapsed)
 
         if not result.success:
             logger.warning(
@@ -1810,16 +1920,18 @@ class ConversationOrchestrator:
                 tool_id=tool.id,
                 tool_type=tool.type,
                 error=result.error,
+                tool_call_latency_ms=_seconds_to_ms(_tool_elapsed),
             )
-            return {}
+            return {}, _tool_elapsed
 
         logger.info(
             "tool_executed",
             tool_id=tool.id,
             tool_type=tool.type,
             data=result.data,
+            tool_call_latency_ms=_seconds_to_ms(_tool_elapsed),
         )
-        return result.data
+        return result.data, _tool_elapsed
 
     _END_CALL_SIGNALS: frozenset[str] = frozenset(
         {
