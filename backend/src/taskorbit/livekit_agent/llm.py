@@ -494,12 +494,16 @@ class OrchestratorAgent(Agent):
                         role=response.reply.role.value,
                         content=response.reply.content,
                     )
-                if response.extracted_slots:
-                    tool_id = response.tool_invoked.id if response.tool_invoked else "orchestrator"
+                # Persist slot extractions only when the tool actually fired, and
+                # attribute them to that tool — mirrors the text path. Partial fills
+                # (extracted_slots set but no tool_invoked) are surfaced to the UI for
+                # progress but not saved, which also avoids the generic "orchestrator"
+                # provenance label and duplicate per-turn rows.
+                if response.extracted_slots and response.tool_invoked:
                     await create_slot_extractions(
                         db,
                         conversation_id=conv_id,
-                        tool_id=tool_id,
+                        tool_id=response.tool_invoked.id,
                         slots=response.extracted_slots,
                     )
                 if response.tool_invoked:
