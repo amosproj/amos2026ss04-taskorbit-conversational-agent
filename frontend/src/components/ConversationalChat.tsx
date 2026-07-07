@@ -24,7 +24,20 @@ import { buildLiveKitWorkerMetadata } from "@/lib/livekitAgentMetadata";
 import { sendMessage, sendMessageStream, getConversations } from "@/lib/conversationApi";
 import { playSynthesizedSpeech } from "@/lib/ttsApi";
 import { backendToFrontendAgent, fetchUserAgents } from "@/lib/userAgentsApi";
+import type { AgentConfig } from "@/types/agentConfig";
 import type { LiveTranscriptTurn } from "@/types/callState";
+
+/**
+ * Returns ElevenLabs-specific TTS options only when the provider is elevenlabs.
+ * The REST /v1/tts/synthesize endpoint is ElevenLabs-only — passing Deepgram
+ * model names causes silent failures. Returns {} for all other providers so
+ * the env-default ElevenLabs voice is used as fallback.
+ * @param tts - the agent TTS config
+ */
+function restTtsOptions(tts: AgentConfig["tts"]): { voiceId?: string; modelId?: string } {
+  if (tts.provider !== "elevenlabs") return {};
+  return { voiceId: tts.voice_id, modelId: tts.model };
+}
 
 function normaliseUserText(text: string): string {
   // Lowercase email domains: Bob@Gmail.com → Bob@gmail.com
@@ -466,8 +479,7 @@ export function ConversationalChat() {
                   await playSynthesizedSpeech(replyText, {
                     signal: controller.signal,
                     volumeRef: agentVolumeRef,
-                    voiceId: agent.tts.voice_id,
-                    modelId: agent.tts.model,
+                    ...restTtsOptions(agent.tts),
                   }).catch(() => {});
                 }
                 call.end();
@@ -526,8 +538,7 @@ export function ConversationalChat() {
               await playSynthesizedSpeech(replyText, {
                 signal: controller.signal,
                 volumeRef: agentVolumeRef,
-                voiceId: agent.tts.voice_id,
-                modelId: agent.tts.model,
+                ...restTtsOptions(agent.tts),
               });
             } catch (audioErr) {
               if ((audioErr as Error).name !== "AbortError") {
@@ -595,10 +606,7 @@ export function ConversationalChat() {
       setRoutedAgent(badgeName);
       const transferMsg = `Transferring you to ${target.name} upon your request.`;
       call.appendAssistantTurn(transferMsg);
-      playSynthesizedSpeech(transferMsg, {
-        voiceId: agent.tts.voice_id,
-        modelId: agent.tts.model,
-      }).catch(() => {});
+      playSynthesizedSpeech(transferMsg, restTtsOptions(agent.tts)).catch(() => {});
     },
     [call],
   );
@@ -675,8 +683,7 @@ export function ConversationalChat() {
               await playSynthesizedSpeech(replyText, {
                 signal: controller.signal,
                 volumeRef: agentVolumeRef,
-                voiceId: agent.tts.voice_id,
-                modelId: agent.tts.model,
+                ...restTtsOptions(agent.tts),
               });
             } catch (audioErr) {
               if ((audioErr as Error).name !== "AbortError") {

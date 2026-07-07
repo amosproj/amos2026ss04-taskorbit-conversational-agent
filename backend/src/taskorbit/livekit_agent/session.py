@@ -121,7 +121,7 @@ def _build_stt(cfg: Settings, agent_config: AgentConfig | None) -> deepgram.STT 
             is_valid=_is_elevenlabs_stt_model,
             fallback=_ELEVENLABS_STT_DEFAULT_MODEL,
         )
-        logger.info("stt_selected", provider="elevenlabs", model=model_id)
+        logger.info("stt_selected", provider="elevenlabs", model=model_id, source="config")
         return elevenlabs.STT(
             api_key=cfg.elevenlabs_api_key,
             model_id=model_id,
@@ -134,7 +134,15 @@ def _build_stt(cfg: Settings, agent_config: AgentConfig | None) -> deepgram.STT 
         is_valid=_is_deepgram_stt_model,
         fallback=cfg.deepgram_model,
     )
-    logger.info("stt_selected", provider="deepgram", model=model)
+    # ``source`` separates "the config chose deepgram" from "no config reached
+    # the worker, env defaults applied" — otherwise both cases log identically
+    # and provider-switching failures are invisible in production (#166).
+    logger.info(
+        "stt_selected",
+        provider="deepgram",
+        model=model,
+        source="config" if stt_cfg is not None else "env_default",
+    )
     return deepgram.STT(
         api_key=cfg.deepgram_api_key,
         model=model,
@@ -164,7 +172,7 @@ def _build_tts(cfg: Settings, agent_config: AgentConfig | None) -> deepgram.TTS 
             is_valid=_is_deepgram_tts_model,
             fallback=_DEEPGRAM_TTS_DEFAULT_MODEL,
         )
-        logger.info("tts_selected", provider="deepgram", model=model)
+        logger.info("tts_selected", provider="deepgram", model=model, source="config")
         return deepgram.TTS(
             api_key=cfg.deepgram_api_key,
             model=model,
@@ -186,12 +194,15 @@ def _build_tts(cfg: Settings, agent_config: AgentConfig | None) -> deepgram.TTS 
         is_valid=_is_elevenlabs_tts_model,
         fallback=cfg.elevenlabs_model,
     )
+    # Same source discrimination as stt_selected: this branch serves both an
+    # explicit elevenlabs config and the no-config fallback (#166).
     logger.info(
         "tts_selected",
         provider="elevenlabs",
         model=model,
         voice_id=voice_id,
         voice_source=voice_source,
+        source="config" if tts_cfg is not None else "env_default",
     )
     return elevenlabs.TTS(
         api_key=cfg.elevenlabs_api_key,
