@@ -518,9 +518,16 @@ export function ConversationalChat() {
                 if (targetId) {
                   try {
                     const entries = await fetchUserAgents(controller.signal);
-                    const match = entries.find(
-                      (e) => e.template_id === targetId || e.id === targetId,
-                    );
+                    // The backend sends the canonical target: a registry name
+                    // ("general_inquiry") for built-ins, or a row id for saved
+                    // agents. Bridge kebab template ids the same way as
+                    // useAgentHandoff so both paths match identically (#212).
+                    const match = entries.find((e) => {
+                      const uaId = e.template_id ?? e.id;
+                      if (uaId === targetId || e.id === targetId) return true;
+                      const normalized = uaId.replace(/-agent$/, "").replace(/-/g, "_");
+                      return normalized === targetId;
+                    });
                     if (match) {
                       const next = backendToFrontendAgent(match);
                       setActiveAgent(next, `ua:${match.template_id ?? match.id}`);

@@ -1823,3 +1823,68 @@ def test_select_no_tools_returns_none_still() -> None:
         )
         is None
     )
+
+
+# ---------------------------------------------------------------------------
+# tool_invoked carries the RESOLVED transfer target (#212)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_transfer_tool_invoked_carries_canonical_target() -> None:
+    """The response's tool_invoked must expose the canonical target, not the
+    raw config string: the voice worker publishes parameters.targets[0] and
+    the FE swap matches on it."""
+    from unittest.mock import AsyncMock, patch
+
+    from taskorbit.slots.models import SlotExtractionResult, SlotValue
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    orch = ConversationOrchestrator()
+    intent = _intent_result(
+        required_inputs=[{"name": "caller_name", "type": "string", "required": True}]
+    )
+    transfer_tool = ToolDefinition(
+        id="transfer_to_inquiry_agent",
+        name="transfer_to_inquiry_agent",
+        type=ToolType.AGENT_TRANSFER,
+        description="hand off",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={"targets": ["inquiry-agent"]},
+    )
+    slot_result = SlotExtractionResult(
+        filled={"caller_name": SlotValue(name="caller_name", value="Asad", slot_type="string")},
+        missing=[],
+    )
+
+    with (
+        patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
+        patch.object(ConversationOrchestrator, "_select_active_tool", return_value=transfer_tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_extract_slots",
+            new_callable=AsyncMock,
+            return_value=slot_result,
+        ),
+        patch.object(
+            ConversationOrchestrator,
+            "_dispatch_tool",
+            new_callable=AsyncMock,
+            return_value=(
+                {
+                    "transferred_to": "general_inquiry",
+                    "requested_target": "inquiry-agent",
+                    "history_preserved": True,
+                },
+                0.0,
+            ),
+        ),
+        patch.object(
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+        ),
+    ):
+        response = await orch.process_message(_make_request("transfer me"))
+
+    assert response.tool_invoked is not None
+    assert response.tool_invoked.type == ToolType.AGENT_TRANSFER
+    assert response.tool_invoked.parameters["targets"] == ["general_inquiry"]

@@ -171,6 +171,10 @@ class _DispatchResult:
     response_status: ConversationStatus
     llm_text_override: str | None
     tool_call_elapsed: float | None = None
+    # #212: on a successful agent_transfer, a copy of the tool whose targets
+    # hold the RESOLVED canonical id, so the voice publish and the FE swap
+    # never see the raw config string.
+    tool_invoked_override: ToolDefinition | None = None
 
 
 class ConversationOrchestrator:
@@ -687,7 +691,7 @@ class ConversationOrchestrator:
                 status=response_status,
                 extracted_slots=slot_result.to_dict(),
                 missing_slots=slot_result.missing,
-                tool_invoked=active_tool if tool_data else None,
+                tool_invoked=(dispatch.tool_invoked_override or active_tool) if tool_data else None,
                 locked_intent_name=intent.name,
                 next_active_tool_id=next_active_tool_id,
                 completed_workflow_steps=updated_completed_steps,
@@ -1292,7 +1296,7 @@ class ConversationOrchestrator:
                 status=response_status,
                 extracted_slots=slot_result.to_dict(),
                 missing_slots=slot_result.missing,
-                tool_invoked=active_tool if tool_data else None,
+                tool_invoked=(dispatch.tool_invoked_override or active_tool) if tool_data else None,
                 locked_intent_name=intent.name,
                 next_active_tool_id=next_active_tool_id,
                 completed_workflow_steps=updated_completed_steps,
@@ -1799,6 +1803,7 @@ class ConversationOrchestrator:
         response_status = ConversationStatus.SUCCESS
         llm_text_override: str | None = None
         tool_call_elapsed: float | None = None
+        tool_invoked_override: ToolDefinition | None = None
 
         no_slots_tool_ready = active_tool is not None and active_tool.type in (
             ToolType.END_CALL,
@@ -1911,6 +1916,20 @@ class ConversationOrchestrator:
                 if active_tool.type == ToolType.END_CALL:
                     response_status = ConversationStatus.ENDED
                 elif active_tool.type == ToolType.AGENT_TRANSFER:
+                    resolved_id = tool_data.get("transferred_to")
+                    if resolved_id:
+                        # Hand consumers the canonical target: the voice worker
+                        # publishes tool_invoked.parameters.targets[0] and the
+                        # FE swap matches on it, so the raw config string must
+                        # not leak past this point (#212).
+                        tool_invoked_override = active_tool.model_copy(
+                            update={
+                                "parameters": {
+                                    **active_tool.parameters,
+                                    "targets": [resolved_id],
+                                }
+                            }
+                        )
                     logger.info(
                         "agent_handoff",
                         from_agent=request.agent_config.name,
@@ -1924,6 +1943,7 @@ class ConversationOrchestrator:
             response_status=response_status,
             llm_text_override=llm_text_override,
             tool_call_elapsed=tool_call_elapsed,
+            tool_invoked_override=tool_invoked_override,
         )
 
     async def _dispatch_tool(
