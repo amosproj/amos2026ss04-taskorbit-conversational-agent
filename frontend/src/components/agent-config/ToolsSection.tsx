@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { ArrowRightLeft, Globe, PhoneOff, Plus, Trash2, Wrench } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+
+import { fetchUserAgents, type UserAgentEntry } from "@/lib/userAgentsApi";
 
 import {
   END_CALL_DEFAULT_DESCRIPTION,
@@ -349,6 +351,14 @@ function EndCallEditor({
 /* agent_transfer                                                       */
 /* ──────────────────────────────────────────────────────────────────── */
 
+// NOTE (#203): the exact identifier to store is pending confirmation from
+// Asad (#212 backend resolution). Placeholder uses the established idOf
+// pattern from AgentSwitcher.tsx. If Asad confirms built-ins need a
+// different form (e.g. a slug), change ONLY this function.
+function stableTargetId(entry: UserAgentEntry): string {
+  return entry.config.agent_id ?? entry.config.id ?? entry.id;
+}
+
 function AgentTransferEditor({
   tool,
   onChange,
@@ -357,10 +367,37 @@ function AgentTransferEditor({
   onChange: (next: AgentTransferTool) => void;
 }) {
   const [draft, setDraft] = useState("");
+  const [agents, setAgents] = useState<UserAgentEntry[]>([]);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [pendingAgentId, setPendingAgentId] = useState("");
+  const selectId = useId();
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchUserAgents(controller.signal)
+      .then((data) => {
+        setAgents(data);
+        setLoadFailed(false);
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setLoadFailed(true);
+      });
+    return () => controller.abort();
+  }, []);
 
   // Safe fallback: Prevents the UI from crashing with a "Cannot read properties of undefined (reading 'length')"
   // error if the backend data is malformed or missing the targets array.
   const targets = Array.isArray(tool.targets) ? tool.targets : [];
+
+  const byAgent = new Map<string, UserAgentEntry>();
+  for (const entry of agents) {
+    if (!byAgent.has(stableTargetId(entry))) byAgent.set(stableTargetId(entry), entry);
+  }
+  const uniqueAgents = [...byAgent.values()].sort((a, b) => a.name.localeCompare(b.name));
+
+  // Dropdown-driven flow is only usable once agents have actually loaded.
+  const useDropdown = !loadFailed && uniqueAgents.length > 0;
 
   const addTarget = () => {
     const t = draft.trim();
@@ -372,9 +409,18 @@ function AgentTransferEditor({
     setDraft("");
   };
 
+  const addTargetFromDropdown = (id: string) => {
+    if (!id || targets.includes(id)) return;
+    onChange({ ...tool, targets: [...targets, id] });
+    setPendingAgentId("");
+  };
+
   const removeTarget = (target: string) => {
     onChange({ ...tool, targets: targets.filter((t) => t !== target) });
   };
+
+  const nameForTarget = (target: string) =>
+    uniqueAgents.find((entry) => stableTargetId(entry) === target)?.name ?? target;
 
   return (
     <>
@@ -398,32 +444,56 @@ function AgentTransferEditor({
           />
         </Field>
         <Field>
-          <FieldLabel>Target agents</FieldLabel>
-          <div className="flex gap-2">
-            <Input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addTarget();
-                }
-              }}
-              placeholder="emergency-line-agent"
-              className="font-mono text-sm"
-              aria-label="Add target agent ID"
-            />
-            <Button variant="outline" size="sm" onClick={addTarget} type="button">
-              <Plus data-icon="inline-start" />
-              Add
-            </Button>
-          </div>
+          <FieldLabel htmlFor={useDropdown ? selectId : undefined}>Target agents</FieldLabel>
+          {useDropdown ? (
+            <div className="flex gap-2">
+              <Select value={pendingAgentId} onValueChange={addTargetFromDropdown}>
+                <SelectTrigger id={selectId} aria-label="Add target agent">
+                  <SelectValue placeholder="Select an agent…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {uniqueAgents.map((entry) => {
+                      const id = stableTargetId(entry);
+                      const alreadyAdded = targets.includes(id);
+                      return (
+                        <SelectItem key={id} value={id} disabled={alreadyAdded}>
+                          {entry.name}
+                          {alreadyAdded ? " (added)" : ""}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <Input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addTarget();
+                  }
+                }}
+                placeholder="emergency-line-agent"
+                className="font-mono text-sm"
+                aria-label="Add target agent ID"
+              />
+              <Button variant="outline" size="sm" onClick={addTarget} type="button">
+                <Plus data-icon="inline-start" />
+                Add
+              </Button>
+            </div>
+          )}
           {targets.length > 0 ? (
             <ul className="mt-2 flex flex-wrap gap-1.5">
               {targets.map((target) => (
                 <li key={target}>
                   <Badge variant="secondary" className="gap-1.5 font-mono">
-                    {target}
+                    {useDropdown ? nameForTarget(target) : target}
                     <button
                       type="button"
                       onClick={() => removeTarget(target)}
