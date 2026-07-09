@@ -21,7 +21,6 @@ Flow per message:
 from __future__ import annotations
 
 import asyncio
-import re
 import time
 from dataclasses import dataclass
 from dataclasses import replace as dataclass_replace
@@ -1826,18 +1825,23 @@ class ConversationOrchestrator:
             else:
                 dispatch_context: dict[str, Any] = dict(slot_result.to_dict())
                 if active_tool.type == ToolType.AGENT_TRANSFER:
+                    from taskorbit.tools.agent_transfer import resolve_transfer_target
+
                     targets = active_tool.parameters.get("targets") or []
                     if targets:
                         raw = str(targets[0])
-                        if re.match(
-                            r"^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$",
-                            raw,
-                            re.IGNORECASE,
-                        ):
-                            normalized = raw
+                        resolved_target = await resolve_transfer_target(raw, db=db, user_id=user_id)
+                        if resolved_target is not None:
+                            dispatch_context["target_agent_id"] = resolved_target.canonical_id
                         else:
-                            normalized = raw.removesuffix("-agent").replace("-", "_")
-                        dispatch_context["target_agent_id"] = normalized
+                            # Pass the raw value through; the tool re-resolves and
+                            # owns the user-facing "Unknown agent" error (#212).
+                            logger.warning(
+                                "agent_transfer_target_unresolved",
+                                raw_target=raw,
+                                conversation_id=request.conversation_id,
+                            )
+                            dispatch_context["target_agent_id"] = raw
                     dispatch_context["conversation_history"] = [
                         {"role": m.role.value, "content": m.content} for m in request.messages
                     ]
