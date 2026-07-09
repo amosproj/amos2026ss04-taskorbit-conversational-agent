@@ -553,7 +553,11 @@ class ConversationOrchestrator:
 
             # 3. Select active tool
             active_tool = self._select_active_tool(
-                request.messages, agent, active_tool_id=request.active_tool_id
+                request.messages,
+                agent,
+                active_tool_id=request.active_tool_id,
+                intent=intent,
+                current_agent=request.selected_agent or request.agent_config.id,
             )
 
             # 3b. Extract slots from conversation history.
@@ -1143,7 +1147,11 @@ class ConversationOrchestrator:
 
             # 3. Select active tool.
             active_tool = self._select_active_tool(
-                request.messages, agent, active_tool_id=request.active_tool_id
+                request.messages,
+                agent,
+                active_tool_id=request.active_tool_id,
+                intent=intent,
+                current_agent=request.selected_agent or request.agent_config.id,
             )
 
             # Pre-extraction scope short-circuit (parity with the text path, #168):
@@ -1691,8 +1699,18 @@ class ConversationOrchestrator:
         messages: list[Message],
         agent: BaseAgent,
         active_tool_id: str | None = None,
+        intent: IntentResult | None = None,
+        current_agent: str | None = None,
     ) -> ToolDefinition | None:
-        """Decide which tool should be in scope for this turn, if any."""
+        """Decide which tool should be in scope for this turn, if any.
+
+        Order: an explicit active_tool_id pin (confirmation round-trips) wins;
+        then, when intent routing points AWAY from the current agent and the
+        config carries an agent_transfer tool for that destination, the
+        transfer owns the turn (#212 — multi-tool configs otherwise never
+        reach tools[1:], because neither client round-trips
+        next_active_tool_id); otherwise the first configured tool.
+        """
         tools = agent.get_task_definitions()
         if not tools:
             return None
@@ -1700,6 +1718,24 @@ class ConversationOrchestrator:
             match = next((t for t in tools if t.id == active_tool_id), None)
             if match:
                 return match
+
+        if intent is not None and intent.agent_name and intent.agent_name != current_agent:
+            from taskorbit.tools.agent_transfer import resolve_builtin_transfer_target
+
+            for tool in tools:
+                if tool.type != ToolType.AGENT_TRANSFER:
+                    continue
+                targets = tool.parameters.get("targets") or []
+                for raw in targets:
+                    if resolve_builtin_transfer_target(str(raw)) == intent.agent_name:
+                        logger.info(
+                            "agent_transfer_tool_selected",
+                            destination=intent.agent_name,
+                            requested_target=str(raw),
+                            tool_id=tool.id,
+                        )
+                        return tool
+
         return tools[0]
 
     async def _call_llm(
@@ -1825,11 +1861,24 @@ class ConversationOrchestrator:
             else:
                 dispatch_context: dict[str, Any] = dict(slot_result.to_dict())
                 if active_tool.type == ToolType.AGENT_TRANSFER:
-                    from taskorbit.tools.agent_transfer import resolve_transfer_target
+                    from taskorbit.tools.agent_transfer import (
+                        resolve_builtin_transfer_target,
+                        resolve_transfer_target,
+                    )
 
                     targets = active_tool.parameters.get("targets") or []
                     if targets:
                         raw = str(targets[0])
+                        # Multi-target tools: prefer the target matching the
+                        # routed intent so selection and dispatch agree (#212).
+                        if intent is not None and len(targets) > 1:
+                            for candidate in targets:
+                                if (
+                                    resolve_builtin_transfer_target(str(candidate))
+                                    == intent.agent_name
+                                ):
+                                    raw = str(candidate)
+                                    break
                         resolved_target = await resolve_transfer_target(raw, db=db, user_id=user_id)
                         if resolved_target is not None:
                             dispatch_context["target_agent_id"] = resolved_target.canonical_id

@@ -33,6 +33,29 @@ class ResolvedTransferTarget:
     display_name: str | None = None
 
 
+def resolve_builtin_transfer_target(target: str) -> str | None:
+    """Resolve a configured target to a built-in agent_name, without DB access.
+
+    Sync subset of resolve_transfer_target for callers that only need the
+    built-in destination (tool selection compares against intent.agent_name,
+    which is always a registry agent). Kept separate from the async resolver
+    so its keyword fallback cannot jump ahead of the deterministic DB matches
+    there (#212).
+    """
+    raw = (target or "").strip()
+    if not raw:
+        return None
+    if raw in _get_known_agent_names():
+        return raw
+
+    from taskorbit.agents import AgentRegistry
+
+    mapped = AgentRegistry.get_agent_name_for_id(raw)
+    if mapped in _get_known_agent_names():
+        return mapped
+    return None
+
+
 async def resolve_transfer_target(
     target: str,
     db: AsyncSession | None = None,

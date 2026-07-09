@@ -1688,3 +1688,138 @@ async def test_handler_ordering_llm_config_still_routes_to_llm_config_bucket(
         "LLMConfigError leaked into the llm_provider_error bucket — check handler ordering "
         "in orchestration/__init__.py: LLMConfigError must be caught BEFORE LLMError base."
     )
+
+
+# ---------------------------------------------------------------------------
+# _select_active_tool — intent-driven transfer selection (#212)
+# ---------------------------------------------------------------------------
+
+
+class _FakeAgent:
+    """Minimal stand-in exposing get_task_definitions like BaseAgent."""
+
+    def __init__(self, tools):
+        self._tools = tools
+
+    def get_task_definitions(self):
+        return self._tools
+
+
+def _john_max_tools():
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    confirm = ConfirmationConfig(required=False, prompt="")
+    return [
+        ToolDefinition(
+            id="collect_user_info",
+            name="collect_user_info",
+            type=ToolType.DATA_EXTRACTION,
+            description="collect",
+            confirmation=confirm,
+            parameters={"params": []},
+        ),
+        ToolDefinition(
+            id="end_call",
+            name="end_call",
+            type=ToolType.END_CALL,
+            description="end",
+            confirmation=confirm,
+            parameters={},
+        ),
+        ToolDefinition(
+            id="transfer_to_inquiry_agent",
+            name="transfer_to_inquiry_agent",
+            type=ToolType.AGENT_TRANSFER,
+            description="hand off",
+            confirmation=confirm,
+            parameters={"targets": ["inquiry-agent"]},
+        ),
+    ]
+
+
+def _intent_for(agent_name: str):
+    from taskorbit.intent import IntentResult
+
+    return IntentResult(name=agent_name or "unknown", description="", agent_name=agent_name)
+
+
+def test_select_transfer_when_intent_routes_away() -> None:
+    """#212: intent routing away + matching transfer tool selects the transfer,
+    not tools[0], even though the target is the sloppy prod value."""
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool(
+        [],
+        _FakeAgent(_john_max_tools()),
+        intent=_intent_for("general_inquiry"),
+        current_agent="demoday",
+    )
+    assert tool is not None
+    assert tool.id == "transfer_to_inquiry_agent"
+
+
+def test_select_pin_wins_over_transfer_rule() -> None:
+    """A confirmation round-trip pin must still take precedence."""
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool(
+        [],
+        _FakeAgent(_john_max_tools()),
+        active_tool_id="collect_user_info",
+        intent=_intent_for("general_inquiry"),
+        current_agent="demoday",
+    )
+    assert tool is not None
+    assert tool.id == "collect_user_info"
+
+
+def test_select_stays_on_first_tool_when_intent_matches_current_agent() -> None:
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool(
+        [],
+        _FakeAgent(_john_max_tools()),
+        intent=_intent_for("general_inquiry"),
+        current_agent="general_inquiry",
+    )
+    assert tool is not None
+    assert tool.id == "collect_user_info"
+
+
+def test_select_stays_on_first_tool_when_no_target_matches_destination() -> None:
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool(
+        [],
+        _FakeAgent(_john_max_tools()),
+        intent=_intent_for("sales"),
+        current_agent="demoday",
+    )
+    assert tool is not None
+    assert tool.id == "collect_user_info"
+
+
+def test_select_stays_on_first_tool_for_unknown_intent() -> None:
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool(
+        [],
+        _FakeAgent(_john_max_tools()),
+        intent=_intent_for(""),
+        current_agent="demoday",
+    )
+    assert tool is not None
+    assert tool.id == "collect_user_info"
+
+
+def test_select_unchanged_without_intent_argument() -> None:
+    """Callers that never pass intent keep the legacy tools[0] behaviour."""
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool([], _FakeAgent(_john_max_tools()))
+    assert tool is not None
+    assert tool.id == "collect_user_info"
+
+
+def test_select_no_tools_returns_none_still() -> None:
+    orch = ConversationOrchestrator()
+    assert (
+        orch._select_active_tool(
+            [], _FakeAgent([]), intent=_intent_for("general_inquiry"), current_agent="x"
+        )
+        is None
+    )

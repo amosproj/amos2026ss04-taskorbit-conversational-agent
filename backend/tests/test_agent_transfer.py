@@ -6,7 +6,11 @@ from unittest.mock import patch
 
 import pytest
 
-from taskorbit.tools.agent_transfer import AgentTransferTool, resolve_transfer_target
+from taskorbit.tools.agent_transfer import (
+    AgentTransferTool,
+    resolve_builtin_transfer_target,
+    resolve_transfer_target,
+)
 
 
 @pytest.fixture
@@ -361,3 +365,25 @@ async def test_execute_resolves_inquiry_agent_to_general_inquiry() -> None:
     assert result.data["transferred_to"] == "general_inquiry"
     assert result.data["requested_target"] == "inquiry-agent"
     assert result.data["target_kind"] == "builtin"
+
+
+# ---------------------------------------------------------------------------
+# resolve_builtin_transfer_target() — sync subset used by tool selection (#212)
+# ---------------------------------------------------------------------------
+
+
+def test_builtin_resolver_exact_name() -> None:
+    assert resolve_builtin_transfer_target("general_inquiry") == "general_inquiry"
+
+
+def test_builtin_resolver_keyword_near_miss() -> None:
+    assert resolve_builtin_transfer_target("inquiry-agent") == "general_inquiry"
+
+
+def test_builtin_resolver_display_name() -> None:
+    assert resolve_builtin_transfer_target("General Inquiry Agent") == "general_inquiry"
+
+
+def test_builtin_resolver_unknown_returns_none() -> None:
+    assert resolve_builtin_transfer_target("emergency-line-xyz") is None
+    assert resolve_builtin_transfer_target("") is None
