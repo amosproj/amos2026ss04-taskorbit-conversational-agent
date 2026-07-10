@@ -249,7 +249,63 @@ class ConversationOrchestrator:
                 tool_types=[t.type for t in request.agent_config.tools],
                 user_requested=self._user_requested_end_call(last_user.content),
             )
-            if end_call_tool and self._user_requested_end_call(last_user.content):
+            # Carry a pending decision through even on a turn that no longer
+            # "sounds like" a goodbye (e.g. a bare "yes") -- this shortcut used
+            # to only re-enter on a fresh end-call phrase, so a decision-only
+            # follow-up fell through and confirmation.required was never
+            # actually enforced for the common "user says goodbye" path.
+            has_pending_end_call_decision = (
+                end_call_tool is not None
+                and request.confirmation_id == end_call_tool.id
+                and request.decision is not None
+            )
+            if end_call_tool and (
+                self._user_requested_end_call(last_user.content) or has_pending_end_call_decision
+            ):
+                is_decision_for_this_tool = request.confirmation_id == end_call_tool.id
+                has_decision = is_decision_for_this_tool and request.decision is not None
+
+                if end_call_tool.confirmation.required and not has_decision:
+                    logger.info(
+                        "confirmation_required",
+                        tool_id=end_call_tool.id,
+                        conversation_id=request.conversation_id,
+                    )
+                    return ConversationResponse(
+                        conversation_id=request.conversation_id,
+                        reply=self._make_assistant_message(
+                            end_call_tool.confirmation.prompt
+                            or f"I need your confirmation before I proceed with {end_call_tool.name}. Should I go ahead?"
+                        ),
+                        status=ConversationStatus.CONFIRMATION_REQUIRED,
+                        tool_invoked=end_call_tool,
+                        confirmation=ConfirmationResponsePayload(
+                            confirmation_id=end_call_tool.id,
+                            action=end_call_tool.name,
+                            description=end_call_tool.confirmation.prompt
+                            or f"Execute {end_call_tool.name}",
+                        ),
+                        selected_intent="",
+                        selected_agent=request.selected_agent or "",
+                        next_active_tool_id=end_call_tool.id,
+                    )
+
+                if has_decision and request.decision == "reject":
+                    logger.info(
+                        "tool_execution_rejected",
+                        tool_id=end_call_tool.id,
+                        conversation_id=request.conversation_id,
+                    )
+                    return ConversationResponse(
+                        conversation_id=request.conversation_id,
+                        reply=self._make_assistant_message(
+                            "Understood, I won't end the call. How else can I help you?"
+                        ),
+                        status=ConversationStatus.REJECTED,
+                        selected_intent="",
+                        selected_agent=request.selected_agent or "",
+                    )
+
                 try:
                     farewell = await asyncio.wait_for(
                         self._call_llm(
@@ -875,7 +931,62 @@ class ConversationOrchestrator:
                 tool_types=[t.type for t in request.agent_config.tools],
                 user_requested=self._user_requested_end_call(last_user.content),
             )
-            if end_call_tool and self._user_requested_end_call(last_user.content):
+            # See the equivalent block in process_message for why a decision-only
+            # follow-up (e.g. a bare "yes") must also re-enter this shortcut.
+            has_pending_end_call_decision = (
+                end_call_tool is not None
+                and request.confirmation_id == end_call_tool.id
+                and request.decision is not None
+            )
+            if end_call_tool and (
+                self._user_requested_end_call(last_user.content) or has_pending_end_call_decision
+            ):
+                is_decision_for_this_tool = request.confirmation_id == end_call_tool.id
+                has_decision = is_decision_for_this_tool and request.decision is not None
+
+                if end_call_tool.confirmation.required and not has_decision:
+                    logger.info(
+                        "confirmation_required",
+                        tool_id=end_call_tool.id,
+                        conversation_id=request.conversation_id,
+                    )
+                    yield ConversationResponse(
+                        conversation_id=request.conversation_id,
+                        reply=self._make_assistant_message(
+                            end_call_tool.confirmation.prompt
+                            or f"I need your confirmation before I proceed with {end_call_tool.name}. Should I go ahead?"
+                        ),
+                        status=ConversationStatus.CONFIRMATION_REQUIRED,
+                        tool_invoked=end_call_tool,
+                        confirmation=ConfirmationResponsePayload(
+                            confirmation_id=end_call_tool.id,
+                            action=end_call_tool.name,
+                            description=end_call_tool.confirmation.prompt
+                            or f"Execute {end_call_tool.name}",
+                        ),
+                        selected_intent="",
+                        selected_agent=request.selected_agent or "",
+                        next_active_tool_id=end_call_tool.id,
+                    )
+                    return
+
+                if has_decision and request.decision == "reject":
+                    logger.info(
+                        "tool_execution_rejected",
+                        tool_id=end_call_tool.id,
+                        conversation_id=request.conversation_id,
+                    )
+                    yield ConversationResponse(
+                        conversation_id=request.conversation_id,
+                        reply=self._make_assistant_message(
+                            "Understood, I won't end the call. How else can I help you?"
+                        ),
+                        status=ConversationStatus.REJECTED,
+                        selected_intent="",
+                        selected_agent=request.selected_agent or "",
+                    )
+                    return
+
                 try:
                     farewell = await asyncio.wait_for(
                         self._call_llm(
