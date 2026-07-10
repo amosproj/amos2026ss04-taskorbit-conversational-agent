@@ -176,6 +176,23 @@ shows the current agent's initials and name. When `setActiveAgent` fires
 (from any path above), a `useEffect` detects the name change and shows a
 `↔ from [Previous Agent]` badge for the remainder of the call.
 
+### Configuring transfer targets (#203)
+
+The **Target agents** field on an `agent_transfer` tool (Agent Config →
+Tools section) is a dropdown listing every available agent by name —
+built-ins and the user's saved custom agents — instead of a free-text ID
+input:
+
+- Selecting an agent stores `entry.id`, the same stable identifier
+  `resolve_transfer_target` resolves directly: the hyphenated template slug
+  for built-ins (`sales-agent`) or the UUID for custom agents. The name
+  shown in the dropdown is display-only; the ID is what's persisted in
+  `targets`.
+- Already-selected agents appear disabled in the list so the same target
+  can't be added twice.
+- If the agent list fails to load, the field falls back to the original
+  free-text ID input.
+
 ---
 
 ## Voice path — limitations
