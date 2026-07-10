@@ -420,6 +420,14 @@ class OrchestratorAgent(Agent):
         # once, on this turn; the orchestrator's step-0a short-circuit swaps
         # the conversation to the picked agent.
         manual_transfer = self._consume_pending_manual_transfer()
+        if manual_transfer is not None:
+            # Surface the card swap at request time: the pick came from the
+            # live agent list, and deferring the publish until the reply
+            # completed made the swap hang- and cancel-fragile. The error
+            # branch below withdraws it on the rare lookup failure.
+            self._pending_handoff_target = (
+                manual_transfer.target_agent_id or manual_transfer.target_agent_name
+            )
 
         request = ConversationRequest(
             conversation_id=self._conversation_id,
@@ -588,19 +596,27 @@ class OrchestratorAgent(Agent):
                     conversation_id=self._conversation_id,
                 )
 
-        # Manual voice transfer (#212): the pick arrived over the data channel
-        # and step-0a applied it above; surface the swap to the frontend
-        # through the same handoff publish as auto transfers.
-        if manual_transfer is not None and response.status != "error":
-            self._pending_handoff_target = (
-                manual_transfer.target_agent_id or manual_transfer.target_agent_name
-            )
-            log.info(
-                "voice_manual_transfer_applied",
-                target=self._pending_handoff_target,
-                selected_agent=response.selected_agent,
-                conversation_id=self._conversation_id,
-            )
+        # Manual voice transfer (#212): the pending swap was surfaced at
+        # request time; withdraw it if the orchestrator could not resolve the
+        # picked agent, otherwise just record the outcome.
+        if manual_transfer is not None:
+            expected = manual_transfer.target_agent_id or manual_transfer.target_agent_name
+            if response.status == "error":
+                if self._pending_handoff_target == expected:
+                    self._pending_handoff_target = None
+                log.warning(
+                    "voice_manual_transfer_failed",
+                    target=expected,
+                    error=response.error,
+                    conversation_id=self._conversation_id,
+                )
+            else:
+                log.info(
+                    "voice_manual_transfer_applied",
+                    target=expected,
+                    selected_agent=response.selected_agent,
+                    conversation_id=self._conversation_id,
+                )
 
         if self._t_commit is not None:
             elapsed = time.perf_counter() - self._t_commit
