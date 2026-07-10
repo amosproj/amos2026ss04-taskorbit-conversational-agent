@@ -228,6 +228,10 @@ async def entrypoint(ctx: JobContext) -> None:
             )
             logger.info("worker_handoff_published", target=pending, topic=_HANDOFF_TOPIC)
         except Exception as exc:  # noqa: BLE001
+            # Restore so a later flush retries instead of losing the swap,
+            # unless a newer target has already been stashed meanwhile (#212).
+            if agent._pending_handoff_target is None:
+                agent._pending_handoff_target = pending
             logger.warning("worker_handoff_publish_failed", error=str(exc))
 
     async def _commit_and_reply(turn_start: float) -> None:
@@ -306,6 +310,17 @@ async def entrypoint(ctx: JobContext) -> None:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.warning("worker_generate_reply_failed", error=str(exc))
+
+    # Catch-all handoff flush (#212): some generations are driven by the
+    # framework's own end-of-turn (not _commit_and_reply), so their stashed
+    # handoff would otherwise wait for the next commit. Whenever the agent
+    # finishes speaking, drain any pending swap.
+    @session.on("agent_state_changed")
+    def _flush_on_state(ev: AgentEvent) -> None:
+        if getattr(ev, "new_state", None) in ("listening", "idle"):
+            flush_task = asyncio.create_task(_flush_pending_handoff())
+            background_tasks.add(flush_task)
+            flush_task.add_done_callback(background_tasks.discard)
 
     # When the frontend Send button is clicked, useMicRecorder.sendUtterance()
     # publishes {"type": "commit_turn"} over the data channel. Handling it here

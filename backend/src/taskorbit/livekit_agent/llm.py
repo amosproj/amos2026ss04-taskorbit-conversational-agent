@@ -420,14 +420,6 @@ class OrchestratorAgent(Agent):
         # once, on this turn; the orchestrator's step-0a short-circuit swaps
         # the conversation to the picked agent.
         manual_transfer = self._consume_pending_manual_transfer()
-        if manual_transfer is not None:
-            # Surface the card swap at request time: the pick came from the
-            # live agent list, and deferring the publish until the reply
-            # completed made the swap hang- and cancel-fragile. The error
-            # branch below withdraws it on the rare lookup failure.
-            self._pending_handoff_target = (
-                manual_transfer.target_agent_id or manual_transfer.target_agent_name
-            )
 
         request = ConversationRequest(
             conversation_id=self._conversation_id,
@@ -581,6 +573,10 @@ class OrchestratorAgent(Agent):
         if (
             response.tool_invoked is not None
             and response.tool_invoked.type == _ToolType.AGENT_TRANSFER
+            # Publish only COMPLETED transfers: tool_invoked is also set on
+            # confirmation_required (the ask turn) and rejected responses,
+            # which must not swap the card or reroute the worker (#212).
+            and response.status == "success"
         ):
             targets = response.tool_invoked.parameters.get("targets") or []
             if targets:
@@ -596,14 +592,12 @@ class OrchestratorAgent(Agent):
                     conversation_id=self._conversation_id,
                 )
 
-        # Manual voice transfer (#212): the pending swap was surfaced at
-        # request time; withdraw it if the orchestrator could not resolve the
-        # picked agent, otherwise just record the outcome.
+        # Manual voice transfer (#212): surface the swap only once the
+        # orchestrator confirms the transfer completed, so a cancelled or
+        # failed turn can never swap the card away from the real agent.
         if manual_transfer is not None:
             expected = manual_transfer.target_agent_id or manual_transfer.target_agent_name
             if response.status == "error":
-                if self._pending_handoff_target == expected:
-                    self._pending_handoff_target = None
                 log.warning(
                     "voice_manual_transfer_failed",
                     target=expected,
@@ -611,6 +605,7 @@ class OrchestratorAgent(Agent):
                     conversation_id=self._conversation_id,
                 )
             else:
+                self._pending_handoff_target = expected
                 log.info(
                     "voice_manual_transfer_applied",
                     target=expected,

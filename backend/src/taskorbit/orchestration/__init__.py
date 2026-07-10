@@ -559,7 +559,10 @@ class ConversationOrchestrator:
             active_tool = self._select_active_tool(
                 request.messages,
                 agent,
-                active_tool_id=request.active_tool_id,
+                # confirmation_id IS the pending tool's id: pinning on it keeps
+                # a decision turn on the tool being confirmed even when the
+                # client does not round-trip active_tool_id (#212).
+                active_tool_id=request.active_tool_id or request.confirmation_id,
                 intent=intent,
                 current_agent=request.selected_agent or request.agent_config.id,
             )
@@ -1153,7 +1156,10 @@ class ConversationOrchestrator:
             active_tool = self._select_active_tool(
                 request.messages,
                 agent,
-                active_tool_id=request.active_tool_id,
+                # confirmation_id IS the pending tool's id: pinning on it keeps
+                # a decision turn on the tool being confirmed even when the
+                # client does not round-trip active_tool_id (#212).
+                active_tool_id=request.active_tool_id or request.confirmation_id,
                 intent=intent,
                 current_agent=request.selected_agent or request.agent_config.id,
             )
