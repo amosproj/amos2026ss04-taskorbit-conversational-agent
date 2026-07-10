@@ -1888,3 +1888,17 @@ async def test_transfer_tool_invoked_carries_canonical_target() -> None:
     assert response.tool_invoked is not None
     assert response.tool_invoked.type == ToolType.AGENT_TRANSFER
     assert response.tool_invoked.parameters["targets"] == ["general_inquiry"]
+
+
+def test_select_no_refire_when_current_agent_is_template_slug() -> None:
+    """After a completed voice handoff the worker reports the canonical
+    template slug as the current agent; the transfer must NOT re-fire (#212)."""
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool(
+        [],
+        _FakeAgent(_john_max_tools()),
+        intent=_intent_for("general_inquiry"),
+        current_agent="general-inquiry-agent",
+    )
+    assert tool is not None
+    assert tool.id == "collect_user_info"

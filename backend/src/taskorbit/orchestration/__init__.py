@@ -1723,9 +1723,20 @@ class ConversationOrchestrator:
             if match:
                 return match
 
-        if intent is not None and intent.agent_name and intent.agent_name != current_agent:
+        if intent is not None and intent.agent_name:
             from taskorbit.tools.agent_transfer import resolve_builtin_transfer_target
 
+            # current_agent can arrive as a template slug after a completed voice
+            # handoff ("technical-support-agent"), while intent.agent_name is a
+            # registry name ("technical_support"). Normalise before comparing so
+            # a finished handoff never re-fires the transfer (#212).
+            effective_current = (
+                resolve_builtin_transfer_target(current_agent) or current_agent
+                if current_agent
+                else current_agent
+            )
+            if intent.agent_name == effective_current:
+                return tools[0]
             for tool in tools:
                 if tool.type != ToolType.AGENT_TRANSFER:
                     continue

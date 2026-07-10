@@ -544,6 +544,10 @@ class OrchestratorAgent(Agent):
             targets = response.tool_invoked.parameters.get("targets") or []
             if targets:
                 self._pending_handoff_target = str(targets[0])
+                # The conversation is now routed to the target: without this,
+                # selected_agent stays on the entry agent and the transfer
+                # re-fires (and re-publishes) on every subsequent turn (#212).
+                self._current_routed_agent = self._pending_handoff_target
                 log.info(
                     "voice_agent_handoff_pending",
                     target=self._pending_handoff_target,
