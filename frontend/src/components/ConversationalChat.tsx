@@ -160,12 +160,9 @@ export function ConversationalChat() {
     workflowVoiceSyncRef.current = sync;
   }, []);
   const manualTransferVoiceRef = useRef<ManualTransferVoiceSyncFn | null>(null);
-  const registerManualTransferVoiceSync = useCallback(
-    (sync: ManualTransferVoiceSyncFn | null) => {
-      manualTransferVoiceRef.current = sync;
-    },
-    [],
-  );
+  const registerManualTransferVoiceSync = useCallback((sync: ManualTransferVoiceSyncFn | null) => {
+    manualTransferVoiceRef.current = sync;
+  }, []);
   const syncWorkflowToVoice = useCallback(async (state: WorkflowVoiceState) => {
     try {
       await workflowVoiceSyncRef.current?.(state);
@@ -658,12 +655,14 @@ export function ConversationalChat() {
       // it applies the hard transfer on the next voice turn and publishes the
       // agent_handoff swap back to us.
       if (call.livekitCredentials !== null) {
-        manualTransferVoiceRef.current?.({
-          target_agent_id: target.id,
-          target_agent_name: target.name,
-        }).catch((err) => {
-          console.warn("[ConversationalChat] manual transfer publish failed", err);
-        });
+        manualTransferVoiceRef
+          .current?.({
+            target_agent_id: target.id,
+            target_agent_name: target.name,
+          })
+          .catch((err) => {
+            console.warn("[ConversationalChat] manual transfer publish failed", err);
+          });
       }
     },
     [call, agent.tts],
