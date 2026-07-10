@@ -351,11 +351,24 @@ function EndCallEditor({
 /* agent_transfer                                                       */
 /* ──────────────────────────────────────────────────────────────────── */
 
-// NOTE (#203): the exact identifier to store is pending confirmation from
-// Asad (#212 backend resolution). Placeholder uses the established idOf
-// pattern from AgentSwitcher.tsx. If Asad confirms built-ins need a
-// different form (e.g. a slug), change ONLY this function.
+// NOTE (#203): confirmed against backend resolution (#212) — both the
+// auto-transfer regex normalization (orchestration/__init__.py) and the
+// manual-transfer PK lookup (get_agent_configuration_by_id /
+// get_default_agent_template) resolve targets by the row's top-level `id`
+// (the hyphenated template slug for built-ins, e.g. "sales-agent", or the
+// UUID for custom agents). config.agent_id/config.id are an unrelated field
+// used only by workflow_dependencies/allowed_handoffs matching — not this.
+// This is the STORAGE key (what goes into targets) — do not use it for dedup,
+// entry.id is unique per row so it won't collapse a template + its copies.
 function stableTargetId(entry: UserAgentEntry): string {
+  return entry.id;
+}
+
+// DEDUP key only — mirrors AgentSwitcher's idOf. A built-in template and the
+// user's customized copy of it are separate rows (separate entry.id values)
+// but share config.id (copied verbatim from the template on clone and never
+// rewritten), so this collapses them back into one dropdown entry.
+function logicalId(entry: UserAgentEntry): string {
   return entry.config.agent_id ?? entry.config.id ?? entry.id;
 }
 
@@ -390,14 +403,27 @@ function AgentTransferEditor({
   // error if the backend data is malformed or missing the targets array.
   const targets = Array.isArray(tool.targets) ? tool.targets : [];
 
+  // list_user_agents_merged (backend) always orders user-owned rows before
+  // templates, so the first row seen per logicalId is the customized copy
+  // when one exists — first-wins dedup below prefers it over the template
+  // automatically, without needing an "active row" tie-break like AgentSwitcher.
   const byAgent = new Map<string, UserAgentEntry>();
   for (const entry of agents) {
-    if (!byAgent.has(stableTargetId(entry))) byAgent.set(stableTargetId(entry), entry);
+    const key = logicalId(entry);
+    if (!byAgent.has(key)) byAgent.set(key, entry);
   }
   const uniqueAgents = [...byAgent.values()].sort((a, b) => a.name.localeCompare(b.name));
 
   // Dropdown-driven flow is only usable once agents have actually loaded.
   const useDropdown = !loadFailed && uniqueAgents.length > 0;
+
+  // Single write path for every add/remove below. The backend reads
+  // parameters.targets, not targets — writing both together here (instead
+  // of leaving parameters to whatever stale value it had at load) is what
+  // keeps them from drifting as the user edits.
+  const setTargets = (next: string[]) => {
+    onChange({ ...tool, targets: next, parameters: { targets: next } });
+  };
 
   const addTarget = () => {
     const t = draft.trim();
@@ -405,18 +431,18 @@ function AgentTransferEditor({
       setDraft("");
       return;
     }
-    onChange({ ...tool, targets: [...targets, t] });
+    setTargets([...targets, t]);
     setDraft("");
   };
 
   const addTargetFromDropdown = (id: string) => {
     if (!id || targets.includes(id)) return;
-    onChange({ ...tool, targets: [...targets, id] });
+    setTargets([...targets, id]);
     setPendingAgentId("");
   };
 
   const removeTarget = (target: string) => {
-    onChange({ ...tool, targets: targets.filter((t) => t !== target) });
+    setTargets(targets.filter((t) => t !== target));
   };
 
   const nameForTarget = (target: string) =>
