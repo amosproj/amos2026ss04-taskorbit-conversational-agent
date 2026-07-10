@@ -63,4 +63,6 @@ export type ConfirmationPromptState = {
   description: string;
   /** 'workflow' for prerequisite step confirmations, 'tool' (default) for sensitive tool calls. */
   type?: "tool" | "workflow";
+  /** Backend ToolType ("data_extraction" | "agent_transfer" | "end_call" | "external_api"), when known. */
+  toolType?: string;
 };

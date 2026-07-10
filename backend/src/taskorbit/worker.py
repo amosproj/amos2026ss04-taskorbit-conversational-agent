@@ -60,6 +60,11 @@ _SESSION_ENDED_TOPIC: str = "taskorbit.session_ended"
 # this on end-of-speech so the frontend commits the turn even when its own
 # amplitude-based silence detection misses on background noise. #153.
 _FORCE_COMMIT_TOPIC: str = "taskorbit.force_commit"
+# Topic the FE (useVoiceConfirmation) subscribes to: mirrors the text path's
+# Approve/Deny card during a voice call. The voice path still resolves the
+# actual yes/no via speech (_voice_confirmation_decision) -- this only drives
+# the visual card, which previously never appeared in voice mode.
+_CONFIRMATION_TOPIC: str = "taskorbit.confirmation_pending"
 
 
 async def entrypoint(ctx: JobContext) -> None:
@@ -292,6 +297,23 @@ async def entrypoint(ctx: JobContext) -> None:
                     logger.warning("worker_session_ended_publish_failed", error=str(exc))
                 finally:
                     agent._call_ended = False
+
+            # Publish the pending confirmation (if any) so the frontend can
+            # render the same Approve/Deny card used in text mode. Always
+            # publish either state (pending or cleared) rather than only on
+            # transitions -- the frontend applies both idempotently and this
+            # avoids tracking extra "did it change" state here.
+            try:
+                pending = agent._pending_confirmation
+                if pending is not None:
+                    payload = json.dumps({"type": "confirmation_pending", **pending})
+                else:
+                    payload = json.dumps({"type": "confirmation_cleared"})
+                await ctx.room.local_participant.publish_data(
+                    payload, reliable=True, topic=_CONFIRMATION_TOPIC
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("worker_confirmation_publish_failed", error=str(exc))
 
             # AC7: now that the orchestrator has finished (wait_for_playout
             # above), the pending target is set if a transfer dispatched this

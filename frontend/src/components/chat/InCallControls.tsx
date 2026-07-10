@@ -52,6 +52,12 @@ type Props = {
   onAgentMutedChange: (muted: boolean) => void;
   /** When true, the text box is disabled — voice-only turns during a LiveKit call. */
   disableTextInput?: boolean;
+  /**
+   * True while a confirmation card is on screen. The user may need real
+   * time to read it and decide before answering out loud -- suppresses the
+   * no-speech watchdog below so it doesn't auto-mute the mic mid-thought.
+   */
+  hasPendingConfirmation?: boolean;
 };
 
 export function InCallControls({
@@ -65,6 +71,7 @@ export function InCallControls({
   agentMuted,
   onAgentMutedChange,
   disableTextInput = false,
+  hasPendingConfirmation = false,
 }: Props) {
   const mic = useMicRecorder();
   const [draft, setDraft] = useState("");
@@ -244,6 +251,9 @@ export function InCallControls({
     void mic.enable();
   }, [status, continuousMode, greetingInProgress, mic]);
 
+  const hasPendingConfirmationRef = useRef(hasPendingConfirmation);
+  hasPendingConfirmationRef.current = hasPendingConfirmation;
+
   // ── No-speech timeout ────────────────────────────────────────────────────
   // If the mic opens but the user never says anything (amplitude stays below
   // the speech floor for NO_SPEECH_MS), mute back to idle_in_call and leave
@@ -267,6 +277,11 @@ export function InCallControls({
     const start = Date.now();
     let hasSpeech = false;
     const id = setInterval(() => {
+      // A voice confirmation card is up: the user needs real time to read
+      // and decide, so don't auto-mute out from under them mid-thought.
+      // Without this, a >10s pause while reading the card silently kills
+      // continuous mode and the mic, and no further speech is ever heard.
+      if (hasPendingConfirmationRef.current) return;
       const levels = mic.levelsRef.current;
       const avg = levels.reduce((s, v) => s + v, 0) / (levels.length || 1);
       if (avg >= SPEECH_FLOOR) {
