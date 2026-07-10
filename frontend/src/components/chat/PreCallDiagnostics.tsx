@@ -30,7 +30,6 @@ const toneClasses: Record<CheckTone, string> = {
 export function PreCallDiagnostics({ className }: { className?: string }) {
   const { health } = useBackendHealth();
   const apiUrl = import.meta.env.VITE_API_URL ?? "";
-  const livekitUrl = import.meta.env.VITE_LIVEKIT_URL ?? "";
   const [showDetail, setShowDetail] = useState(false);
 
   const backendCheck: Check =
@@ -48,13 +47,25 @@ export function PreCallDiagnostics({ className }: { className?: string }) {
             detail: `unreachable · ${health.message}`,
           };
 
-  const livekitCheck: Check = livekitUrl
-    ? { label: "LiveKit", tone: "ok", detail: livekitUrl }
-    : {
-        label: "LiveKit",
-        tone: "warn",
-        detail: "VITE_LIVEKIT_URL is not set — voice will not connect.",
-      };
+  // LiveKit URL/credentials live only in backend Settings and are handed to the
+  // frontend per-session via POST /v1/livekit/token — there is no frontend env
+  // var to check. The backend reports whether it's configured via /health.
+  const livekitCheck: Check =
+    health.status === "loading"
+      ? { label: "LiveKit", tone: "loading", detail: "Checking backend config…" }
+      : health.status === "ok"
+        ? health.livekit_configured
+          ? { label: "LiveKit", tone: "ok", detail: "Configured on backend" }
+          : {
+              label: "LiveKit",
+              tone: "warn",
+              detail: "LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET not set on backend.",
+            }
+        : {
+            label: "LiveKit",
+            tone: "error",
+            detail: "Cannot verify — backend unreachable.",
+          };
 
   const checks: Check[] = [backendCheck, livekitCheck];
   const hasIssue = checks.some((c) => c.tone === "error" || c.tone === "warn");
@@ -115,8 +126,6 @@ export function PreCallDiagnostics({ className }: { className?: string }) {
             <dd className="font-mono break-all text-muted-foreground">
               {apiUrl || "(using Vite /api proxy)"}
             </dd>
-            <dt className="font-medium text-muted-foreground">VITE_LIVEKIT_URL</dt>
-            <dd className="font-mono break-all text-muted-foreground">{livekitUrl || "(unset)"}</dd>
           </dl>
         ) : null}
       </CardContent>
