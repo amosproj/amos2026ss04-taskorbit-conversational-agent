@@ -455,6 +455,7 @@ export function ConversationalChat() {
                 call.triggerConfirmation({
                   ...event.confirmation!,
                   type: event.status === "workflow_confirmation_required" ? "workflow" : "tool",
+                  toolType: event.tool_invoked?.type,
                 });
                 call.setPhase("idle_in_call");
                 return;
@@ -625,6 +626,15 @@ export function ConversationalChat() {
     setRoutedAgent(agentName);
   }, []);
 
+  // Stable reference: depend on the inner setter (itself a stable
+  // useCallback in useVoiceCall), NOT `call` -- `call` is a fresh object
+  // literal every render, so depending on it here would still churn
+  // useVoiceConfirmation's effect (resubscribing the data-channel listener
+  // on every render) even though this looks memoized.
+  const handleVoiceConfirmationCleared = useCallback(() => {
+    call.setVoiceConfirmationCard(null);
+  }, [call.setVoiceConfirmationCard]);
+
   // Fires the moment the user picks an agent from the route dropdown.
   // Shows the transcript announcement and speaks it immediately so the user
   // gets visual + audio feedback on selection. setActiveAgent is intentionally
@@ -720,6 +730,7 @@ export function ConversationalChat() {
             call.triggerConfirmation({
               ...response.confirmation,
               type: response.status === "workflow_confirmation_required" ? "workflow" : "tool",
+              toolType: response.tool_invoked?.type,
             });
             return;
           }
@@ -759,6 +770,13 @@ export function ConversationalChat() {
   );
 
   const handleApprove = useCallback(() => {
+    // Voice confirmations never set pendingConfirmationIdRef (only the
+    // text-mode flow below does), so the early return further down left the
+    // card stuck on screen forever for a voice call -- the actual yes/no is
+    // already resolved by speech server-side, so clicking this button during
+    // a voice call was never wired to submit anything. Unconditionally
+    // dismiss the card here so clicking it isn't a dead end either way.
+    call.setVoiceConfirmationCard(null);
     const confirmId = pendingConfirmationIdRef.current;
     if (confirmId === null) return;
     pendingConfirmationIdRef.current = null;
@@ -767,6 +785,8 @@ export function ConversationalChat() {
   }, [call, handleSendDecision]);
 
   const handleDeny = useCallback(() => {
+    // See handleApprove -- same fix, same reason.
+    call.setVoiceConfirmationCard(null);
     const confirmId = pendingConfirmationIdRef.current;
     if (confirmId === null) return;
     pendingConfirmationIdRef.current = null;
@@ -949,6 +969,7 @@ export function ConversationalChat() {
             onMicError={call.setMicError}
             agentMuted={agentMuted}
             onAgentMutedChange={setAgentMuted}
+            hasPendingConfirmation={call.confirmation !== null}
           />
         </div>
       ) : isInCall ? null : isPostCall ? (
@@ -982,6 +1003,13 @@ export function ConversationalChat() {
             onAgentRouted={handleVoiceAgentRouted}
             onSessionEnded={call.end}
             onConnectionLost={call.reportConnectionLost}
+            // Voice-only setter: shows the card without setting
+            // awaiting_confirmation, which would disable the mic button and
+            // freeze phase updates -- deadlocking the very turn that's
+            // supposed to resolve it, since voice confirmations are resolved
+            // by continuing to speak, not by clicking Approve/Deny.
+            onConfirmationPending={call.setVoiceConfirmationCard}
+            onConfirmationCleared={handleVoiceConfirmationCleared}
           />
           <WorkflowVoiceSyncBridge onRegister={registerWorkflowVoiceSync} />
           <ManualTransferVoiceBridge onRegister={registerManualTransferVoiceSync} />
