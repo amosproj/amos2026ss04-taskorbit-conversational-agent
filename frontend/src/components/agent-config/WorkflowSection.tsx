@@ -51,12 +51,9 @@ type Props = {
   onValidationChange?: (state: WorkflowValidationState) => void;
 };
 
-/** Resolved from each saved config's blob: logical id + display name. */
-type AgentOption = { agentId: string; name: string; isCustomized: boolean };
-
-/** One row per /v1/user-agents entry — unlike AgentOption, rowId disambiguates
- * entries that share an agent_id (e.g. two customized copies of one template). */
-type WhenAgentOption = AgentOption & { rowId: string };
+/** One row per saved config — rowId disambiguates entries that share an
+ * agent_id (e.g. two customized copies of one template). */
+type AgentOption = { rowId: string; agentId: string; name: string; isCustomized: boolean };
 
 export type WorkflowValidationState = {
   valid: boolean;
@@ -73,20 +70,6 @@ type ConfigBlob = {
 function logicalAgentId(c: ConfigBlob): string | undefined {
   const id = (c.agent_id ?? c.id ?? "").trim();
   return id || undefined;
-}
-
-function mergeIntoAgentMaps(
-  optionsMap: Map<string, { name: string; isCustomized: boolean }>,
-  graph: Map<string, string[]>,
-  agentId: string,
-  displayName: string,
-  isCustomized: boolean,
-  deps: string[] | undefined,
-) {
-  if (!optionsMap.has(agentId)) {
-    optionsMap.set(agentId, { name: displayName, isCustomized });
-  }
-  graph.set(agentId, deps ?? []);
 }
 
 // ── Shared sub-components ────────────────────────────────────────────────────
@@ -127,35 +110,41 @@ function AgentListEditor({
   externalError,
   onAddBlocked,
 }: AgentListEditorProps) {
-  const [pending, setPending] = useState("");
+  // Tracks the selected row, not the agent_id — two rows can share an
+  // agent_id, and Radix Select requires each SelectItem's value to be unique
+  // or it garbles the displayed label (concatenates every matching item).
+  const [pendingRowId, setPendingRowId] = useState("");
 
   const displayError = externalError;
 
   // Only agents not already in this list appear in the dropdown.
   const available = agents.filter((a) => !ids.includes(a.agentId));
+  const availableSaved = available.filter((a) => a.isCustomized);
+  const availableBuiltIn = available.filter((a) => !a.isCustomized);
+  const pendingAgentId = available.find((a) => a.rowId === pendingRowId)?.agentId ?? "";
 
-  function handleValueChange(v: string) {
-    setPending(v);
+  function handleValueChange(rowId: string) {
+    setPendingRowId(rowId);
     onAddBlocked?.(null);
   }
 
   function add() {
-    if (!pending || ids.includes(pending)) return;
+    if (!pendingAgentId || ids.includes(pendingAgentId)) return;
 
     if (currentAgentId && depGraph) {
-      if (pending === currentAgentId) {
+      if (pendingAgentId === currentAgentId) {
         onAddBlocked?.("An agent cannot depend on itself.");
         return;
       }
-      if (wouldCreateCycle(pending, depGraph, currentAgentId)) {
+      if (wouldCreateCycle(pendingAgentId, depGraph, currentAgentId)) {
         onAddBlocked?.("Adding this agent would create a circular dependency.");
         return;
       }
     }
 
     onAddBlocked?.(null);
-    onChange([...ids, pending]);
-    setPending("");
+    onChange([...ids, pendingAgentId]);
+    setPendingRowId("");
   }
 
   function remove(id: string) {
@@ -173,7 +162,7 @@ function AgentListEditor({
           <FieldLabel>Add agent</FieldLabel>
           <div className="flex gap-2">
             <Select
-              value={pending}
+              value={pendingRowId}
               onValueChange={handleValueChange}
               disabled={loading || available.length === 0}
             >
@@ -189,20 +178,33 @@ function AgentListEditor({
                 />
               </SelectTrigger>
               <SelectContent>
-                <SelectGroup>
-                  {available.map((a) => (
-                    <SelectItem key={a.agentId} value={a.agentId}>
-                      {a.name}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
+                {availableSaved.length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel>Saved agents</SelectLabel>
+                    {availableSaved.map((a) => (
+                      <SelectItem key={a.rowId} value={a.rowId}>
+                        {a.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )}
+                {availableBuiltIn.length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel>Built-in agents</SelectLabel>
+                    {availableBuiltIn.map((a) => (
+                      <SelectItem key={a.rowId} value={a.rowId}>
+                        {a.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )}
               </SelectContent>
             </Select>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              disabled={loading || !pending}
+              disabled={loading || !pendingRowId}
               onClick={add}
             >
               Add
@@ -257,13 +259,12 @@ export function WorkflowSection({
     !isSimpleWorkflowRules(workflowRules);
 
   const [agents, setAgents] = useState<AgentOption[]>([]);
-  const [whenAgents, setWhenAgents] = useState<WhenAgentOption[]>([]);
   const [depGraph, setDepGraph] = useState<Map<string, string[]>>(new Map());
   const [loading, setLoading] = useState(true);
   const [pendingAddError, setPendingAddError] = useState<string | null>(null);
 
-  const savedWhenAgents = whenAgents.filter((a) => a.isCustomized);
-  const builtInWhenAgents = whenAgents.filter((a) => !a.isCustomized);
+  const savedWhenAgents = agents.filter((a) => a.isCustomized);
+  const builtInWhenAgents = agents.filter((a) => !a.isCustomized);
 
   const savedDepsError = getWorkflowValidationError(currentAgentId, deps, depGraph);
   const workflowError = pendingAddError ?? savedDepsError;
@@ -279,68 +280,54 @@ export function WorkflowSection({
     setLoading(true);
 
     async function loadWorkflowAgents() {
-      const optionsMap = new Map<string, { name: string; isCustomized: boolean }>();
       const graph = new Map<string, string[]>();
+
+      // One row per saved config — mirrors the "Load agent" menu, which
+      // doesn't dedupe either. Two entries can share an agent_id (e.g. two
+      // customized copies of one template), so agentId alone can't be the key.
+      const options: AgentOption[] = [];
 
       // Primary: /v1/user-agents (where "Save as new" writes since #71 fix).
       const userEntries =
         userAgentEntries ?? (await fetchUserAgents(signal).catch(() => [] as UserAgentEntry[]));
-
-      // One row per user-agent entry — mirrors the "Load agent" menu, which
-      // doesn't dedupe either. Two entries can share an agent_id (e.g. two
-      // customized copies of one template), so agentId alone can't be the key.
-      const whenOptions: WhenAgentOption[] = [];
+      const primaryRowIds = new Set(userEntries.map((entry) => entry.id));
       for (const entry of userEntries) {
         const c = entry.config as ConfigBlob;
         const agentId = logicalAgentId(c);
         if (!agentId) continue;
-        whenOptions.push({
+        options.push({
           rowId: entry.id,
           agentId,
           name: c.name ?? entry.name,
           isCustomized: entry.is_customized,
         });
-        mergeIntoAgentMaps(
-          optionsMap,
-          graph,
-          agentId,
-          c.name ?? entry.name,
-          entry.is_customized,
-          c.workflow_dependencies,
-        );
+        graph.set(agentId, c.workflow_dependencies ?? []);
       }
-      setWhenAgents(whenOptions);
 
       // Legacy: /v1/agent-configs presets (older saves before user-agents POST path).
+      // Its rows overlap with /v1/user-agents by id, so skip any already seen above.
       try {
         const summaries = await listAgentConfigs(signal);
-        const fullConfigs = await Promise.all(summaries.map((s) => loadAgentConfig(s.id, signal)));
+        const fullConfigs = await Promise.all(
+          summaries.filter((s) => !primaryRowIds.has(s.id)).map((s) => loadAgentConfig(s.id, signal)),
+        );
         for (const saved of fullConfigs) {
           const c = saved.config as ConfigBlob;
           const agentId = logicalAgentId(c);
           if (!agentId) continue;
-          mergeIntoAgentMaps(
-            optionsMap,
-            graph,
+          options.push({
+            rowId: `legacy:${saved.id}`,
             agentId,
-            c.name ?? saved.name,
-            true,
-            c.workflow_dependencies,
-          );
+            name: c.name ?? saved.name,
+            isCustomized: true,
+          });
+          graph.set(agentId, c.workflow_dependencies ?? []);
         }
       } catch (err: unknown) {
         if (!(err instanceof Error && err.name === "AbortError")) {
           console.error("Failed to load legacy agent-config list:", err);
         }
       }
-
-      const options: AgentOption[] = Array.from(optionsMap.entries()).map(
-        ([agentId, { name, isCustomized }]) => ({
-          agentId,
-          name,
-          isCustomized,
-        }),
-      );
 
       setAgents(options);
       setDepGraph(graph);
@@ -444,24 +431,22 @@ export function WorkflowSection({
                 <Field>
                   <FieldLabel>When routed to</FieldLabel>
                   <Select
-                    value={
-                      whenAgents.some((a) => a.agentId === simpleRules.whenAgentName)
-                        ? simpleRules.whenAgentName
-                        : ""
-                    }
-                    onValueChange={(whenAgentName) =>
+                    value={agents.find((a) => a.agentId === simpleRules.whenAgentName)?.rowId ?? ""}
+                    onValueChange={(rowId) => {
+                      const match = agents.find((a) => a.rowId === rowId);
+                      if (!match) return;
                       onWorkflowRulesChange(
-                        buildSimpleWorkflowRules(whenAgentName, simpleRules.whenDependencies),
-                      )
-                    }
-                    disabled={loading || whenAgents.length === 0}
+                        buildSimpleWorkflowRules(match.agentId, simpleRules.whenDependencies),
+                      );
+                    }}
+                    disabled={loading || agents.length === 0}
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue
                         placeholder={
                           loading
                             ? "Loading agents…"
-                            : whenAgents.length === 0
+                            : agents.length === 0
                               ? "No agents available"
                               : "Select an agent…"
                         }
@@ -472,7 +457,7 @@ export function WorkflowSection({
                         <SelectGroup>
                           <SelectLabel>Saved agents</SelectLabel>
                           {savedWhenAgents.map((a) => (
-                            <SelectItem key={a.rowId} value={a.agentId}>
+                            <SelectItem key={a.rowId} value={a.rowId}>
                               {a.name}
                             </SelectItem>
                           ))}
@@ -482,7 +467,7 @@ export function WorkflowSection({
                         <SelectGroup>
                           <SelectLabel>Built-in agents</SelectLabel>
                           {builtInWhenAgents.map((a) => (
-                            <SelectItem key={a.rowId} value={a.agentId}>
+                            <SelectItem key={a.rowId} value={a.rowId}>
                               {a.name}
                             </SelectItem>
                           ))}
