@@ -417,7 +417,11 @@ export function WorkflowSection({
                 <Field>
                   <FieldLabel>When routed to</FieldLabel>
                   <Select
-                    value={simpleRules.whenAgentName}
+                    value={
+                      agents.some((a) => a.agentId === simpleRules.whenAgentName)
+                        ? simpleRules.whenAgentName
+                        : ""
+                    }
                     onValueChange={(whenAgentName) =>
                       onWorkflowRulesChange(
                         buildSimpleWorkflowRules(whenAgentName, simpleRules.whenDependencies),
