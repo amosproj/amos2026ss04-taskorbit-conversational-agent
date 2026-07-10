@@ -243,6 +243,7 @@ export function AgentConfigPage() {
       toast.success("Agent saved.", { description: `Saved "${saved.name}".` });
       const updated = await fetchUserAgents();
       setUserAgents(updated);
+      void refreshList();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error.";
       toast.error("Could not save agent.", { description: message });
@@ -270,6 +271,7 @@ export function AgentConfigPage() {
         toast.success("Agent updated.", { description: `Updated "${saved.name}".` });
         const updated = await fetchUserAgents();
         setUserAgents(updated);
+        void refreshList();
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error.";
         toast.error("Could not update agent.", { description: message });
@@ -374,30 +376,6 @@ export function AgentConfigPage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-64">
-                {/* My agents — user copies (is_customized=true) */}
-                {userAgents.filter((e) => e.is_customized).length > 0 ? (
-                  <>
-                    <DropdownMenuLabel className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-                      My agents
-                    </DropdownMenuLabel>
-                    {userAgents
-                      .filter((e) => e.is_customized)
-                      .map((entry) => (
-                        <DropdownMenuItem
-                          key={entry.id}
-                          onClick={() => loadUserAgent(entry)}
-                          className={cn(
-                            "flex items-center gap-2",
-                            activeUserAgentId === entry.id && "bg-muted",
-                          )}
-                        >
-                          <Bot className="h-3 w-3 shrink-0 text-muted-foreground" />
-                          <span className="truncate">{entry.name}</span>
-                        </DropdownMenuItem>
-                      ))}
-                    <DropdownMenuSeparator />
-                  </>
-                ) : null}
                 {/* Built-in agents — unmodified templates (is_customized=false) */}
                 {userAgents.filter((e) => !e.is_customized).length > 0 ? (
                   <>
