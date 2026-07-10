@@ -5,21 +5,13 @@
 
 import type { WorkflowRule } from "@/types/agentConfig";
 
-/** Routed agent names from backend intent → AgentRegistry (orchestration after #8). */
-export const ROUTED_AGENT_OPTIONS = [
-  { value: "technical_support", label: "Technical Support" },
-  { value: "sales", label: "Sales" },
-  { value: "general_inquiry", label: "General Inquiry" },
-  { value: "customer_dissatisfaction", label: "Customer Dissatisfaction" },
-] as const;
-
 export type SimpleWorkflowRulesState = {
   enabled: boolean;
   whenAgentName: string;
   whenDependencies: string[];
 };
 
-const DEFAULT_WHEN_AGENT = "technical_support";
+const DEFAULT_WHEN_AGENT = "";
 
 /** True when rules match the simple two-branch shape the form edits. */
 export function isSimpleWorkflowRules(rules: WorkflowRule[] | undefined): boolean {

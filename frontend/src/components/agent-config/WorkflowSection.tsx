@@ -29,7 +29,6 @@ import {
   buildSimpleWorkflowRules,
   isSimpleWorkflowRules,
   parseSimpleWorkflowRules,
-  ROUTED_AGENT_OPTIONS,
 } from "@/lib/workflowRules";
 import { getWorkflowValidationError, wouldCreateCycle } from "@/lib/workflowValidation";
 
@@ -424,15 +423,24 @@ export function WorkflowSection({
                         buildSimpleWorkflowRules(whenAgentName, simpleRules.whenDependencies),
                       )
                     }
+                    disabled={loading || agents.length === 0}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select routed agent…" />
+                    <SelectTrigger className="w-full">
+                      <SelectValue
+                        placeholder={
+                          loading
+                            ? "Loading agents…"
+                            : agents.length === 0
+                              ? "No agents available"
+                              : "Select an agent…"
+                        }
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
-                        {ROUTED_AGENT_OPTIONS.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
+                        {agents.map((a) => (
+                          <SelectItem key={a.agentId} value={a.agentId}>
+                            {a.name}
                           </SelectItem>
                         ))}
                       </SelectGroup>
