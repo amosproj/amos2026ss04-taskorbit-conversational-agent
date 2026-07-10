@@ -309,7 +309,9 @@ export function WorkflowSection({
       try {
         const summaries = await listAgentConfigs(signal);
         const fullConfigs = await Promise.all(
-          summaries.filter((s) => !primaryRowIds.has(s.id)).map((s) => loadAgentConfig(s.id, signal)),
+          summaries
+            .filter((s) => !primaryRowIds.has(s.id))
+            .map((s) => loadAgentConfig(s.id, signal)),
         );
         for (const saved of fullConfigs) {
           const c = saved.config as ConfigBlob;

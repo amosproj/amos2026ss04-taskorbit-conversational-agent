@@ -152,18 +152,16 @@ export function AgentConfigPage() {
   const loadById = async (id: string) => {
     try {
       const saved = await loadAgentConfig(id);
-      const raw = saved.config as unknown as AgentConfig;
-      const normalized: AgentConfig = {
-        ...raw,
-        instructions: raw.instructions ?? "",
-        first_message: raw.first_message ?? { type: "text", message: "", prompt: "" },
-        tools: raw.tools ?? [],
-        variables: raw.variables ?? {},
-        engine: raw.engine ?? {},
-        workflow_dependencies: raw.workflow_dependencies ?? [],
-        workflow_rules: raw.workflow_rules,
-        allowed_handoffs: raw.allowed_handoffs ?? [],
-      };
+      // The backend stores configs in its own shape (persona/greeting/etc.),
+      // not the frontend AgentConfig shape — same conversion as loadUserAgent.
+      const normalized = backendToFrontendAgent({
+        id: saved.id,
+        template_id: null,
+        name: saved.name,
+        config: saved.config as unknown as UserAgentEntry["config"],
+        is_default: false,
+        is_customized: true,
+      });
       setActiveAgent(normalized, saved.id);
       setShowErrors(false);
       toast.success("Configuration loaded.", {
