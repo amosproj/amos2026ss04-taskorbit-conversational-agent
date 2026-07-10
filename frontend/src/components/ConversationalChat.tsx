@@ -21,6 +21,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useVoiceCall } from "@/hooks/useVoiceCall";
 import {
+  ManualTransferVoiceBridge,
+  type ManualTransferVoiceSyncFn,
   WorkflowVoiceSyncBridge,
   type WorkflowVoiceSyncFn,
   type WorkflowVoiceState,
@@ -157,6 +159,13 @@ export function ConversationalChat() {
   const registerWorkflowVoiceSync = useCallback((sync: WorkflowVoiceSyncFn | null) => {
     workflowVoiceSyncRef.current = sync;
   }, []);
+  const manualTransferVoiceRef = useRef<ManualTransferVoiceSyncFn | null>(null);
+  const registerManualTransferVoiceSync = useCallback(
+    (sync: ManualTransferVoiceSyncFn | null) => {
+      manualTransferVoiceRef.current = sync;
+    },
+    [],
+  );
   const syncWorkflowToVoice = useCallback(async (state: WorkflowVoiceState) => {
     try {
       await workflowVoiceSyncRef.current?.(state);
@@ -629,6 +638,13 @@ export function ConversationalChat() {
       if (!target) {
         manualRoutingLockRef.current = false;
         setRoutedAgent(null);
+        // #212: a cleared pick must also clear the worker's pending transfer,
+        // otherwise the next voice turn would still hard-transfer.
+        if (call.livekitCredentials !== null) {
+          manualTransferVoiceRef.current?.(null).catch((err) => {
+            console.warn("[ConversationalChat] manual transfer clear failed", err);
+          });
+        }
         return;
       }
       const badgeName = target.name.replace(/\s+[Aa]gent$/i, "").trim();
@@ -637,8 +653,20 @@ export function ConversationalChat() {
       const transferMsg = `Transferring you to ${target.name} upon your request.`;
       call.appendAssistantTurn(transferMsg);
       playSynthesizedSpeech(transferMsg, restTtsOptions(agent.tts)).catch(() => {});
+      // #212: during a live voice call there is no typed message to carry
+      // manual_transfer, so hand the pick to the worker over the data channel;
+      // it applies the hard transfer on the next voice turn and publishes the
+      // agent_handoff swap back to us.
+      if (call.livekitCredentials !== null) {
+        manualTransferVoiceRef.current?.({
+          target_agent_id: target.id,
+          target_agent_name: target.name,
+        }).catch((err) => {
+          console.warn("[ConversationalChat] manual transfer publish failed", err);
+        });
+      }
     },
-    [call],
+    [call, agent.tts],
   );
 
   const handleSendDecision = useCallback(
@@ -957,6 +985,7 @@ export function ConversationalChat() {
             onConnectionLost={call.reportConnectionLost}
           />
           <WorkflowVoiceSyncBridge onRegister={registerWorkflowVoiceSync} />
+          <ManualTransferVoiceBridge onRegister={registerManualTransferVoiceSync} />
           {body}
         </LiveKitRoom>
       ) : (

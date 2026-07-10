@@ -48,7 +48,7 @@ _DEEPGRAM_FLUSH_DELAY_S: float = 0.3
 # Explicit allowlist of data-channel message types this worker handles.
 # Packets with any other `type` value are silently discarded.
 _RECOGNISED_MSG_TYPES: frozenset[str] = frozenset(
-    {"commit_turn", "interrupt_playback", "workflow_state"}
+    {"commit_turn", "interrupt_playback", "workflow_state", "manual_transfer"}
 )
 
 # Topic the FE subscribes to via useAgentHandoff to swap the active agent
@@ -312,6 +312,24 @@ async def entrypoint(ctx: JobContext) -> None:
                 logger.info("worker_interrupt_requested")
             except Exception as exc:  # noqa: BLE001
                 logger.warning("worker_interrupt_failed", error=str(exc))
+        elif msg_type == "manual_transfer":
+            # #212: @route menu pick during a voice call; stored on the agent
+            # and applied as a hard manual_transfer on the next voice turn.
+            if msg.get("clear"):
+                agent.set_manual_transfer(None, None)
+                logger.info("worker_manual_transfer_cleared")
+            else:
+                target_id = msg.get("target_agent_id")
+                target_name = msg.get("target_agent_name")
+                agent.set_manual_transfer(
+                    target_id if isinstance(target_id, str) else None,
+                    target_name if isinstance(target_name, str) else None,
+                )
+                logger.info(
+                    "worker_manual_transfer_received",
+                    target_id=target_id,
+                    target_name=target_name,
+                )
         elif msg_type == "workflow_state":
             selected = msg.get("selected_agent")
             completed = msg.get("completed_workflow_steps")

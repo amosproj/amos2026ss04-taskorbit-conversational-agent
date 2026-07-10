@@ -156,6 +156,17 @@ manual path.
 
 ## Frontend UX — agent handoff flow
 
+### Manual transfer (voice path, #212)
+
+During a voice call the @route pick is published to the worker over the
+LiveKit data channel (`taskorbit.manual_transfer`, handled in `worker.py`).
+The worker stores it on the agent bridge and attaches it as a one-shot
+`manual_transfer` to the NEXT voice turn's ConversationRequest, so the
+orchestrator's step-0a short-circuit performs the same hard transfer as the
+text path. After a successful transfer the worker publishes the standard
+`agent_handoff` swap so the frontend card and transcript marker update.
+Clearing the pick publishes a clear so a stale selection can never fire.
+
 ### Manual transfer (text path)
 
 1. User opens the route dropdown (`@` button in `InCallControls`) and picks

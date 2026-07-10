@@ -38,6 +38,7 @@ from taskorbit.types import (
     AgentConfig,
     ConversationRequest,
     LLMConfig,
+    ManualTransferRequest,
     Message,
     MessageRole,
     PersonaConstraints,
@@ -239,9 +240,35 @@ class OrchestratorAgent(Agent):
         # handler can read this to notify the client that the active agent
         # changed mid-call without dropping the room.
         self._pending_handoff_target: str | None = None
+        # UI-picked manual transfer waiting for the next voice turn (#212).
+        self._pending_manual_transfer: ManualTransferRequest | None = None
         # #71: Workflow state for voice path
         self._completed_workflow_steps: list[str] = []
         self._pending_confirmation_id: str | None = None
+
+    def set_manual_transfer(
+        self, target_agent_id: str | None, target_agent_name: str | None
+    ) -> None:
+        """Store a UI-picked agent transfer to apply on the next voice turn (#212).
+
+        The @route menu has no typed message to carry ``manual_transfer``
+        during a voice call, so the frontend publishes the pick over the data
+        channel and the next turn attaches it to the ConversationRequest.
+        Passing (None, None) clears a pending pick (user deselected the menu).
+        """
+        if target_agent_id is None and target_agent_name is None:
+            self._pending_manual_transfer = None
+            return
+        self._pending_manual_transfer = ManualTransferRequest(
+            target_agent_id=target_agent_id,
+            target_agent_name=target_agent_name,
+        )
+
+    def _consume_pending_manual_transfer(self) -> ManualTransferRequest | None:
+        """One-shot: return and clear the pending manual transfer, if any."""
+        pending = self._pending_manual_transfer
+        self._pending_manual_transfer = None
+        return pending
 
     def sync_workflow_state(
         self,
@@ -389,6 +416,11 @@ class OrchestratorAgent(Agent):
         if self._pending_confirmation_id and last_user:
             decision = _voice_confirmation_decision(last_user.content)
 
+        # #212: a manual transfer picked from the @route menu applies exactly
+        # once, on this turn; the orchestrator's step-0a short-circuit swaps
+        # the conversation to the picked agent.
+        manual_transfer = self._consume_pending_manual_transfer()
+
         request = ConversationRequest(
             conversation_id=self._conversation_id,
             agent_config=self._agent_config,
@@ -398,6 +430,7 @@ class OrchestratorAgent(Agent):
             completed_workflow_steps=self._completed_workflow_steps,
             confirmation_id=self._pending_confirmation_id if decision else None,
             decision=decision,
+            manual_transfer=manual_transfer,
         )
         from taskorbit.types import ToolType as _ToolType
 
@@ -554,6 +587,20 @@ class OrchestratorAgent(Agent):
                     selected_agent=response.selected_agent,
                     conversation_id=self._conversation_id,
                 )
+
+        # Manual voice transfer (#212): the pick arrived over the data channel
+        # and step-0a applied it above; surface the swap to the frontend
+        # through the same handoff publish as auto transfers.
+        if manual_transfer is not None and response.status != "error":
+            self._pending_handoff_target = (
+                manual_transfer.target_agent_id or manual_transfer.target_agent_name
+            )
+            log.info(
+                "voice_manual_transfer_applied",
+                target=self._pending_handoff_target,
+                selected_agent=response.selected_agent,
+                conversation_id=self._conversation_id,
+            )
 
         if self._t_commit is not None:
             elapsed = time.perf_counter() - self._t_commit
