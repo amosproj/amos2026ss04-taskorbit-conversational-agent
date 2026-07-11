@@ -5,6 +5,8 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from taskorbit.orchestration import ConversationOrchestrator
 from taskorbit.types import (
@@ -16,6 +18,8 @@ from taskorbit.types import (
     MessageRole,
     PersonaConstraints,
 )
+
+_TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 
 def _make_request(content: str = "Hello") -> ConversationRequest:
@@ -1617,6 +1621,17 @@ async def test_auto_transfer_to_custom_agent_via_process_message() -> None:
             new_callable=AsyncMock,
             return_value=fake_record,
         ),
+        # #224 dispatch-tracking hits db.execute() for real; an unconfigured
+        # AsyncMock's .first() returns a truthy Mock, so without this the
+        # transfer looks "already dispatched" and gets skipped. Not what this
+        # test is exercising, so stub it out like the other orchestrator
+        # internals patched above.
+        patch.object(
+            ConversationOrchestrator,
+            "_tool_already_dispatched",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
     ):
         mock_db = AsyncMock()
         response = await orch.process_message(
@@ -2073,3 +2088,287 @@ def test_select_no_refire_when_current_agent_is_template_slug() -> None:
     )
     assert tool is not None
     assert tool.id == "collect_user_info"
+
+
+# ---------------------------------------------------------------------------
+# #224 — a tool already dispatched must not be re-confirmed/re-dispatched
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def db_session():
+    """Fresh in-memory async database per test (mirrors test_crud.py)."""
+    from taskorbit.database.models import Base
+
+    engine = create_async_engine(_TEST_DATABASE_URL, echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with async_session() as session:
+        yield session
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
+
+
+def _dedup_test_request(decision: str | None = None, confirmation_id: str | None = None):
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    req = _make_request("save my info")
+    req.agent_config.tools = [
+        ToolDefinition(
+            id="collect_user_info",
+            name="collect_user_info",
+            type=ToolType.DATA_EXTRACTION,
+            description="Save",
+            confirmation=ConfirmationConfig(required=True, prompt="Save it?"),
+        )
+    ]
+    req.decision = decision
+    req.confirmation_id = confirmation_id
+    return req
+
+
+class TestToolDispatchDeduplication:
+    """#224: once a tool has actually dispatched in a conversation, later
+    turns (e.g. after an intent flip re-selects the same tool, #227) must not
+    re-ask for confirmation or re-dispatch it."""
+
+    @pytest.mark.asyncio
+    async def test_second_turn_does_not_redispatch_or_reconfirm(
+        self, db_session: AsyncSession, mock_good_intent: Any
+    ) -> None:
+        from taskorbit.slots import SlotExtractionResult
+        from taskorbit.types import ConversationStatus
+
+        orch = ConversationOrchestrator()
+        complete_slots = SlotExtractionResult(filled={"name": MagicMock(value="Alice")}, missing=[])
+        mock_good_intent.required_inputs = [{"name": "name", "type": "string", "required": True}]
+
+        with (
+            patch.object(ConversationOrchestrator, "_call_llm", new_callable=AsyncMock) as mock_llm,
+            patch.object(
+                ConversationOrchestrator,
+                "_extract_slots",
+                new_callable=AsyncMock,
+                return_value=complete_slots,
+            ),
+            patch.object(
+                ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock
+            ) as mock_dispatch,
+        ):
+            mock_dispatch.return_value = ({"saved": True}, 0.0)
+            mock_llm.return_value = "Saved!"
+
+            # Turn 1: confirm and dispatch.
+            turn1 = await orch.process_message(
+                _dedup_test_request(decision="confirm", confirmation_id="collect_user_info"),
+                db=db_session,
+            )
+            assert turn1.status == ConversationStatus.SUCCESS
+            assert turn1.tool_invoked is not None
+            mock_dispatch.assert_called_once()
+
+            # Turn 2: same conversation, same complete slots, no decision this
+            # time (mirrors an intent-flip re-selecting the same tool, #227) —
+            # must NOT re-ask for confirmation or dispatch a second time.
+            mock_llm.return_value = "Anything else?"
+            turn2 = await orch.process_message(
+                _dedup_test_request(decision=None, confirmation_id=None),
+                db=db_session,
+            )
+
+        assert turn2.status != ConversationStatus.CONFIRMATION_REQUIRED
+        assert turn2.tool_invoked is None
+        mock_dispatch.assert_called_once()  # still just the one call from turn 1
+
+    @pytest.mark.asyncio
+    async def test_rejected_tool_can_still_be_asked_and_dispatched_later(
+        self, db_session: AsyncSession, mock_good_intent: Any
+    ) -> None:
+        """A rejected confirmation must not be treated as 'already dispatched' —
+        the user should be able to say yes on a later turn."""
+        from taskorbit.slots import SlotExtractionResult
+        from taskorbit.types import ConversationStatus
+
+        orch = ConversationOrchestrator()
+        complete_slots = SlotExtractionResult(filled={"name": MagicMock(value="Alice")}, missing=[])
+        mock_good_intent.required_inputs = [{"name": "name", "type": "string", "required": True}]
+
+        with (
+            patch.object(
+                ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+            ),
+            patch.object(
+                ConversationOrchestrator,
+                "_extract_slots",
+                new_callable=AsyncMock,
+                return_value=complete_slots,
+            ),
+            patch.object(
+                ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock
+            ) as mock_dispatch,
+        ):
+            mock_dispatch.return_value = ({"saved": True}, 0.0)
+
+            # Turn 1: user rejects.
+            turn1 = await orch.process_message(
+                _dedup_test_request(decision="reject", confirmation_id="collect_user_info"),
+                db=db_session,
+            )
+            assert turn1.status == ConversationStatus.REJECTED
+            mock_dispatch.assert_not_called()
+
+            # Turn 2: asked again (fresh turn, no decision) — must still ask,
+            # since nothing has actually dispatched yet.
+            turn2 = await orch.process_message(
+                _dedup_test_request(decision=None, confirmation_id=None),
+                db=db_session,
+            )
+            assert turn2.status == ConversationStatus.CONFIRMATION_REQUIRED
+
+            # Turn 3: user confirms — dispatches for the first time.
+            turn3 = await orch.process_message(
+                _dedup_test_request(decision="confirm", confirmation_id="collect_user_info"),
+                db=db_session,
+            )
+
+        assert turn3.status == ConversationStatus.SUCCESS
+        assert turn3.tool_invoked is not None
+        mock_dispatch.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_dispatch_recorded_as_confirmed_in_tool_executions(
+        self, db_session: AsyncSession, mock_good_intent: Any
+    ) -> None:
+        from taskorbit.database.crud import tool_already_dispatched
+        from taskorbit.slots import SlotExtractionResult
+
+        orch = ConversationOrchestrator()
+        complete_slots = SlotExtractionResult(filled={"name": MagicMock(value="Alice")}, missing=[])
+        mock_good_intent.required_inputs = [{"name": "name", "type": "string", "required": True}]
+
+        with (
+            patch.object(
+                ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+            ),
+            patch.object(
+                ConversationOrchestrator,
+                "_extract_slots",
+                new_callable=AsyncMock,
+                return_value=complete_slots,
+            ),
+            patch.object(
+                ConversationOrchestrator,
+                "_dispatch_tool",
+                new_callable=AsyncMock,
+                return_value=({"saved": True}, 0.0),
+            ),
+        ):
+            await orch.process_message(
+                _dedup_test_request(decision="confirm", confirmation_id="collect_user_info"),
+                db=db_session,
+            )
+
+        assert await tool_already_dispatched(db_session, "conv-test", "collect_user_info") is True
+        assert await tool_already_dispatched(db_session, "conv-test", "some-other-tool") is False
+
+    @pytest.mark.asyncio
+    async def test_without_db_behaves_as_before(self, mock_good_intent: Any) -> None:
+        """Omitting db must not change behaviour — dedup tracking is opt-in."""
+        from taskorbit.slots import SlotExtractionResult
+
+        orch = ConversationOrchestrator()
+        complete_slots = SlotExtractionResult(filled={"name": MagicMock(value="Alice")}, missing=[])
+        mock_good_intent.required_inputs = [{"name": "name", "type": "string", "required": True}]
+
+        with (
+            patch.object(
+                ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+            ),
+            patch.object(
+                ConversationOrchestrator,
+                "_extract_slots",
+                new_callable=AsyncMock,
+                return_value=complete_slots,
+            ),
+            patch.object(
+                ConversationOrchestrator,
+                "_dispatch_tool",
+                new_callable=AsyncMock,
+                return_value=({"saved": True}, 0.0),
+            ) as mock_dispatch,
+        ):
+            turn1 = await orch.process_message(
+                _dedup_test_request(decision="confirm", confirmation_id="collect_user_info")
+            )
+            turn2 = await orch.process_message(
+                _dedup_test_request(decision="confirm", confirmation_id="collect_user_info")
+            )
+
+        assert turn1.tool_invoked is not None
+        assert turn2.tool_invoked is not None
+        assert mock_dispatch.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_end_call_shortcut_does_not_reask_after_dispatch(
+        self, db_session: AsyncSession
+    ) -> None:
+        """The user-initiated end-call shortcut bypasses _run_dispatch_step
+        entirely, so it needs its own dedup guard (#224) — a stray re-entry
+        into the shortcut (e.g. the user saying goodbye again, or a decision
+        round-trip glitch) must not re-ask/re-dispatch end_call."""
+        from taskorbit.types import ConfirmationConfig, ConversationStatus, ToolDefinition, ToolType
+
+        orch = ConversationOrchestrator()
+        end_call_tool = ToolDefinition(
+            id="end-1",
+            name="end_call",
+            type=ToolType.END_CALL,
+            description="End the call",
+            confirmation=ConfirmationConfig(required=True, prompt=""),
+        )
+
+        def _req(content: str, decision: str | None = None, confirmation_id: str | None = None):
+            req = ConversationRequest(
+                conversation_id="conv-end-dedup",
+                agent_config=AgentConfig(
+                    id="agent-1",
+                    name="Bot",
+                    persona="Helpful bot",
+                    greeting="Hi!",
+                    tools=[end_call_tool],
+                ),
+                messages=[Message(role=MessageRole.USER, content=content)],
+            )
+            req.decision = decision
+            req.confirmation_id = confirmation_id
+            return req
+
+        with (
+            patch.object(
+                ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="Bye!"
+            ),
+            patch.object(
+                ConversationOrchestrator,
+                "_dispatch_tool",
+                new_callable=AsyncMock,
+                return_value=({}, 0.0),
+            ) as mock_dispatch,
+        ):
+            turn1 = await orch.process_message(_req("goodbye"), db=db_session)
+            assert turn1.status == ConversationStatus.CONFIRMATION_REQUIRED
+
+            turn2 = await orch.process_message(
+                _req("yes", decision="confirm", confirmation_id="end-1"), db=db_session
+            )
+            assert turn2.status == ConversationStatus.ENDED
+            mock_dispatch.assert_called_once()
+
+            # Stray re-entry: user says goodbye again (or the shortcut is
+            # re-entered some other way) after end_call already dispatched.
+            turn3 = await orch.process_message(_req("goodbye"), db=db_session)
+
+        assert turn3.status != ConversationStatus.CONFIRMATION_REQUIRED
+        assert turn3.tool_invoked is None
+        mock_dispatch.assert_called_once()  # still just the one call from turn 2

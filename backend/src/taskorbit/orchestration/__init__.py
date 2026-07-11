@@ -259,8 +259,25 @@ class ConversationOrchestrator:
                 and request.confirmation_id == end_call_tool.id
                 and request.decision is not None
             )
-            if end_call_tool and (
-                self._user_requested_end_call(last_user.content) or has_pending_end_call_decision
+            # #224: this shortcut bypasses _run_dispatch_step entirely, so it
+            # needs its own already-dispatched guard — otherwise a call that
+            # has already ended (or a stray re-entry into this block) can be
+            # asked to confirm end_call again.
+            end_call_already_dispatched = (
+                end_call_tool is not None
+                and db is not None
+                and request.conversation_id
+                and await self._tool_already_dispatched(
+                    db, request.conversation_id, end_call_tool.id
+                )
+            )
+            if (
+                end_call_tool
+                and not end_call_already_dispatched
+                and (
+                    self._user_requested_end_call(last_user.content)
+                    or has_pending_end_call_decision
+                )
             ):
                 is_decision_for_this_tool = request.confirmation_id == end_call_tool.id
                 has_decision = is_decision_for_this_tool and request.decision is not None
@@ -331,6 +348,10 @@ class ConversationOrchestrator:
                     conversation_id=request.conversation_id,
                     tool_call_latency_ms=_seconds_to_ms(tool_elapsed),
                 )
+                if db is not None and request.conversation_id:
+                    await self._mark_tool_dispatched(
+                        db, request.conversation_id, end_call_tool, {}, tool_elapsed
+                    )
                 return ConversationResponse(
                     conversation_id=request.conversation_id,
                     reply=self._make_assistant_message(farewell),
@@ -669,7 +690,13 @@ class ConversationOrchestrator:
                 return refusal_response
 
             slot_result = await self._extract_slots(
-                request.messages, extraction_inputs, active_config.llm
+                request.messages,
+                extraction_inputs,
+                active_config.llm,
+                db=db,
+                conversation_id=request.conversation_id,
+                tool_id=active_tool.id if active_tool is not None else None,
+                user_id=user_id,
             )
             logger.info(
                 "slots_extracted",
@@ -938,8 +965,23 @@ class ConversationOrchestrator:
                 and request.confirmation_id == end_call_tool.id
                 and request.decision is not None
             )
-            if end_call_tool and (
-                self._user_requested_end_call(last_user.content) or has_pending_end_call_decision
+            # #224: same already-dispatched guard as the text path — this
+            # shortcut bypasses _run_dispatch_step entirely.
+            end_call_already_dispatched = (
+                end_call_tool is not None
+                and db is not None
+                and request.conversation_id
+                and await self._tool_already_dispatched(
+                    db, request.conversation_id, end_call_tool.id
+                )
+            )
+            if (
+                end_call_tool
+                and not end_call_already_dispatched
+                and (
+                    self._user_requested_end_call(last_user.content)
+                    or has_pending_end_call_decision
+                )
             ):
                 is_decision_for_this_tool = request.confirmation_id == end_call_tool.id
                 has_decision = is_decision_for_this_tool and request.decision is not None
@@ -1012,6 +1054,10 @@ class ConversationOrchestrator:
                     conversation_id=request.conversation_id,
                     tool_call_latency_ms=_seconds_to_ms(tool_elapsed),
                 )
+                if db is not None and request.conversation_id:
+                    await self._mark_tool_dispatched(
+                        db, request.conversation_id, end_call_tool, {}, tool_elapsed
+                    )
                 yield ConversationResponse(
                     conversation_id=request.conversation_id,
                     reply=self._make_assistant_message(farewell),
@@ -1333,7 +1379,13 @@ class ConversationOrchestrator:
                 intent = dataclass_replace(intent, required_inputs=extraction_inputs)
 
             slot_result = await self._extract_slots(
-                request.messages, extraction_inputs, active_config.llm
+                request.messages,
+                extraction_inputs,
+                active_config.llm,
+                db=db,
+                conversation_id=request.conversation_id,
+                tool_id=active_tool.id if active_tool is not None else None,
+                user_id=user_id,
             )
             logger.info(
                 "slots_extracted",
@@ -1839,15 +1891,25 @@ class ConversationOrchestrator:
         messages: list[Message],
         required_inputs: list[dict[str, Any]],
         llm_config: LLMConfig,
+        db: AsyncSession | None = None,
+        conversation_id: str | None = None,
+        tool_id: str | None = None,
+        user_id: int | None = None,
     ) -> Any:
-        """Run slot extraction over the conversation history."""
+        """Run slot extraction over the conversation history.
+
+        When *db*/*conversation_id*/*tool_id* are given, the fresh result is
+        folded together with slots already persisted for this tool (#226) so a
+        slot filled on an earlier turn cannot regress to missing just because
+        this pass's full-history re-derivation missed it.
+        """
         from taskorbit.slots import SlotExtractionResult, SlotExtractor
 
         if not required_inputs:
             return SlotExtractionResult()
         try:
             extractor = SlotExtractor(llm_fn=self._call_llm_json, llm_config=llm_config)
-            return await extractor.extract(messages, required_inputs)
+            result = await extractor.extract(messages, required_inputs)
         except LLMError:
             # Provider failures must surface (#197) — treating them as "all slots
             # missing" would make the agent re-ask for data the user already gave.
@@ -1863,6 +1925,66 @@ class ConversationOrchestrator:
                 if f.get("required", True)
             ]
             return SlotExtractionResult(missing=missing)
+
+        if db is not None and conversation_id and tool_id:
+            result = await self._merge_persisted_slots(
+                db, conversation_id, tool_id, required_inputs, result, user_id=user_id
+            )
+        return result
+
+    async def _merge_persisted_slots(
+        self,
+        db: AsyncSession,
+        conversation_id: str,
+        tool_id: str,
+        required_inputs: list[dict[str, Any]],
+        result: Any,
+        user_id: int | None = None,
+    ) -> Any:
+        """Fold slots already persisted for *tool_id* into a fresh extraction (#226).
+
+        A slot once filled and persisted is authoritative — it is restored if
+        this pass dropped it, and is not replaced by a differing value this
+        pass produced, since the extractor re-derives from the full history
+        every turn and can drift (wrong field, hallucinated spelling). Newly
+        filled slots (not seen before) are persisted so later turns can pin
+        them in turn.
+        """
+        from taskorbit.database.crud import create_slot_extractions, get_slot_extractions
+        from taskorbit.slots import SlotExtractionResult, SlotValue
+
+        type_map = {f["name"]: f["type"] for f in required_inputs}
+        persisted = {
+            row.field_name: row.field_value
+            for row in await get_slot_extractions(db, conversation_id)
+            if row.tool_id == tool_id and row.field_value is not None
+        }
+
+        filled: dict[str, Any] = {
+            name: SlotValue(name=name, value=value, slot_type=type_map[name])
+            for name, value in persisted.items()
+            if name in type_map
+        }
+        for name, slot_value in result.filled.items():
+            filled.setdefault(name, slot_value)
+
+        missing = [name for name in result.missing if name not in filled]
+        merged = SlotExtractionResult(filled=filled, missing=missing)
+
+        new_values = {
+            name: slot_value.value
+            for name, slot_value in merged.filled.items()
+            if name not in persisted
+        }
+        if new_values:
+            await create_slot_extractions(
+                db,
+                conversation_id=conversation_id,
+                tool_id=tool_id,
+                slots=new_values,
+                user_id=user_id,
+            )
+        return merged
 
     def _select_active_tool(
         self,
@@ -2002,7 +2124,26 @@ class ConversationOrchestrator:
             and not _external_api_requires_args(active_tool)
         )
 
-        if no_slots_tool_ready or slots_ready or external_api_no_args_ready:
+        # #224: once a tool has actually dispatched in this conversation, later
+        # turns must not re-ask for confirmation or re-dispatch it just because
+        # intent reclassification (#227) or a fresh slots_ready re-selected the
+        # same tool — that produced repeated confirmations and duplicate
+        # dispatches for a step that had already completed.
+        already_dispatched = False
+        if active_tool is not None and db is not None and request.conversation_id:
+            already_dispatched = await self._tool_already_dispatched(
+                db, request.conversation_id, active_tool.id
+            )
+            if already_dispatched:
+                logger.info(
+                    "tool_already_dispatched_skip",
+                    tool_id=active_tool.id,
+                    conversation_id=request.conversation_id,
+                )
+
+        if (
+            no_slots_tool_ready or slots_ready or external_api_no_args_ready
+        ) and not already_dispatched:
             is_decision_for_this_tool = request.confirmation_id == active_tool.id
             has_decision = is_decision_for_this_tool and request.decision is not None
 
@@ -2102,6 +2243,14 @@ class ConversationOrchestrator:
                     conversation_id=request.conversation_id,
                     tool_call_latency_ms=_seconds_to_ms(tool_call_elapsed),
                 )
+                if db is not None and request.conversation_id:
+                    await self._mark_tool_dispatched(
+                        db,
+                        request.conversation_id,
+                        active_tool,
+                        tool_data,
+                        tool_call_elapsed,
+                    )
                 if active_tool.type == ToolType.END_CALL:
                     response_status = ConversationStatus.ENDED
                 elif active_tool.type == ToolType.AGENT_TRANSFER:
@@ -2133,6 +2282,35 @@ class ConversationOrchestrator:
             llm_text_override=llm_text_override,
             tool_call_elapsed=tool_call_elapsed,
             tool_invoked_override=tool_invoked_override,
+        )
+
+    async def _tool_already_dispatched(
+        self, db: AsyncSession, conversation_id: str, tool_id: str
+    ) -> bool:
+        """Has *tool_id* already been successfully dispatched in this conversation (#224)?"""
+        from taskorbit.database.crud import tool_already_dispatched
+
+        return await tool_already_dispatched(db, conversation_id, tool_id)
+
+    async def _mark_tool_dispatched(
+        self,
+        db: AsyncSession,
+        conversation_id: str,
+        tool: ToolDefinition,
+        tool_data: dict[str, Any],
+        tool_call_elapsed: float | None,
+    ) -> None:
+        """Record a confirmed dispatch so later turns can't re-trigger this tool (#224)."""
+        from taskorbit.database.crud import create_tool_execution
+
+        await create_tool_execution(
+            db,
+            conversation_id=conversation_id,
+            tool_id=tool.id,
+            tool_type=tool.type.value,
+            result=tool_data or None,
+            duration_ms=_seconds_to_ms(tool_call_elapsed),
+            confirmed=True,
         )
 
     async def _dispatch_tool(
