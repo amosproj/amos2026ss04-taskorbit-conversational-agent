@@ -11,13 +11,15 @@ type Props = {
   value: IdentityValue;
   onChange: (next: IdentityValue) => void;
   showErrors?: boolean;
+  /** Name of the other agent already using this agent_id, if any. */
+  duplicateAgentIdOwner?: string;
 };
 
-export function IdentitySection({ value, onChange, showErrors }: Props) {
+export function IdentitySection({ value, onChange, showErrors, duplicateAgentIdOwner }: Props) {
   const idAgentId = useId();
   const idName = useId();
 
-  const agentIdInvalid = showErrors && !(value.agent_id ?? "").trim();
+  const agentIdInvalid = (showErrors && !(value.agent_id ?? "").trim()) || !!duplicateAgentIdOwner;
   const nameInvalid = showErrors && !(value.name ?? "").trim();
 
   return (
@@ -48,7 +50,13 @@ export function IdentitySection({ value, onChange, showErrors }: Props) {
             <FieldDescription>
               Stable identifier used by the backend. Lowercase letters and hyphens recommended.
             </FieldDescription>
-            {agentIdInvalid ? <FieldError>Agent ID is required.</FieldError> : null}
+            {duplicateAgentIdOwner ? (
+              <FieldError>
+                Agent ID already used by &quot;{duplicateAgentIdOwner}&quot; — pick a unique one.
+              </FieldError>
+            ) : showErrors && !(value.agent_id ?? "").trim() ? (
+              <FieldError>Agent ID is required.</FieldError>
+            ) : null}
           </Field>
 
           <Field data-invalid={nameInvalid || undefined}>

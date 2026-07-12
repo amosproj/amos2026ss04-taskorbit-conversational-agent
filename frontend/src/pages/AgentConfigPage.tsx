@@ -91,7 +91,25 @@ export function AgentConfigPage() {
     error: null,
   });
 
-  const canPersist = isComplete(agent) && workflowValidation.valid;
+  // Two agents sharing an agent_id are indistinguishable to workflow
+  // dependencies/handoffs and intent routing — catch it here before Save
+  // instead of only finding out from the backend's 409 (#221 review).
+  //
+  // Excluded row must be derived from loadedConfigId, not activeUserAgentId:
+  // loadById() (the "Saved agents" legacy load path) updates loadedConfigId
+  // on every load but never touches activeUserAgentId, so relying on the
+  // latter here would flag a freshly-loaded agent as a duplicate of itself.
+  const currentRowId = loadedConfigId?.startsWith("ua:")
+    ? loadedConfigId.slice(3)
+    : loadedConfigId;
+  const trimmedAgentId = (agent.agent_id ?? "").trim();
+  const duplicateAgentId = trimmedAgentId
+    ? userAgents.find(
+        (entry) => entry.id !== currentRowId && entry.config.agent_id === trimmedAgentId,
+      )
+    : undefined;
+
+  const canPersist = isComplete(agent) && workflowValidation.valid && !duplicateAgentId;
 
   // Fetch the saved-config list once on mount + expose a refresh helper.
   // Used by the "Load preset" dropdown and re-called after a successful save
@@ -306,6 +324,7 @@ export function AgentConfigPage() {
           value={{ agent_id: agent.agent_id, name: agent.name }}
           onChange={(next) => setAgent({ ...agent, ...next })}
           showErrors={showErrors}
+          duplicateAgentIdOwner={duplicateAgentId?.name}
         />
 
         <InstructionsSection

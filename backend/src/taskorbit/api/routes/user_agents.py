@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from taskorbit.api.deps import get_current_user_id
 from taskorbit.database import get_session
 from taskorbit.database.crud import (
+    DuplicateAgentIdError,
     copy_on_write_user_agent,
     delete_user_agent,
     get_user_agent,
@@ -119,7 +120,10 @@ async def create_user_agent(
     This is the correct backend target for "Save as new": it always INSERTs a
     fresh row so the caller's currently-loaded agent is never touched.
     """
-    agent = await create_user_agent_in_db(db, user_id=user_id, name=body.name, config=body.config)
+    try:
+        agent = await create_user_agent_in_db(db, user_id=user_id, name=body.name, config=body.config)
+    except DuplicateAgentIdError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     if not agent:
         raise HTTPException(status_code=500, detail="Could not create agent.")
     return UserAgentResponse(
@@ -156,22 +160,25 @@ async def update_user_agent(
     # If agent_id is the row's own PK, update it directly to avoid the
     # template_id-keyed lookup that would overwrite a sibling agent.
     existing = await get_user_agent(db, agent_id, user_id)
-    if existing:
-        agent = await update_user_agent_in_db(
-            db,
-            agent_id=agent_id,
-            user_id=user_id,
-            name=body.name,
-            config=body.config,
-        )
-    else:
-        agent = await copy_on_write_user_agent(
-            db,
-            user_id=user_id,
-            template_id=agent_id,
-            name=body.name,
-            config_updates=body.config,
-        )
+    try:
+        if existing:
+            agent = await update_user_agent_in_db(
+                db,
+                agent_id=agent_id,
+                user_id=user_id,
+                name=body.name,
+                config=body.config,
+            )
+        else:
+            agent = await copy_on_write_user_agent(
+                db,
+                user_id=user_id,
+                template_id=agent_id,
+                name=body.name,
+                config_updates=body.config,
+            )
+    except DuplicateAgentIdError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     if not agent:
         raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
 
