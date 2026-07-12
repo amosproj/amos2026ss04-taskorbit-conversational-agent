@@ -5,8 +5,22 @@
     "backend",
     "frontend"
   ],
-  "componentCount": 261,
+  "componentCount": 263,
   "components": [
+    {
+      "name": "actions/checkout",
+      "version": "v1",
+      "license": "UNKNOWN",
+      "ecosystem": "github",
+      "purl": "pkg:github/actions/checkout@v1"
+    },
+    {
+      "name": "actions/setup-node",
+      "version": "v1",
+      "license": "UNKNOWN",
+      "ecosystem": "github",
+      "purl": "pkg:github/actions/setup-node@v1"
+    },
     {
       "name": "@bufbuild/protobuf",
       "version": "1.10.1",
