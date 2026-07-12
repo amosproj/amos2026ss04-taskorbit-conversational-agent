@@ -2,7 +2,7 @@
   "$schema": "http://cyclonedx.org/schema/bom-1.5.schema.json",
   "bomFormat": "CycloneDX",
   "specVersion": "1.5",
-  "serialNumber": "urn:uuid:c24a1e97-dceb-da4e-a1dc-370b412c5c5c",
+  "serialNumber": "urn:uuid:660d4ff2-5578-2550-853b-bc82a4c5e729",
   "version": 1,
   "metadata": {
     "timestamp": "2026-07-01T23:05:34Z",
@@ -24,103 +24,7 @@
   },
   "components": [
     {
-      "bom-ref": "300b3215ad68bf1c",
-      "type": "application",
-      "name": "\\node_modules\\nodemon\\bin\\windows-kill",
-      "version": "UNKNOWN",
-      "properties": [
-        {
-          "name": "syft:package:foundBy",
-          "value": "pe-binary-package-cataloger"
-        },
-        {
-          "name": "syft:package:type",
-          "value": "binary"
-        },
-        {
-          "name": "syft:package:metadataType",
-          "value": "pe-binary"
-        },
-        {
-          "name": "syft:location:0:path",
-          "value": "\\node_modules\\nodemon\\bin\\windows-kill.exe"
-        }
-      ]
-    },
-    {
-      "bom-ref": "pkg:github/actions/checkout@v1?package-id=698262412881fb83",
-      "type": "library",
-      "name": "actions/checkout",
-      "version": "v1",
-      "cpe": "cpe:2.3:a:actions\\/checkout:actions\\/checkout:v1:*:*:*:*:*:*:*",
-      "purl": "pkg:github/actions/checkout@v1",
-      "properties": [
-        {
-          "name": "syft:package:foundBy",
-          "value": "github-actions-usage-cataloger"
-        },
-        {
-          "name": "syft:package:type",
-          "value": "github-action"
-        },
-        {
-          "name": "syft:package:metadataType",
-          "value": "github-actions-use-statement"
-        },
-        {
-          "name": "syft:location:0:path",
-          "value": "\\node_modules\\undefsafe\\.github\\workflows\\release.yml"
-        }
-      ]
-    },
-    {
-      "bom-ref": "pkg:github/actions/setup-node@v1?package-id=e7938f8d8fcd9661",
-      "type": "library",
-      "name": "actions/setup-node",
-      "version": "v1",
-      "cpe": "cpe:2.3:a:actions\\/setup-node:actions\\/setup-node:v1:*:*:*:*:*:*:*",
-      "purl": "pkg:github/actions/setup-node@v1",
-      "properties": [
-        {
-          "name": "syft:package:foundBy",
-          "value": "github-actions-usage-cataloger"
-        },
-        {
-          "name": "syft:package:type",
-          "value": "github-action"
-        },
-        {
-          "name": "syft:package:metadataType",
-          "value": "github-actions-use-statement"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:actions\\/setup-node:actions\\/setup_node:v1:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:actions\\/setup_node:actions\\/setup-node:v1:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:actions\\/setup_node:actions\\/setup_node:v1:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:actions\\/setup:actions\\/setup-node:v1:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:cpe23",
-          "value": "cpe:2.3:a:actions\\/setup:actions\\/setup_node:v1:*:*:*:*:*:*:*"
-        },
-        {
-          "name": "syft:location:0:path",
-          "value": "\\node_modules\\undefsafe\\.github\\workflows\\release.yml"
-        }
-      ]
-    },
-    {
-      "bom-ref": "pkg:pypi/aiofiles@25.1.0?package-id=32ccb2ac0a5bb837",
+      "bom-ref": "pkg:pypi/aiofiles@25.1.0?package-id=4d3664aae92f9770",
       "type": "library",
       "name": "aiofiles",
       "version": "25.1.0",
@@ -189,12 +93,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/aiohappyeyeballs@2.6.1?package-id=d632f7b0f6ea1c70",
+      "bom-ref": "pkg:pypi/aiohappyeyeballs@2.6.1?package-id=079485c0b91997e9",
       "type": "library",
       "name": "aiohappyeyeballs",
       "version": "2.6.1",
@@ -263,12 +167,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/aiohttp@3.13.5?package-id=61ac925a2c71d760",
+      "bom-ref": "pkg:pypi/aiohttp@3.13.5?package-id=81a9b3973b8d20c1",
       "type": "library",
       "name": "aiohttp",
       "version": "3.13.5",
@@ -337,12 +241,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/aiosignal@1.4.0?package-id=cddc08006decda59",
+      "bom-ref": "pkg:pypi/aiosignal@1.4.0?package-id=21740e59e5b72600",
       "type": "library",
       "name": "aiosignal",
       "version": "1.4.0",
@@ -411,12 +315,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/aiosqlite@0.22.1?package-id=5cedc9c7adbd6357",
+      "bom-ref": "pkg:pypi/aiosqlite@0.22.1?package-id=65a67001cc7c3be6",
       "type": "library",
       "name": "aiosqlite",
       "version": "0.22.1",
@@ -485,12 +389,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/alembic@1.18.4?package-id=b23f5cd6ccfbfe2d",
+      "bom-ref": "pkg:pypi/alembic@1.18.4?package-id=2196fe3b734a4979",
       "type": "library",
       "name": "alembic",
       "version": "1.18.4",
@@ -559,12 +463,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/annotated-doc@0.0.4?package-id=94a6a516dc2dc64f",
+      "bom-ref": "pkg:pypi/annotated-doc@0.0.4?package-id=51275cd48646b69e",
       "type": "library",
       "name": "annotated-doc",
       "version": "0.0.4",
@@ -713,12 +617,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/annotated-types@0.7.0?package-id=659d0bb4288c7baa",
+      "bom-ref": "pkg:pypi/annotated-types@0.7.0?package-id=73e887ebca9deeb2",
       "type": "library",
       "name": "annotated-types",
       "version": "0.7.0",
@@ -867,12 +771,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/anyio@4.13.0?package-id=09f43b75d27c1649",
+      "bom-ref": "pkg:pypi/anyio@4.13.0?package-id=dd7a30acc1941c57",
       "type": "library",
       "name": "anyio",
       "version": "4.13.0",
@@ -941,12 +845,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/attrs@26.1.0?package-id=f6d3c7caaee86bfb",
+      "bom-ref": "pkg:pypi/attrs@26.1.0?package-id=d805380d06856e32",
       "type": "library",
       "name": "attrs",
       "version": "26.1.0",
@@ -1015,12 +919,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/av@17.0.1?package-id=e24721aa1ccabd48",
+      "bom-ref": "pkg:pypi/av@17.0.1?package-id=1b7817e9db5e427d",
       "type": "library",
       "name": "av",
       "version": "17.0.1",
@@ -1089,12 +993,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/certifi@2026.4.22?package-id=356c972cf59623a2",
+      "bom-ref": "pkg:pypi/certifi@2026.4.22?package-id=45223ca3cd8f8a36",
       "type": "library",
       "name": "certifi",
       "version": "2026.4.22",
@@ -1119,12 +1023,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/cffi@2.0.0?package-id=fd36e4ea971e893f",
+      "bom-ref": "pkg:pypi/cffi@2.0.0?package-id=3d14ae29c07d8958",
       "type": "library",
       "name": "cffi",
       "version": "2.0.0",
@@ -1193,12 +1097,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/cfgv@3.5.0?package-id=7c655c6b47a94214",
+      "bom-ref": "pkg:pypi/cfgv@3.5.0?package-id=ecc23af31ece41c8",
       "type": "library",
       "name": "cfgv",
       "version": "3.5.0",
@@ -1267,12 +1171,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/charset-normalizer@3.4.7?package-id=c160af7f52529fc2",
+      "bom-ref": "pkg:pypi/charset-normalizer@3.4.7?package-id=fdc9adb05f001630",
       "type": "library",
       "name": "charset-normalizer",
       "version": "3.4.7",
@@ -1421,12 +1325,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/click@8.3.3?package-id=fdb465bde40d6ec0",
+      "bom-ref": "pkg:pypi/click@8.3.3?package-id=ba074497e9646292",
       "type": "library",
       "name": "click",
       "version": "8.3.3",
@@ -1495,12 +1399,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/colorama@0.4.6?package-id=c585db8dba13d75c",
+      "bom-ref": "pkg:pypi/colorama@0.4.6?package-id=754ada8d4566a598",
       "type": "library",
       "name": "colorama",
       "version": "0.4.6",
@@ -1569,12 +1473,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/cryptography@47.0.0?package-id=0c9003c758b0d1a8",
+      "bom-ref": "pkg:pypi/cryptography@47.0.0?package-id=ddfff5617051594d",
       "type": "library",
       "name": "cryptography",
       "version": "47.0.0",
@@ -1603,12 +1507,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/distlib@0.4.0?package-id=1ad59358d8d8cbdb",
+      "bom-ref": "pkg:pypi/distlib@0.4.0?package-id=1fff6aefda257a6a",
       "type": "library",
       "name": "distlib",
       "version": "0.4.0",
@@ -1677,12 +1581,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/distro@1.9.0?package-id=64e9a1ba8cc6e66b",
+      "bom-ref": "pkg:pypi/distro@1.9.0?package-id=8dc5a61d0877617a",
       "type": "library",
       "name": "distro",
       "version": "1.9.0",
@@ -1751,12 +1655,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/docstring-parser@0.18.0?package-id=676582fcf4eb44ca",
+      "bom-ref": "pkg:pypi/docstring-parser@0.18.0?package-id=017b2a593405441d",
       "type": "library",
       "name": "docstring-parser",
       "version": "0.18.0",
@@ -1905,12 +1809,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/eval-type-backport@0.3.1?package-id=2380ca72c8ba4b97",
+      "bom-ref": "pkg:pypi/eval-type-backport@0.3.1?package-id=15164a29a6866b24",
       "type": "library",
       "name": "eval-type-backport",
       "version": "0.3.1",
@@ -2123,12 +2027,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/fastapi@0.115.14?package-id=9ffd762569de805a",
+      "bom-ref": "pkg:pypi/fastapi@0.115.14?package-id=10654eb209bf8f7a",
       "type": "library",
       "name": "fastapi",
       "version": "0.115.14",
@@ -2197,12 +2101,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/filelock@3.29.0?package-id=b0c09ff3f931ef20",
+      "bom-ref": "pkg:pypi/filelock@3.29.0?package-id=2f1e3a7c3c19a3b8",
       "type": "library",
       "name": "filelock",
       "version": "3.29.0",
@@ -2271,12 +2175,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/flatbuffers@25.12.19?package-id=9bd51b69d84f0e1c",
+      "bom-ref": "pkg:pypi/flatbuffers@25.12.19?package-id=9ab5e616b24c13ce",
       "type": "library",
       "name": "flatbuffers",
       "version": "25.12.19",
@@ -2345,12 +2249,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/frozenlist@1.8.0?package-id=fe35ffc840e9dce7",
+      "bom-ref": "pkg:pypi/frozenlist@1.8.0?package-id=1df35f87e79f5bb8",
       "type": "library",
       "name": "frozenlist",
       "version": "1.8.0",
@@ -2419,12 +2323,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/google-api-core@2.30.3?package-id=af2e87dd40e58055",
+      "bom-ref": "pkg:pypi/google-api-core@2.30.3?package-id=4b8dab614bebe419",
       "type": "library",
       "name": "google-api-core",
       "version": "2.30.3",
@@ -2637,12 +2541,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/google-auth@2.49.2?package-id=362156e819a1bf4b",
+      "bom-ref": "pkg:pypi/google-auth@2.49.2?package-id=bfaeceac70260ae7",
       "type": "library",
       "name": "google-auth",
       "version": "2.49.2",
@@ -2791,12 +2695,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/google-cloud-speech@2.38.0?package-id=8b014d3f019169a4",
+      "bom-ref": "pkg:pypi/google-cloud-speech@2.38.0?package-id=857d5054c474c7b7",
       "type": "library",
       "name": "google-cloud-speech",
       "version": "2.38.0",
@@ -3009,12 +2913,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/google-cloud-texttospeech@2.36.0?package-id=2176b261449c7253",
+      "bom-ref": "pkg:pypi/google-cloud-texttospeech@2.36.0?package-id=ce34f27aa1c4f61d",
       "type": "library",
       "name": "google-cloud-texttospeech",
       "version": "2.36.0",
@@ -3227,12 +3131,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/google-genai@1.73.1?package-id=05daa1e161f5c8f9",
+      "bom-ref": "pkg:pypi/google-genai@1.73.1?package-id=69e0aa473278f6d3",
       "type": "library",
       "name": "google-genai",
       "version": "1.73.1",
@@ -3381,12 +3285,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/googleapis-common-protos@1.74.0?package-id=de241ebc97d4cf82",
+      "bom-ref": "pkg:pypi/googleapis-common-protos@1.74.0?package-id=7747eb6265dd774e",
       "type": "library",
       "name": "googleapis-common-protos",
       "version": "1.74.0",
@@ -3599,12 +3503,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/greenlet@3.5.1?package-id=c46b8f9ad386d9bf",
+      "bom-ref": "pkg:pypi/greenlet@3.5.1?package-id=d677995ebace7370",
       "type": "library",
       "name": "greenlet",
       "version": "3.5.1",
@@ -3673,12 +3577,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/grpcio@1.80.0?package-id=3bce3a37b1406cb4",
+      "bom-ref": "pkg:pypi/grpcio@1.80.0?package-id=9b5a2495bafe2ae3",
       "type": "library",
       "name": "grpcio",
       "version": "1.80.0",
@@ -3747,12 +3651,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/grpcio-status@1.80.0?package-id=95cd3f9b24f5f302",
+      "bom-ref": "pkg:pypi/grpcio-status@1.80.0?package-id=24ab1fcf5d8e9608",
       "type": "library",
       "name": "grpcio-status",
       "version": "1.80.0",
@@ -3901,12 +3805,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/h11@0.16.0?package-id=3fad88e799f994ac",
+      "bom-ref": "pkg:pypi/h11@0.16.0?package-id=eb9fe3a945d9c1c9",
       "type": "library",
       "name": "h11",
       "version": "0.16.0",
@@ -3975,12 +3879,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/httpcore@1.0.9?package-id=827a7d161ad36dac",
+      "bom-ref": "pkg:pypi/httpcore@1.0.9?package-id=933f0c7a979e0551",
       "type": "library",
       "name": "httpcore",
       "version": "1.0.9",
@@ -4049,12 +3953,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/httptools@0.7.1?package-id=3056ab8d4a708194",
+      "bom-ref": "pkg:pypi/httptools@0.7.1?package-id=78e4505ea4b74e7d",
       "type": "library",
       "name": "httptools",
       "version": "0.7.1",
@@ -4123,12 +4027,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/httpx@0.28.1?package-id=29fbac9ddb126cb2",
+      "bom-ref": "pkg:pypi/httpx@0.28.1?package-id=611c010fb13f03ea",
       "type": "library",
       "name": "httpx",
       "version": "0.28.1",
@@ -4153,12 +4057,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/identify@2.6.19?package-id=08ea9d8dac86e1f8",
+      "bom-ref": "pkg:pypi/identify@2.6.19?package-id=7f79a571cef735e6",
       "type": "library",
       "name": "identify",
       "version": "2.6.19",
@@ -4227,12 +4131,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/idna@3.13?package-id=80fd09286b26f857",
+      "bom-ref": "pkg:pypi/idna@3.13?package-id=4a51eb5410f3c522",
       "type": "library",
       "name": "idna",
       "version": "3.13",
@@ -4301,12 +4205,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/importlib-metadata@8.7.1?package-id=0d3cb7e4f9c343b1",
+      "bom-ref": "pkg:pypi/importlib-metadata@8.7.1?package-id=545b214b4ff37a47",
       "type": "library",
       "name": "importlib-metadata",
       "version": "8.7.1",
@@ -4455,12 +4359,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/iniconfig@2.3.0?package-id=cd756d68d714b620",
+      "bom-ref": "pkg:pypi/iniconfig@2.3.0?package-id=0c93ec96c96b3e59",
       "type": "library",
       "name": "iniconfig",
       "version": "2.3.0",
@@ -4529,12 +4433,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/jiter@0.14.0?package-id=0bbc9b91e55e0859",
+      "bom-ref": "pkg:pypi/jiter@0.14.0?package-id=bcd51875dbe07b21",
       "type": "library",
       "name": "jiter",
       "version": "0.14.0",
@@ -4603,12 +4507,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/jsonpath-python@1.1.6?package-id=b94694bd8361cd90",
+      "bom-ref": "pkg:pypi/jsonpath-python@1.1.6?package-id=0f4833d411444534",
       "type": "library",
       "name": "jsonpath-python",
       "version": "1.1.6",
@@ -4757,12 +4661,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/jsonschema@4.26.0?package-id=0bf7d4aee5e5c9db",
+      "bom-ref": "pkg:pypi/jsonschema@4.26.0?package-id=955fb8f9a68326e5",
       "type": "library",
       "name": "jsonschema",
       "version": "4.26.0",
@@ -4831,12 +4735,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/jsonschema-specifications@2025.9.1?package-id=da4dcc3d86fa2615",
+      "bom-ref": "pkg:pypi/jsonschema-specifications@2025.9.1?package-id=26190073cddfe72a",
       "type": "library",
       "name": "jsonschema-specifications",
       "version": "2025.9.1",
@@ -4985,12 +4889,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/librt@0.9.0?package-id=0b39676ce458ab32",
+      "bom-ref": "pkg:pypi/librt@0.9.0?package-id=8306673b836b4c01",
       "type": "library",
       "name": "librt",
       "version": "0.9.0",
@@ -5059,12 +4963,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/livekit@1.1.5?package-id=dd368d06d52df992",
+      "bom-ref": "pkg:pypi/livekit@1.1.5?package-id=cf53bc403061e6cf",
       "type": "library",
       "name": "livekit",
       "version": "1.1.5",
@@ -5133,12 +5037,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/livekit-agents@1.5.6?package-id=7d2cd2ce127ff8d7",
+      "bom-ref": "pkg:pypi/livekit-agents@1.5.6?package-id=4a68c3b9e6ee4193",
       "type": "library",
       "name": "livekit-agents",
       "version": "1.5.6",
@@ -5287,12 +5191,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/livekit-api@1.1.0?package-id=3d83081d0077d159",
+      "bom-ref": "pkg:pypi/livekit-api@1.1.0?package-id=41ebcd813d880a79",
       "type": "library",
       "name": "livekit-api",
       "version": "1.1.0",
@@ -5441,12 +5345,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/livekit-blingfire@1.1.0?package-id=7a3cd579cc65a431",
+      "bom-ref": "pkg:pypi/livekit-blingfire@1.1.0?package-id=ec2737faf9ed1acf",
       "type": "library",
       "name": "livekit-blingfire",
       "version": "1.1.0",
@@ -5595,12 +5499,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/livekit-plugins-deepgram@1.5.6?package-id=55b494246d20556a",
+      "bom-ref": "pkg:pypi/livekit-plugins-deepgram@1.5.6?package-id=d69cee3728027e78",
       "type": "library",
       "name": "livekit-plugins-deepgram",
       "version": "1.5.6",
@@ -5813,12 +5717,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/livekit-plugins-elevenlabs@1.5.6?package-id=f43d46aaaece6b9e",
+      "bom-ref": "pkg:pypi/livekit-plugins-elevenlabs@1.5.6?package-id=83435990f37ab5d4",
       "type": "library",
       "name": "livekit-plugins-elevenlabs",
       "version": "1.5.6",
@@ -6031,12 +5935,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/livekit-plugins-google@1.5.6?package-id=c49f984c790c2473",
+      "bom-ref": "pkg:pypi/livekit-plugins-google@1.5.6?package-id=2c80ed23193c9929",
       "type": "library",
       "name": "livekit-plugins-google",
       "version": "1.5.6",
@@ -6249,12 +6153,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/livekit-plugins-openai@1.5.6?package-id=047e6e67c5365725",
+      "bom-ref": "pkg:pypi/livekit-plugins-openai@1.5.6?package-id=f2d7658c70904d6b",
       "type": "library",
       "name": "livekit-plugins-openai",
       "version": "1.5.6",
@@ -6467,12 +6371,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/livekit-plugins-silero@1.5.6?package-id=4747d7b632e99f85",
+      "bom-ref": "pkg:pypi/livekit-plugins-silero@1.5.6?package-id=177592d7782adef1",
       "type": "library",
       "name": "livekit-plugins-silero",
       "version": "1.5.6",
@@ -6685,12 +6589,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/livekit-protocol@1.1.6?package-id=070da468350fb2a1",
+      "bom-ref": "pkg:pypi/livekit-protocol@1.1.6?package-id=39d05ec0487a1a76",
       "type": "library",
       "name": "livekit-protocol",
       "version": "1.1.6",
@@ -6839,12 +6743,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/mako@1.3.11?package-id=4e6dfa32b78f301c",
+      "bom-ref": "pkg:pypi/mako@1.3.11?package-id=9fdbe6a5a7ea854b",
       "type": "library",
       "name": "mako",
       "version": "1.3.11",
@@ -6913,12 +6817,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/markdown-it-py@4.0.0?package-id=713b3ed3d15cc17b",
+      "bom-ref": "pkg:pypi/markdown-it-py@4.0.0?package-id=4ecdacaf3fb4d15f",
       "type": "library",
       "name": "markdown-it-py",
       "version": "4.0.0",
@@ -7131,12 +7035,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/markupsafe@3.0.3?package-id=cc9a16f5f5da676d",
+      "bom-ref": "pkg:pypi/markupsafe@3.0.3?package-id=da31a8ee4d6ed5db",
       "type": "library",
       "name": "markupsafe",
       "version": "3.0.3",
@@ -7205,12 +7109,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/mdurl@0.1.2?package-id=6b7ff8cb319b573b",
+      "bom-ref": "pkg:pypi/mdurl@0.1.2?package-id=4297aa70f6c0d98a",
       "type": "library",
       "name": "mdurl",
       "version": "0.1.2",
@@ -7279,12 +7183,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/multidict@6.7.1?package-id=c2c1322eb691f040",
+      "bom-ref": "pkg:pypi/multidict@6.7.1?package-id=9c2ffc65ed44fa3c",
       "type": "library",
       "name": "multidict",
       "version": "6.7.1",
@@ -7353,12 +7257,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/mypy@1.20.2?package-id=d6a1671259b7a6dc",
+      "bom-ref": "pkg:pypi/mypy@1.20.2?package-id=c2df07cbd4a29779",
       "type": "library",
       "name": "mypy",
       "version": "1.20.2",
@@ -7427,12 +7331,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/mypy-extensions@1.1.0?package-id=9a5fe0fbb8584dd3",
+      "bom-ref": "pkg:pypi/mypy-extensions@1.1.0?package-id=80960cf28b52d0ca",
       "type": "library",
       "name": "mypy-extensions",
       "version": "1.1.0",
@@ -7581,12 +7485,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/nest-asyncio@1.6.0?package-id=cab2ec3b80a8bc3a",
+      "bom-ref": "pkg:pypi/nest-asyncio@1.6.0?package-id=63c94873b82a4a97",
       "type": "library",
       "name": "nest-asyncio",
       "version": "1.6.0",
@@ -7735,12 +7639,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/nodeenv@1.10.0?package-id=20d22c52d2ee890e",
+      "bom-ref": "pkg:pypi/nodeenv@1.10.0?package-id=cfcc23953d3f0967",
       "type": "library",
       "name": "nodeenv",
       "version": "1.10.0",
@@ -7809,12 +7713,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/numpy@2.4.4?package-id=0157583016de8721",
+      "bom-ref": "pkg:pypi/numpy@2.4.4?package-id=f860eeb4b2f98233",
       "type": "library",
       "name": "numpy",
       "version": "2.4.4",
@@ -7883,12 +7787,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/onnxruntime@1.25.0?package-id=9c217cb1d06d4f64",
+      "bom-ref": "pkg:pypi/onnxruntime@1.25.0?package-id=a33aec0b46c05cb1",
       "type": "library",
       "name": "onnxruntime",
       "version": "1.25.0",
@@ -7957,12 +7861,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/openai@2.32.0?package-id=720d949a7eb35306",
+      "bom-ref": "pkg:pypi/openai@2.32.0?package-id=6e683301f7a8f3a9",
       "type": "library",
       "name": "openai",
       "version": "2.32.0",
@@ -8031,12 +7935,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/openrouter@0.10.0?package-id=eb1af4a73928b4f6",
+      "bom-ref": "pkg:pypi/openrouter@0.10.0?package-id=f51d54a3dcb2ae99",
       "type": "library",
       "name": "openrouter",
       "version": "0.10.0",
@@ -8105,12 +8009,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/opentelemetry-api@1.39.1?package-id=12bfba68d7719836",
+      "bom-ref": "pkg:pypi/opentelemetry-api@1.39.1?package-id=8c4104285ae28830",
       "type": "library",
       "name": "opentelemetry-api",
       "version": "1.39.1",
@@ -8259,12 +8163,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/opentelemetry-exporter-otlp@1.39.1?package-id=d6d07463422b59d3",
+      "bom-ref": "pkg:pypi/opentelemetry-exporter-otlp@1.39.1?package-id=8cff6d23cbd4aa00",
       "type": "library",
       "name": "opentelemetry-exporter-otlp",
       "version": "1.39.1",
@@ -8477,12 +8381,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/opentelemetry-exporter-otlp-proto-common@1.39.1?package-id=822d5ef515dcb845",
+      "bom-ref": "pkg:pypi/opentelemetry-exporter-otlp-proto-common@1.39.1?package-id=d9566100f31002f4",
       "type": "library",
       "name": "opentelemetry-exporter-otlp-proto-common",
       "version": "1.39.1",
@@ -8823,12 +8727,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/opentelemetry-exporter-otlp-proto-grpc@1.39.1?package-id=6d87b8d781c11980",
+      "bom-ref": "pkg:pypi/opentelemetry-exporter-otlp-proto-grpc@1.39.1?package-id=704d87a3dc4580a2",
       "type": "library",
       "name": "opentelemetry-exporter-otlp-proto-grpc",
       "version": "1.39.1",
@@ -9169,12 +9073,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/opentelemetry-exporter-otlp-proto-http@1.39.1?package-id=0ce6c7d20a79db4c",
+      "bom-ref": "pkg:pypi/opentelemetry-exporter-otlp-proto-http@1.39.1?package-id=ce21ba192503db99",
       "type": "library",
       "name": "opentelemetry-exporter-otlp-proto-http",
       "version": "1.39.1",
@@ -9515,12 +9419,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/opentelemetry-proto@1.39.1?package-id=c11ae11a90879754",
+      "bom-ref": "pkg:pypi/opentelemetry-proto@1.39.1?package-id=af7ee0dddb8f38b2",
       "type": "library",
       "name": "opentelemetry-proto",
       "version": "1.39.1",
@@ -9669,12 +9573,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/opentelemetry-sdk@1.39.1?package-id=575ab52ff736f607",
+      "bom-ref": "pkg:pypi/opentelemetry-sdk@1.39.1?package-id=5fad4934d617dbec",
       "type": "library",
       "name": "opentelemetry-sdk",
       "version": "1.39.1",
@@ -9823,12 +9727,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/opentelemetry-semantic-conventions@0.60b1?package-id=276aa5b9c06d13fd",
+      "bom-ref": "pkg:pypi/opentelemetry-semantic-conventions@0.60b1?package-id=18525cade5ea6330",
       "type": "library",
       "name": "opentelemetry-semantic-conventions",
       "version": "0.60b1",
@@ -10041,12 +9945,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/packaging@26.2?package-id=6a1c3d6787fc8034",
+      "bom-ref": "pkg:pypi/packaging@26.2?package-id=b8adc5391298f612",
       "type": "library",
       "name": "packaging",
       "version": "26.2",
@@ -10115,12 +10019,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/pathspec@1.1.0?package-id=ca88e571cfc0494f",
+      "bom-ref": "pkg:pypi/pathspec@1.1.0?package-id=ae7d07b618871f4f",
       "type": "library",
       "name": "pathspec",
       "version": "1.1.0",
@@ -10189,12 +10093,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/pillow@12.2.0?package-id=a94d081dfed6e339",
+      "bom-ref": "pkg:pypi/pillow@12.2.0?package-id=f13780a57a3c9931",
       "type": "library",
       "name": "pillow",
       "version": "12.2.0",
@@ -10263,12 +10167,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/platformdirs@4.9.6?package-id=72931ed35d737cc8",
+      "bom-ref": "pkg:pypi/platformdirs@4.9.6?package-id=780c07aa247287a5",
       "type": "library",
       "name": "platformdirs",
       "version": "4.9.6",
@@ -10337,12 +10241,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/pluggy@1.6.0?package-id=91fb1bb84d24d7de",
+      "bom-ref": "pkg:pypi/pluggy@1.6.0?package-id=5df01262af715857",
       "type": "library",
       "name": "pluggy",
       "version": "1.6.0",
@@ -10411,12 +10315,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/pre-commit@4.6.0?package-id=b46a700d9466dc3d",
+      "bom-ref": "pkg:pypi/pre-commit@4.6.0?package-id=665f9e00bd0aa560",
       "type": "library",
       "name": "pre-commit",
       "version": "4.6.0",
@@ -10565,12 +10469,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/prometheus-client@0.22.1?package-id=69f549bf446e0667",
+      "bom-ref": "pkg:pypi/prometheus-client@0.22.1?package-id=c49f58248390e5c3",
       "type": "library",
       "name": "prometheus-client",
       "version": "0.22.1",
@@ -10719,12 +10623,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/prometheus-fastapi-instrumentator@7.1.0?package-id=8daaf6aa0ce97bb5",
+      "bom-ref": "pkg:pypi/prometheus-fastapi-instrumentator@7.1.0?package-id=f5c168d071a49b6c",
       "type": "library",
       "name": "prometheus-fastapi-instrumentator",
       "version": "7.1.0",
@@ -10937,12 +10841,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/propcache@0.4.1?package-id=11b3500780a1b957",
+      "bom-ref": "pkg:pypi/propcache@0.4.1?package-id=4a3f6d5a81da1f22",
       "type": "library",
       "name": "propcache",
       "version": "0.4.1",
@@ -11011,12 +10915,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/proto-plus@1.27.2?package-id=81506234e1df9f8e",
+      "bom-ref": "pkg:pypi/proto-plus@1.27.2?package-id=c639410c28b90b56",
       "type": "library",
       "name": "proto-plus",
       "version": "1.27.2",
@@ -11165,12 +11069,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/protobuf@6.33.6?package-id=c1c5117453c3a982",
+      "bom-ref": "pkg:pypi/protobuf@6.33.6?package-id=0cd42d293e973539",
       "type": "library",
       "name": "protobuf",
       "version": "6.33.6",
@@ -11195,12 +11099,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/psutil@7.2.2?package-id=5ae44ad7908641e6",
+      "bom-ref": "pkg:pypi/psutil@7.2.2?package-id=3f1b7912afcbbdc6",
       "type": "library",
       "name": "psutil",
       "version": "7.2.2",
@@ -11269,12 +11173,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/psycopg@3.3.3?package-id=9a484a3493500761",
+      "bom-ref": "pkg:pypi/psycopg@3.3.3?package-id=62f9749d39e6c47b",
       "type": "library",
       "name": "psycopg",
       "version": "3.3.3",
@@ -11343,12 +11247,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/psycopg-binary@3.3.3?package-id=99d42ccb3de94615",
+      "bom-ref": "pkg:pypi/psycopg-binary@3.3.3?package-id=b492fd63bdd46b1d",
       "type": "library",
       "name": "psycopg-binary",
       "version": "3.3.3",
@@ -11497,12 +11401,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/pyasn1@0.6.3?package-id=7d4dc83166126366",
+      "bom-ref": "pkg:pypi/pyasn1@0.6.3?package-id=79892a0ce66d9b25",
       "type": "library",
       "name": "pyasn1",
       "version": "0.6.3",
@@ -11571,12 +11475,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/pyasn1-modules@0.4.2?package-id=aa986c49209cae67",
+      "bom-ref": "pkg:pypi/pyasn1-modules@0.4.2?package-id=9ecaec961c32cf33",
       "type": "library",
       "name": "pyasn1-modules",
       "version": "0.4.2",
@@ -11725,12 +11629,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/pycparser@3.0?package-id=25542df6df0a5b93",
+      "bom-ref": "pkg:pypi/pycparser@3.0?package-id=840d6fb5376bee90",
       "type": "library",
       "name": "pycparser",
       "version": "3.0",
@@ -11799,12 +11703,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/pydantic@2.13.3?package-id=7cf8d7f7ea805ec8",
+      "bom-ref": "pkg:pypi/pydantic@2.13.3?package-id=f24eb5e85c249d2b",
       "type": "library",
       "name": "pydantic",
       "version": "2.13.3",
@@ -11873,12 +11777,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/pydantic-core@2.46.3?package-id=6dd68365980d96ce",
+      "bom-ref": "pkg:pypi/pydantic-core@2.46.3?package-id=905a6dea4399c013",
       "type": "library",
       "name": "pydantic-core",
       "version": "2.46.3",
@@ -12027,12 +11931,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/pydantic-settings@2.14.0?package-id=ccaf4c6c1e0781d7",
+      "bom-ref": "pkg:pypi/pydantic-settings@2.14.0?package-id=8ed22ae2fa2caff2",
       "type": "library",
       "name": "pydantic-settings",
       "version": "2.14.0",
@@ -12181,12 +12085,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/pygments@2.20.0?package-id=10b15264407cb9f0",
+      "bom-ref": "pkg:pypi/pygments@2.20.0?package-id=c18e2222175f061e",
       "type": "library",
       "name": "pygments",
       "version": "2.20.0",
@@ -12255,12 +12159,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/pyjwt@2.12.1?package-id=134344ffa2e547ec",
+      "bom-ref": "pkg:pypi/pyjwt@2.12.1?package-id=7a57a50661c6ebb4",
       "type": "library",
       "name": "pyjwt",
       "version": "2.12.1",
@@ -12329,12 +12233,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/pytest@8.4.2?package-id=086e1f387c1091be",
+      "bom-ref": "pkg:pypi/pytest@8.4.2?package-id=1a3f555bd1c55e23",
       "type": "library",
       "name": "pytest",
       "version": "8.4.2",
@@ -12403,12 +12307,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/pytest-asyncio@0.24.0?package-id=89dc5872d0b949d1",
+      "bom-ref": "pkg:pypi/pytest-asyncio@0.24.0?package-id=6f53b70f2a7166e4",
       "type": "library",
       "name": "pytest-asyncio",
       "version": "0.24.0",
@@ -12557,12 +12461,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/python-discovery@1.2.2?package-id=369a71227909402a",
+      "bom-ref": "pkg:pypi/python-discovery@1.2.2?package-id=0dac2bfcc64908e7",
       "type": "library",
       "name": "python-discovery",
       "version": "1.2.2",
@@ -12607,12 +12511,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/python-dotenv@1.2.2?package-id=0470558254dd7bd8",
+      "bom-ref": "pkg:pypi/python-dotenv@1.2.2?package-id=fc8d42d675af41c6",
       "type": "library",
       "name": "python-dotenv",
       "version": "1.2.2",
@@ -12657,12 +12561,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/pyyaml@6.0.3?package-id=a206bfee8846e016",
+      "bom-ref": "pkg:pypi/pyyaml@6.0.3?package-id=9c1816750b11992a",
       "type": "library",
       "name": "pyyaml",
       "version": "6.0.3",
@@ -12731,12 +12635,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/referencing@0.37.0?package-id=56a21c6a4eb97d5d",
+      "bom-ref": "pkg:pypi/referencing@0.37.0?package-id=4673a49256ce1b9c",
       "type": "library",
       "name": "referencing",
       "version": "0.37.0",
@@ -12805,12 +12709,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/requests@2.33.1?package-id=9cbca4ee9edb162d",
+      "bom-ref": "pkg:pypi/requests@2.33.1?package-id=c5ed5ce606f1aa6a",
       "type": "library",
       "name": "requests",
       "version": "2.33.1",
@@ -12835,12 +12739,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/rich@15.0.0?package-id=53932d5ebab6e624",
+      "bom-ref": "pkg:pypi/rich@15.0.0?package-id=26ac973998902eb5",
       "type": "library",
       "name": "rich",
       "version": "15.0.0",
@@ -12909,12 +12813,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/rpds-py@0.30.0?package-id=a52fbba3759575c7",
+      "bom-ref": "pkg:pypi/rpds-py@0.30.0?package-id=b9d21f53918484d7",
       "type": "library",
       "name": "rpds-py",
       "version": "0.30.0",
@@ -13063,12 +12967,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/ruff@0.7.4?package-id=cbff75ddaf9bf40b",
+      "bom-ref": "pkg:pypi/ruff@0.7.4?package-id=c07f6e25d5ddd8a3",
       "type": "library",
       "name": "ruff",
       "version": "0.7.4",
@@ -13137,12 +13041,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/shellingham@1.5.4?package-id=c0fafe8874df9fa4",
+      "bom-ref": "pkg:pypi/shellingham@1.5.4?package-id=85b092c246e8d056",
       "type": "library",
       "name": "shellingham",
       "version": "1.5.4",
@@ -13211,12 +13115,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/sniffio@1.3.1?package-id=f19b513e003ae36a",
+      "bom-ref": "pkg:pypi/sniffio@1.3.1?package-id=cccc3177ef1d0e78",
       "type": "library",
       "name": "sniffio",
       "version": "1.3.1",
@@ -13285,12 +13189,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/sounddevice@0.5.5?package-id=a8f69a0159d17eb9",
+      "bom-ref": "pkg:pypi/sounddevice@0.5.5?package-id=16d07060fa8993dc",
       "type": "library",
       "name": "sounddevice",
       "version": "0.5.5",
@@ -13359,12 +13263,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/sqlalchemy@2.0.49?package-id=b3f0048e460b26d4",
+      "bom-ref": "pkg:pypi/sqlalchemy@2.0.49?package-id=87810eb480b66c37",
       "type": "library",
       "name": "sqlalchemy",
       "version": "2.0.49",
@@ -13433,12 +13337,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/starlette@0.46.2?package-id=09b3017d6b825693",
+      "bom-ref": "pkg:pypi/starlette@0.46.2?package-id=65dcb33a67dab4ec",
       "type": "library",
       "name": "starlette",
       "version": "0.46.2",
@@ -13463,12 +13367,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/structlog@24.4.0?package-id=6a0e3d6a94c25515",
+      "bom-ref": "pkg:pypi/structlog@24.4.0?package-id=f83c2c78040d4dcb",
       "type": "library",
       "name": "structlog",
       "version": "24.4.0",
@@ -13537,12 +13441,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/tenacity@9.1.4?package-id=fc6470adc7bc928f",
+      "bom-ref": "pkg:pypi/tenacity@9.1.4?package-id=efc969e124a83093",
       "type": "library",
       "name": "tenacity",
       "version": "9.1.4",
@@ -13611,12 +13515,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/tqdm@4.67.3?package-id=21753a98cfa0dc60",
+      "bom-ref": "pkg:pypi/tqdm@4.67.3?package-id=9e18ac289a848534",
       "type": "library",
       "name": "tqdm",
       "version": "4.67.3",
@@ -13685,12 +13589,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/typer@0.25.0?package-id=8945a0cf85c3e2b5",
+      "bom-ref": "pkg:pypi/typer@0.25.0?package-id=1b139e8819d91207",
       "type": "library",
       "name": "typer",
       "version": "0.25.0",
@@ -13759,12 +13663,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/types-protobuf@7.34.1.20260408?package-id=cc7cdf560956790d",
+      "bom-ref": "pkg:pypi/types-protobuf@7.34.1.20260408?package-id=14f7674d04916b8e",
       "type": "library",
       "name": "types-protobuf",
       "version": "7.34.1.20260408",
@@ -13913,12 +13817,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/typing-extensions@4.15.0?package-id=edf2b7042f4381c6",
+      "bom-ref": "pkg:pypi/typing-extensions@4.15.0?package-id=eb79741fe86d4cc5",
       "type": "library",
       "name": "typing-extensions",
       "version": "4.15.0",
@@ -14067,12 +13971,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/typing-inspection@0.4.2?package-id=b3f5df281e104ce3",
+      "bom-ref": "pkg:pypi/typing-inspection@0.4.2?package-id=2ef764047264f01e",
       "type": "library",
       "name": "typing-inspection",
       "version": "0.4.2",
@@ -14221,12 +14125,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/tzdata@2026.2?package-id=b5a9ff2e63e7d80b",
+      "bom-ref": "pkg:pypi/tzdata@2026.2?package-id=7ebbf0cbb2d88e7f",
       "type": "library",
       "name": "tzdata",
       "version": "2026.2",
@@ -14295,12 +14199,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/urllib3@2.6.3?package-id=a9c7778826d56544",
+      "bom-ref": "pkg:pypi/urllib3@2.6.3?package-id=e2ece809fea9628e",
       "type": "library",
       "name": "urllib3",
       "version": "2.6.3",
@@ -14325,12 +14229,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/uvicorn@0.32.1?package-id=61b67ad3cde5c30f",
+      "bom-ref": "pkg:pypi/uvicorn@0.32.1?package-id=66ffe047c1c6c69a",
       "type": "library",
       "name": "uvicorn",
       "version": "0.32.1",
@@ -14399,12 +14303,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/uvloop@0.22.1?package-id=d27197c5669e320c",
+      "bom-ref": "pkg:pypi/uvloop@0.22.1?package-id=201f6f21b3d6eb6a",
       "type": "library",
       "name": "uvloop",
       "version": "0.22.1",
@@ -14473,12 +14377,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/virtualenv@21.2.4?package-id=63ac7461a99b0543",
+      "bom-ref": "pkg:pypi/virtualenv@21.2.4?package-id=f8d1dbf2b7a2feed",
       "type": "library",
       "name": "virtualenv",
       "version": "21.2.4",
@@ -14547,12 +14451,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/watchfiles@1.1.1?package-id=9b28bec4bd9dbf21",
+      "bom-ref": "pkg:pypi/watchfiles@1.1.1?package-id=937a8e9f1a6cd878",
       "type": "library",
       "name": "watchfiles",
       "version": "1.1.1",
@@ -14621,12 +14525,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/websockets@15.0.1?package-id=fa1ff361fd7a5186",
+      "bom-ref": "pkg:pypi/websockets@15.0.1?package-id=fbb2bb8ed7253bdd",
       "type": "library",
       "name": "websockets",
       "version": "15.0.1",
@@ -14695,12 +14599,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/yarl@1.23.0?package-id=5d6f6d034ab5cced",
+      "bom-ref": "pkg:pypi/yarl@1.23.0?package-id=ef6164c662636c13",
       "type": "library",
       "name": "yarl",
       "version": "1.23.0",
@@ -14769,12 +14673,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:pypi/zipp@3.23.1?package-id=d74c21f6fd203436",
+      "bom-ref": "pkg:pypi/zipp@3.23.1?package-id=3cb95c191cbeccbe",
       "type": "library",
       "name": "zipp",
       "version": "3.23.1",
@@ -14843,12 +14747,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\poetry.lock"
+          "value": "/poetry.lock"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40bufbuild/protobuf@1.10.1?package-id=f9460423bc49e27a",
+      "bom-ref": "pkg:npm/%40bufbuild/protobuf@1.10.1?package-id=920645c1e0c058fc",
       "type": "library",
       "name": "@bufbuild/protobuf",
       "version": "1.10.1",
@@ -14878,12 +14782,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40floating-ui/core@1.7.5?package-id=09fefe022e1c3bf3",
+      "bom-ref": "pkg:npm/%40floating-ui/core@1.7.5?package-id=30e20a98ccd1c17d",
       "type": "library",
       "name": "@floating-ui/core",
       "version": "1.7.5",
@@ -14935,12 +14839,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40floating-ui/dom@1.7.4?package-id=6393dfffd49d258f",
+      "bom-ref": "pkg:npm/%40floating-ui/dom@1.7.4?package-id=37adfda4c2599663",
       "type": "library",
       "name": "@floating-ui/dom",
       "version": "1.7.4",
@@ -14992,12 +14896,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40floating-ui/dom@1.7.6?package-id=5c70b4c670483745",
+      "bom-ref": "pkg:npm/%40floating-ui/dom@1.7.6?package-id=4848cd4f75eaff4d",
       "type": "library",
       "name": "@floating-ui/dom",
       "version": "1.7.6",
@@ -15049,12 +14953,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40floating-ui/react-dom@2.1.8?package-id=395e65bc47ae9d1f",
+      "bom-ref": "pkg:npm/%40floating-ui/react-dom@2.1.8?package-id=9f76370b92d68435",
       "type": "library",
       "name": "@floating-ui/react-dom",
       "version": "2.1.8",
@@ -15122,12 +15026,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40floating-ui/utils@0.2.11?package-id=35cbea4e5fc30bbb",
+      "bom-ref": "pkg:npm/%40floating-ui/utils@0.2.11?package-id=e6c51f9acacc8b56",
       "type": "library",
       "name": "@floating-ui/utils",
       "version": "0.2.11",
@@ -15179,12 +15083,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40livekit/components-core@0.12.13?package-id=6603e0db295acec0",
+      "bom-ref": "pkg:npm/%40livekit/components-core@0.12.13?package-id=d0020204fe84dc4b",
       "type": "library",
       "name": "@livekit/components-core",
       "version": "0.12.13",
@@ -15236,12 +15140,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40livekit/components-react@2.9.20?package-id=a1ea8351141f7c8b",
+      "bom-ref": "pkg:npm/%40livekit/components-react@2.9.20?package-id=882634cfbdb3db2e",
       "type": "library",
       "name": "@livekit/components-react",
       "version": "2.9.20",
@@ -15293,12 +15197,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40livekit/components-styles@1.2.0?package-id=e239e3f4330c26d4",
+      "bom-ref": "pkg:npm/%40livekit/components-styles@1.2.0?package-id=737e38c39e4b8ef0",
       "type": "library",
       "name": "@livekit/components-styles",
       "version": "1.2.0",
@@ -15350,12 +15254,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40livekit/mutex@1.1.1?package-id=0eefc82c6faa8cf9",
+      "bom-ref": "pkg:npm/%40livekit/mutex@1.1.1?package-id=418acf706f3802ed",
       "type": "library",
       "name": "@livekit/mutex",
       "version": "1.1.1",
@@ -15387,12 +15291,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40livekit/protocol@1.45.3?package-id=ee42e05481e88565",
+      "bom-ref": "pkg:npm/%40livekit/protocol@1.45.3?package-id=dc2e73ebdcb07a56",
       "type": "library",
       "name": "@livekit/protocol",
       "version": "1.45.3",
@@ -15424,12 +15328,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/number@1.1.1?package-id=c6ccdbdffd4679f5",
+      "bom-ref": "pkg:npm/%40radix-ui/number@1.1.1?package-id=93a3fe11d48e739b",
       "type": "library",
       "name": "@radix-ui/number",
       "version": "1.1.1",
@@ -15481,12 +15385,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/primitive@1.1.3?package-id=2fba5bbff2015ab3",
+      "bom-ref": "pkg:npm/%40radix-ui/primitive@1.1.3?package-id=446ecc94159c4b36",
       "type": "library",
       "name": "@radix-ui/primitive",
       "version": "1.1.3",
@@ -15538,12 +15442,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/primitive@1.1.4?package-id=45423945aba6a775",
+      "bom-ref": "pkg:npm/%40radix-ui/primitive@1.1.4?package-id=80fc81d593471421",
       "type": "library",
       "name": "@radix-ui/primitive",
       "version": "1.1.4",
@@ -15595,12 +15499,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-accessible-icon@1.1.7?package-id=8a78524cd4b4e2e4",
+      "bom-ref": "pkg:npm/%40radix-ui/react-accessible-icon@1.1.7?package-id=3fcbf8336cad3905",
       "type": "library",
       "name": "@radix-ui/react-accessible-icon",
       "version": "1.1.7",
@@ -15684,12 +15588,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-accordion@1.2.12?package-id=f532e47ef2355b65",
+      "bom-ref": "pkg:npm/%40radix-ui/react-accordion@1.2.12?package-id=8b1e76c2e7363a43",
       "type": "library",
       "name": "@radix-ui/react-accordion",
       "version": "1.2.12",
@@ -15757,12 +15661,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-alert-dialog@1.1.15?package-id=772f117a8f49e623",
+      "bom-ref": "pkg:npm/%40radix-ui/react-alert-dialog@1.1.15?package-id=f1f5171b2810640f",
       "type": "library",
       "name": "@radix-ui/react-alert-dialog",
       "version": "1.1.15",
@@ -15846,12 +15750,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-alert-dialog@1.1.18?package-id=5a45e299880bdd13",
+      "bom-ref": "pkg:npm/%40radix-ui/react-alert-dialog@1.1.18?package-id=d3039859649f6917",
       "type": "library",
       "name": "@radix-ui/react-alert-dialog",
       "version": "1.1.18",
@@ -15935,12 +15839,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-arrow@1.1.7?package-id=fc5a9bdcab699ac7",
+      "bom-ref": "pkg:npm/%40radix-ui/react-arrow@1.1.7?package-id=e8b8b4efd68d0844",
       "type": "library",
       "name": "@radix-ui/react-arrow",
       "version": "1.1.7",
@@ -16008,12 +15912,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-aspect-ratio@1.1.7?package-id=b7cdf7002ae7fde2",
+      "bom-ref": "pkg:npm/%40radix-ui/react-aspect-ratio@1.1.7?package-id=5bccf692be7655d0",
       "type": "library",
       "name": "@radix-ui/react-aspect-ratio",
       "version": "1.1.7",
@@ -16097,12 +16001,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-avatar@1.1.10?package-id=28351f06f7e73fb7",
+      "bom-ref": "pkg:npm/%40radix-ui/react-avatar@1.1.10?package-id=b67f80f2d2c9f0d9",
       "type": "library",
       "name": "@radix-ui/react-avatar",
       "version": "1.1.10",
@@ -16170,12 +16074,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-checkbox@1.3.3?package-id=bc8dfc5b11a24fa7",
+      "bom-ref": "pkg:npm/%40radix-ui/react-checkbox@1.3.3?package-id=40d6b58cb953d6c8",
       "type": "library",
       "name": "@radix-ui/react-checkbox",
       "version": "1.3.3",
@@ -16243,12 +16147,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-collapsible@1.1.12?package-id=d1ce53d503865984",
+      "bom-ref": "pkg:npm/%40radix-ui/react-collapsible@1.1.12?package-id=4942afdf53fab9d8",
       "type": "library",
       "name": "@radix-ui/react-collapsible",
       "version": "1.1.12",
@@ -16316,12 +16220,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-collection@1.1.7?package-id=bcbb2e9e751f3d77",
+      "bom-ref": "pkg:npm/%40radix-ui/react-collection@1.1.7?package-id=60ec8c871dbf9507",
       "type": "library",
       "name": "@radix-ui/react-collection",
       "version": "1.1.7",
@@ -16389,12 +16293,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-compose-refs@1.1.2?package-id=d61e49968bdb0a40",
+      "bom-ref": "pkg:npm/%40radix-ui/react-compose-refs@1.1.2?package-id=b43d18c574502ebf",
       "type": "library",
       "name": "@radix-ui/react-compose-refs",
       "version": "1.1.2",
@@ -16478,12 +16382,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-compose-refs@1.1.3?package-id=c635d0957df242e2",
+      "bom-ref": "pkg:npm/%40radix-ui/react-compose-refs@1.1.3?package-id=3c0f67eb3ac87389",
       "type": "library",
       "name": "@radix-ui/react-compose-refs",
       "version": "1.1.3",
@@ -16567,12 +16471,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-context@1.1.2?package-id=acd9888a6eb4f10c",
+      "bom-ref": "pkg:npm/%40radix-ui/react-context@1.1.2?package-id=ea535e0867288677",
       "type": "library",
       "name": "@radix-ui/react-context",
       "version": "1.1.2",
@@ -16640,12 +16544,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-context@1.1.4?package-id=106b4f94a3e73ac9",
+      "bom-ref": "pkg:npm/%40radix-ui/react-context@1.1.4?package-id=237918f822fc103c",
       "type": "library",
       "name": "@radix-ui/react-context",
       "version": "1.1.4",
@@ -16713,12 +16617,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-context-menu@2.2.16?package-id=fe10d2be7e794732",
+      "bom-ref": "pkg:npm/%40radix-ui/react-context-menu@2.2.16?package-id=144195ed1538605d",
       "type": "library",
       "name": "@radix-ui/react-context-menu",
       "version": "2.2.16",
@@ -16802,12 +16706,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-dialog@1.1.15?package-id=0fdc839a7bad24a8",
+      "bom-ref": "pkg:npm/%40radix-ui/react-dialog@1.1.15?package-id=3feb63e57799dd93",
       "type": "library",
       "name": "@radix-ui/react-dialog",
       "version": "1.1.15",
@@ -16875,12 +16779,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-dialog@1.1.18?package-id=b8d7ee0b6250d18a",
+      "bom-ref": "pkg:npm/%40radix-ui/react-dialog@1.1.18?package-id=c755b0a1d7754c69",
       "type": "library",
       "name": "@radix-ui/react-dialog",
       "version": "1.1.18",
@@ -16948,12 +16852,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-direction@1.1.1?package-id=8c16644437fb1cc6",
+      "bom-ref": "pkg:npm/%40radix-ui/react-direction@1.1.1?package-id=121dd65c2849bd1d",
       "type": "library",
       "name": "@radix-ui/react-direction",
       "version": "1.1.1",
@@ -17021,12 +16925,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-dismissable-layer@1.1.11?package-id=bff8e3dd859247a7",
+      "bom-ref": "pkg:npm/%40radix-ui/react-dismissable-layer@1.1.11?package-id=43af8c909cdd08cb",
       "type": "library",
       "name": "@radix-ui/react-dismissable-layer",
       "version": "1.1.11",
@@ -17110,12 +17014,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-dismissable-layer@1.1.14?package-id=d2eb483e32a9dc1b",
+      "bom-ref": "pkg:npm/%40radix-ui/react-dismissable-layer@1.1.14?package-id=35178c5e04f19da6",
       "type": "library",
       "name": "@radix-ui/react-dismissable-layer",
       "version": "1.1.14",
@@ -17199,12 +17103,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-dropdown-menu@2.1.16?package-id=f243af57a6fb8bfd",
+      "bom-ref": "pkg:npm/%40radix-ui/react-dropdown-menu@2.1.16?package-id=eb84884bc646784a",
       "type": "library",
       "name": "@radix-ui/react-dropdown-menu",
       "version": "2.1.16",
@@ -17288,12 +17192,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-focus-guards@1.1.3?package-id=30d39408c02d874b",
+      "bom-ref": "pkg:npm/%40radix-ui/react-focus-guards@1.1.3?package-id=705ff5ef632c1252",
       "type": "library",
       "name": "@radix-ui/react-focus-guards",
       "version": "1.1.3",
@@ -17377,12 +17281,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-focus-guards@1.1.4?package-id=614a53a7f0d4bf63",
+      "bom-ref": "pkg:npm/%40radix-ui/react-focus-guards@1.1.4?package-id=5ee9553566bba088",
       "type": "library",
       "name": "@radix-ui/react-focus-guards",
       "version": "1.1.4",
@@ -17466,12 +17370,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-focus-scope@1.1.11?package-id=2ac2df54577d29cb",
+      "bom-ref": "pkg:npm/%40radix-ui/react-focus-scope@1.1.11?package-id=653c21a242dcb64d",
       "type": "library",
       "name": "@radix-ui/react-focus-scope",
       "version": "1.1.11",
@@ -17555,12 +17459,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-focus-scope@1.1.7?package-id=d00ef0f9e09553bc",
+      "bom-ref": "pkg:npm/%40radix-ui/react-focus-scope@1.1.7?package-id=751bdc5b21b133dc",
       "type": "library",
       "name": "@radix-ui/react-focus-scope",
       "version": "1.1.7",
@@ -17644,12 +17548,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-form@0.1.8?package-id=b57eec9f3a6d93b4",
+      "bom-ref": "pkg:npm/%40radix-ui/react-form@0.1.8?package-id=41330ce751f8a0d6",
       "type": "library",
       "name": "@radix-ui/react-form",
       "version": "0.1.8",
@@ -17717,12 +17621,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-hover-card@1.1.15?package-id=feee7a5b948bd0a4",
+      "bom-ref": "pkg:npm/%40radix-ui/react-hover-card@1.1.15?package-id=c2335cf10b938f7c",
       "type": "library",
       "name": "@radix-ui/react-hover-card",
       "version": "1.1.15",
@@ -17806,12 +17710,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-id@1.1.1?package-id=9c3bc9f954f12b6d",
+      "bom-ref": "pkg:npm/%40radix-ui/react-id@1.1.1?package-id=dcf3c1e78419717f",
       "type": "library",
       "name": "@radix-ui/react-id",
       "version": "1.1.1",
@@ -17879,12 +17783,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-id@1.1.2?package-id=f7a71ec5b575b0ed",
+      "bom-ref": "pkg:npm/%40radix-ui/react-id@1.1.2?package-id=f2f3577f52a25812",
       "type": "library",
       "name": "@radix-ui/react-id",
       "version": "1.1.2",
@@ -17952,12 +17856,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-label@2.1.7?package-id=6c86b21b27c7b64b",
+      "bom-ref": "pkg:npm/%40radix-ui/react-label@2.1.7?package-id=341afe24d616d38f",
       "type": "library",
       "name": "@radix-ui/react-label",
       "version": "2.1.7",
@@ -18025,12 +17929,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-menu@2.1.16?package-id=3306697b0123ebc6",
+      "bom-ref": "pkg:npm/%40radix-ui/react-menu@2.1.16?package-id=c8f35c281fad11b6",
       "type": "library",
       "name": "@radix-ui/react-menu",
       "version": "2.1.16",
@@ -18098,12 +18002,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-menubar@1.1.16?package-id=b86eca7f43e64815",
+      "bom-ref": "pkg:npm/%40radix-ui/react-menubar@1.1.16?package-id=c02900ff8cd6c0a0",
       "type": "library",
       "name": "@radix-ui/react-menubar",
       "version": "1.1.16",
@@ -18171,12 +18075,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-navigation-menu@1.2.14?package-id=188f427706915416",
+      "bom-ref": "pkg:npm/%40radix-ui/react-navigation-menu@1.2.14?package-id=2bbf0f1d75581083",
       "type": "library",
       "name": "@radix-ui/react-navigation-menu",
       "version": "1.2.14",
@@ -18260,12 +18164,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-one-time-password-field@0.1.8?package-id=100da679655c82bd",
+      "bom-ref": "pkg:npm/%40radix-ui/react-one-time-password-field@0.1.8?package-id=1653951e3cf8f833",
       "type": "library",
       "name": "@radix-ui/react-one-time-password-field",
       "version": "0.1.8",
@@ -18381,12 +18285,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-password-toggle-field@0.1.3?package-id=0e6e29ea6e9706fd",
+      "bom-ref": "pkg:npm/%40radix-ui/react-password-toggle-field@0.1.3?package-id=fe05c1c6b6ac3a7e",
       "type": "library",
       "name": "@radix-ui/react-password-toggle-field",
       "version": "0.1.3",
@@ -18486,12 +18390,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-popover@1.1.15?package-id=f98887a4fa3dd8d7",
+      "bom-ref": "pkg:npm/%40radix-ui/react-popover@1.1.15?package-id=67ca506402d01c11",
       "type": "library",
       "name": "@radix-ui/react-popover",
       "version": "1.1.15",
@@ -18559,12 +18463,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-popper@1.2.8?package-id=738eb469cb99a9f7",
+      "bom-ref": "pkg:npm/%40radix-ui/react-popper@1.2.8?package-id=3cb9deb9f5a81634",
       "type": "library",
       "name": "@radix-ui/react-popper",
       "version": "1.2.8",
@@ -18632,12 +18536,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-portal@1.1.13?package-id=4afbabfb4cfbe4b8",
+      "bom-ref": "pkg:npm/%40radix-ui/react-portal@1.1.13?package-id=a6052ddb507d1e6f",
       "type": "library",
       "name": "@radix-ui/react-portal",
       "version": "1.1.13",
@@ -18705,12 +18609,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-portal@1.1.9?package-id=a43836cc634b3fef",
+      "bom-ref": "pkg:npm/%40radix-ui/react-portal@1.1.9?package-id=55d5846d9768602e",
       "type": "library",
       "name": "@radix-ui/react-portal",
       "version": "1.1.9",
@@ -18778,12 +18682,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-presence@1.1.5?package-id=f1a258d41659fb79",
+      "bom-ref": "pkg:npm/%40radix-ui/react-presence@1.1.5?package-id=fb091a8ad11260f0",
       "type": "library",
       "name": "@radix-ui/react-presence",
       "version": "1.1.5",
@@ -18851,12 +18755,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-presence@1.1.6?package-id=1f3929e9a0dc8b89",
+      "bom-ref": "pkg:npm/%40radix-ui/react-presence@1.1.6?package-id=4a7f01645e1f89af",
       "type": "library",
       "name": "@radix-ui/react-presence",
       "version": "1.1.6",
@@ -18924,12 +18828,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-primitive@2.1.3?package-id=1dbe15e4e3cc2085",
+      "bom-ref": "pkg:npm/%40radix-ui/react-primitive@2.1.3?package-id=e0fa7b588325ae73",
       "type": "library",
       "name": "@radix-ui/react-primitive",
       "version": "2.1.3",
@@ -18997,12 +18901,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-primitive@2.1.7?package-id=2f14e46bd4200e72",
+      "bom-ref": "pkg:npm/%40radix-ui/react-primitive@2.1.7?package-id=0c30367b3691aa38",
       "type": "library",
       "name": "@radix-ui/react-primitive",
       "version": "2.1.7",
@@ -19070,12 +18974,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-progress@1.1.7?package-id=f32c8a9bca8d2289",
+      "bom-ref": "pkg:npm/%40radix-ui/react-progress@1.1.7?package-id=9cbf27f5787f07c7",
       "type": "library",
       "name": "@radix-ui/react-progress",
       "version": "1.1.7",
@@ -19143,12 +19047,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-radio-group@1.3.8?package-id=5ec21876c59cc187",
+      "bom-ref": "pkg:npm/%40radix-ui/react-radio-group@1.3.8?package-id=452f2150a1f0addb",
       "type": "library",
       "name": "@radix-ui/react-radio-group",
       "version": "1.3.8",
@@ -19232,12 +19136,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-roving-focus@1.1.11?package-id=a0b87cd337b81b83",
+      "bom-ref": "pkg:npm/%40radix-ui/react-roving-focus@1.1.11?package-id=f2c88834538b4ba7",
       "type": "library",
       "name": "@radix-ui/react-roving-focus",
       "version": "1.1.11",
@@ -19321,12 +19225,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-scroll-area@1.2.10?package-id=b3ab6447e5293c9b",
+      "bom-ref": "pkg:npm/%40radix-ui/react-scroll-area@1.2.10?package-id=3e3a8e67754cc10b",
       "type": "library",
       "name": "@radix-ui/react-scroll-area",
       "version": "1.2.10",
@@ -19410,12 +19314,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-select@2.2.6?package-id=c343205af9c89d5c",
+      "bom-ref": "pkg:npm/%40radix-ui/react-select@2.2.6?package-id=04022106141d6c93",
       "type": "library",
       "name": "@radix-ui/react-select",
       "version": "2.2.6",
@@ -19483,12 +19387,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-separator@1.1.7?package-id=2d75964e4ba19451",
+      "bom-ref": "pkg:npm/%40radix-ui/react-separator@1.1.7?package-id=64da7f5547c078d3",
       "type": "library",
       "name": "@radix-ui/react-separator",
       "version": "1.1.7",
@@ -19556,12 +19460,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-slider@1.3.6?package-id=49bdc58330020b50",
+      "bom-ref": "pkg:npm/%40radix-ui/react-slider@1.3.6?package-id=74c40b28bd8023da",
       "type": "library",
       "name": "@radix-ui/react-slider",
       "version": "1.3.6",
@@ -19629,12 +19533,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-slot@1.2.3?package-id=9f88c12803702353",
+      "bom-ref": "pkg:npm/%40radix-ui/react-slot@1.2.3?package-id=e2608d0c82f014f2",
       "type": "library",
       "name": "@radix-ui/react-slot",
       "version": "1.2.3",
@@ -19702,12 +19606,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-slot@1.3.0?package-id=17349db0cc7c621b",
+      "bom-ref": "pkg:npm/%40radix-ui/react-slot@1.3.0?package-id=cd44e42325c49d92",
       "type": "library",
       "name": "@radix-ui/react-slot",
       "version": "1.3.0",
@@ -19775,12 +19679,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-switch@1.2.6?package-id=06a7a2be1776ac43",
+      "bom-ref": "pkg:npm/%40radix-ui/react-switch@1.2.6?package-id=3007f6eec4b907cd",
       "type": "library",
       "name": "@radix-ui/react-switch",
       "version": "1.2.6",
@@ -19848,12 +19752,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-tabs@1.1.13?package-id=d23aca1da9711064",
+      "bom-ref": "pkg:npm/%40radix-ui/react-tabs@1.1.13?package-id=83f5e45b01662158",
       "type": "library",
       "name": "@radix-ui/react-tabs",
       "version": "1.1.13",
@@ -19921,12 +19825,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-toast@1.2.15?package-id=2c6a032d87f6dde0",
+      "bom-ref": "pkg:npm/%40radix-ui/react-toast@1.2.15?package-id=2ea8e8fe58664794",
       "type": "library",
       "name": "@radix-ui/react-toast",
       "version": "1.2.15",
@@ -19994,12 +19898,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-toggle@1.1.10?package-id=351e94fcd0a929e1",
+      "bom-ref": "pkg:npm/%40radix-ui/react-toggle@1.1.10?package-id=df5ec99b8755eaa9",
       "type": "library",
       "name": "@radix-ui/react-toggle",
       "version": "1.1.10",
@@ -20067,12 +19971,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-toggle-group@1.1.11?package-id=2a587f8e8ba5530f",
+      "bom-ref": "pkg:npm/%40radix-ui/react-toggle-group@1.1.11?package-id=eb4580e4d03ce1f1",
       "type": "library",
       "name": "@radix-ui/react-toggle-group",
       "version": "1.1.11",
@@ -20156,12 +20060,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-toolbar@1.1.11?package-id=56480b13c852f506",
+      "bom-ref": "pkg:npm/%40radix-ui/react-toolbar@1.1.11?package-id=eb184461c3c3e6a3",
       "type": "library",
       "name": "@radix-ui/react-toolbar",
       "version": "1.1.11",
@@ -20229,12 +20133,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-tooltip@1.2.8?package-id=5929a6149ad1899a",
+      "bom-ref": "pkg:npm/%40radix-ui/react-tooltip@1.2.8?package-id=95dda69b49be18a9",
       "type": "library",
       "name": "@radix-ui/react-tooltip",
       "version": "1.2.8",
@@ -20302,12 +20206,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-use-callback-ref@1.1.1?package-id=6ed9000b0346f3ef",
+      "bom-ref": "pkg:npm/%40radix-ui/react-use-callback-ref@1.1.1?package-id=41aff0abcc5ff523",
       "type": "library",
       "name": "@radix-ui/react-use-callback-ref",
       "version": "1.1.1",
@@ -20407,12 +20311,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-use-callback-ref@1.1.2?package-id=a85581867bee4344",
+      "bom-ref": "pkg:npm/%40radix-ui/react-use-callback-ref@1.1.2?package-id=1bfa72b76fdecdf0",
       "type": "library",
       "name": "@radix-ui/react-use-callback-ref",
       "version": "1.1.2",
@@ -20512,12 +20416,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-use-controllable-state@1.2.2?package-id=6b6bd2b79c616664",
+      "bom-ref": "pkg:npm/%40radix-ui/react-use-controllable-state@1.2.2?package-id=0934beb97b582176",
       "type": "library",
       "name": "@radix-ui/react-use-controllable-state",
       "version": "1.2.2",
@@ -20617,12 +20521,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-use-controllable-state@1.2.3?package-id=2213f79d2497b8d6",
+      "bom-ref": "pkg:npm/%40radix-ui/react-use-controllable-state@1.2.3?package-id=c3af667faf635dc9",
       "type": "library",
       "name": "@radix-ui/react-use-controllable-state",
       "version": "1.2.3",
@@ -20722,12 +20626,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-use-effect-event@0.0.2?package-id=8fafef08f1461742",
+      "bom-ref": "pkg:npm/%40radix-ui/react-use-effect-event@0.0.2?package-id=cddfdb079b4be5bb",
       "type": "library",
       "name": "@radix-ui/react-use-effect-event",
       "version": "0.0.2",
@@ -20827,12 +20731,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-use-effect-event@0.0.3?package-id=f1d67b5fd1378072",
+      "bom-ref": "pkg:npm/%40radix-ui/react-use-effect-event@0.0.3?package-id=ffbb2cbbe6eeae18",
       "type": "library",
       "name": "@radix-ui/react-use-effect-event",
       "version": "0.0.3",
@@ -20932,12 +20836,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-use-escape-keydown@1.1.1?package-id=adace9bc269f3c36",
+      "bom-ref": "pkg:npm/%40radix-ui/react-use-escape-keydown@1.1.1?package-id=320f7d51284f6ec6",
       "type": "library",
       "name": "@radix-ui/react-use-escape-keydown",
       "version": "1.1.1",
@@ -21037,12 +20941,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-use-is-hydrated@0.1.0?package-id=e271d0c087fc9f9e",
+      "bom-ref": "pkg:npm/%40radix-ui/react-use-is-hydrated@0.1.0?package-id=c44431b513a541b1",
       "type": "library",
       "name": "@radix-ui/react-use-is-hydrated",
       "version": "0.1.0",
@@ -21142,12 +21046,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-use-layout-effect@1.1.1?package-id=b35adc821517ad69",
+      "bom-ref": "pkg:npm/%40radix-ui/react-use-layout-effect@1.1.1?package-id=40d5ab55b4195e7e",
       "type": "library",
       "name": "@radix-ui/react-use-layout-effect",
       "version": "1.1.1",
@@ -21247,12 +21151,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-use-layout-effect@1.1.2?package-id=e93d26d36036988b",
+      "bom-ref": "pkg:npm/%40radix-ui/react-use-layout-effect@1.1.2?package-id=0bf872a2ff6802ce",
       "type": "library",
       "name": "@radix-ui/react-use-layout-effect",
       "version": "1.1.2",
@@ -21352,12 +21256,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-use-previous@1.1.1?package-id=69f9e11e18b89e4b",
+      "bom-ref": "pkg:npm/%40radix-ui/react-use-previous@1.1.1?package-id=2fd8fb1d52fabd4b",
       "type": "library",
       "name": "@radix-ui/react-use-previous",
       "version": "1.1.1",
@@ -21441,12 +21345,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-use-rect@1.1.1?package-id=c114972d1d437793",
+      "bom-ref": "pkg:npm/%40radix-ui/react-use-rect@1.1.1?package-id=8a7d9ab41d623a5b",
       "type": "library",
       "name": "@radix-ui/react-use-rect",
       "version": "1.1.1",
@@ -21530,12 +21434,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-use-size@1.1.1?package-id=8b09be7fa5812af3",
+      "bom-ref": "pkg:npm/%40radix-ui/react-use-size@1.1.1?package-id=f0522427ba04bd9c",
       "type": "library",
       "name": "@radix-ui/react-use-size",
       "version": "1.1.1",
@@ -21619,12 +21523,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/react-visually-hidden@1.2.3?package-id=1432e33fa3964418",
+      "bom-ref": "pkg:npm/%40radix-ui/react-visually-hidden@1.2.3?package-id=bc3eb68beaa83010",
       "type": "library",
       "name": "@radix-ui/react-visually-hidden",
       "version": "1.2.3",
@@ -21708,12 +21612,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40radix-ui/rect@1.1.1?package-id=6b4276a62161d4d0",
+      "bom-ref": "pkg:npm/%40radix-ui/rect@1.1.1?package-id=3a8607ab0d714173",
       "type": "library",
       "name": "@radix-ui/rect",
       "version": "1.1.1",
@@ -21765,12 +21669,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40types/dom-mediacapture-record@1.0.22?package-id=e244aee741dcfa11",
+      "bom-ref": "pkg:npm/%40types/dom-mediacapture-record@1.0.22?package-id=f281f3c50d78ad8e",
       "type": "library",
       "name": "@types/dom-mediacapture-record",
       "version": "1.0.22",
@@ -21838,12 +21742,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40types/react@19.2.14?package-id=679c5bb9dfbc03ff",
+      "bom-ref": "pkg:npm/%40types/react@19.2.14?package-id=24e2362ce98a771d",
       "type": "library",
       "name": "@types/react",
       "version": "19.2.14",
@@ -21875,12 +21779,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/%40types/react-dom@19.2.3?package-id=d16e0979575af5cb",
+      "bom-ref": "pkg:npm/%40types/react-dom@19.2.3?package-id=0d77d844c2ee3d12",
       "type": "library",
       "name": "@types/react-dom",
       "version": "19.2.3",
@@ -21932,12 +21836,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/aria-hidden@1.2.6?package-id=b2925f024ddb5548",
+      "bom-ref": "pkg:npm/aria-hidden@1.2.6?package-id=0930787c0b0fecc3",
       "type": "library",
       "name": "aria-hidden",
       "version": "1.2.6",
@@ -21989,12 +21893,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/class-variance-authority@0.7.1?package-id=0dfc3de7f5a4714f",
+      "bom-ref": "pkg:npm/class-variance-authority@0.7.1?package-id=6986c48c477f3bf1",
       "type": "library",
       "name": "class-variance-authority",
       "version": "0.7.1",
@@ -22062,12 +21966,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/clsx@2.1.1?package-id=bc6f9fea5e3896cf",
+      "bom-ref": "pkg:npm/clsx@2.1.1?package-id=1cdd74d474651cd1",
       "type": "library",
       "name": "clsx",
       "version": "2.1.1",
@@ -22099,12 +22003,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/cookie@1.1.1?package-id=4848754b71fb5547",
+      "bom-ref": "pkg:npm/cookie@1.1.1?package-id=c8eec62b9f3966a7",
       "type": "library",
       "name": "cookie",
       "version": "1.1.1",
@@ -22136,12 +22040,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/csstype@3.2.3?package-id=6af6b4d3f4fb98b8",
+      "bom-ref": "pkg:npm/csstype@3.2.3?package-id=7a5abc30c1904007",
       "type": "library",
       "name": "csstype",
       "version": "3.2.3",
@@ -22173,12 +22077,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/detect-node-es@1.1.0?package-id=cb137939c70feb4e",
+      "bom-ref": "pkg:npm/detect-node-es@1.1.0?package-id=e7dad730b95e79e8",
       "type": "library",
       "name": "detect-node-es",
       "version": "1.1.0",
@@ -22246,12 +22150,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/events@3.3.0?package-id=d2c15266a3503080",
+      "bom-ref": "pkg:npm/events@3.3.0?package-id=bca3d6fcf9ecc55d",
       "type": "library",
       "name": "events",
       "version": "3.3.0",
@@ -22283,12 +22187,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/get-nonce@1.0.1?package-id=b24a8743533745e1",
+      "bom-ref": "pkg:npm/get-nonce@1.0.1?package-id=bf3b308550c85883",
       "type": "library",
       "name": "get-nonce",
       "version": "1.0.1",
@@ -22340,12 +22244,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/jose@6.2.2?package-id=289fd5e18bb59b3f",
+      "bom-ref": "pkg:npm/jose@6.2.2?package-id=867289c543658a40",
       "type": "library",
       "name": "jose",
       "version": "6.2.2",
@@ -22377,12 +22281,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/livekit-client@2.18.6?package-id=4c9b2bfbb73ba051",
+      "bom-ref": "pkg:npm/livekit-client@2.18.6?package-id=b4349c671ca2a1b3",
       "type": "library",
       "name": "livekit-client",
       "version": "2.18.6",
@@ -22434,12 +22338,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/lodash.debounce@4.0.8?package-id=91bc4986ace72a86",
+      "bom-ref": "pkg:npm/lodash.debounce@4.0.8?package-id=fe0fe7486eb14f92",
       "type": "library",
       "name": "lodash.debounce",
       "version": "4.0.8",
@@ -22471,12 +22375,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/loglevel@1.9.1?package-id=396baead169400a0",
+      "bom-ref": "pkg:npm/loglevel@1.9.1?package-id=afa453c42b518538",
       "type": "library",
       "name": "loglevel",
       "version": "1.9.1",
@@ -22508,12 +22412,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/loglevel@1.9.2?package-id=4903548a0726e21a",
+      "bom-ref": "pkg:npm/loglevel@1.9.2?package-id=305a361dee879a70",
       "type": "library",
       "name": "loglevel",
       "version": "1.9.2",
@@ -22545,12 +22449,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/lucide-react@0.460.0?package-id=5fd26038ae62aaa3",
+      "bom-ref": "pkg:npm/lucide-react@0.460.0?package-id=a8a762be86de8ff5",
       "type": "library",
       "name": "lucide-react",
       "version": "0.460.0",
@@ -22602,12 +22506,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/next-themes@0.4.6?package-id=df065554b47c4609",
+      "bom-ref": "pkg:npm/next-themes@0.4.6?package-id=7c7fc4d0a697e0d7",
       "type": "library",
       "name": "next-themes",
       "version": "0.4.6",
@@ -22659,12 +22563,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/radix-ui@1.4.3?package-id=f05c9c425088a661",
+      "bom-ref": "pkg:npm/radix-ui@1.4.3?package-id=eccabab0a743b663",
       "type": "library",
       "name": "radix-ui",
       "version": "1.4.3",
@@ -22716,12 +22620,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/react@19.2.5?package-id=712291ac018e5925",
+      "bom-ref": "pkg:npm/react@19.2.5?package-id=a3bac76e601fd4d2",
       "type": "library",
       "name": "react",
       "version": "19.2.5",
@@ -22753,12 +22657,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/react-dom@19.2.5?package-id=fec8bb19cf290d95",
+      "bom-ref": "pkg:npm/react-dom@19.2.5?package-id=bd7e1d56df96bfb7",
       "type": "library",
       "name": "react-dom",
       "version": "19.2.5",
@@ -22810,12 +22714,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/react-remove-scroll@2.7.2?package-id=8ce463a0a7c1ef9f",
+      "bom-ref": "pkg:npm/react-remove-scroll@2.7.2?package-id=a2d6aa955c5e0e61",
       "type": "library",
       "name": "react-remove-scroll",
       "version": "2.7.2",
@@ -22883,12 +22787,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/react-remove-scroll-bar@2.3.8?package-id=b3730886fe01d7a1",
+      "bom-ref": "pkg:npm/react-remove-scroll-bar@2.3.8?package-id=da5a2fc6ba1db5f2",
       "type": "library",
       "name": "react-remove-scroll-bar",
       "version": "2.3.8",
@@ -22972,12 +22876,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/react-router@7.14.2?package-id=a74e7b843fdfa60b",
+      "bom-ref": "pkg:npm/react-router@7.14.2?package-id=a36cb4bdf76be9cf",
       "type": "library",
       "name": "react-router",
       "version": "7.14.2",
@@ -23029,12 +22933,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/react-router-dom@7.14.2?package-id=d99f456be211a010",
+      "bom-ref": "pkg:npm/react-router-dom@7.14.2?package-id=07678e9ff8bbb4ad",
       "type": "library",
       "name": "react-router-dom",
       "version": "7.14.2",
@@ -23102,12 +23006,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/react-style-singleton@2.2.3?package-id=14e30db85341328f",
+      "bom-ref": "pkg:npm/react-style-singleton@2.2.3?package-id=6bcb24b28dfac2a9",
       "type": "library",
       "name": "react-style-singleton",
       "version": "2.2.3",
@@ -23175,12 +23079,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/rxjs@7.8.2?package-id=beeca3a5156a5faf",
+      "bom-ref": "pkg:npm/rxjs@7.8.2?package-id=d005468fdaf8cece",
       "type": "library",
       "name": "rxjs",
       "version": "7.8.2",
@@ -23212,12 +23116,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/scheduler@0.27.0?package-id=6b4e2e70cc3e4cd0",
+      "bom-ref": "pkg:npm/scheduler@0.27.0?package-id=1de82ca85bf9fd7b",
       "type": "library",
       "name": "scheduler",
       "version": "0.27.0",
@@ -23249,12 +23153,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/sdp@3.2.2?package-id=99ef70ee88b9d2a5",
+      "bom-ref": "pkg:npm/sdp@3.2.2?package-id=4e5bc2193d0e80aa",
       "type": "library",
       "name": "sdp",
       "version": "3.2.2",
@@ -23286,12 +23190,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/sdp-transform@2.15.0?package-id=ac889e81224726f5",
+      "bom-ref": "pkg:npm/sdp-transform@2.15.0?package-id=25db2836f392c658",
       "type": "library",
       "name": "sdp-transform",
       "version": "2.15.0",
@@ -23343,12 +23247,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/set-cookie-parser@2.7.2?package-id=5ca896eb7b0f7a15",
+      "bom-ref": "pkg:npm/set-cookie-parser@2.7.2?package-id=69617d29d53cf676",
       "type": "library",
       "name": "set-cookie-parser",
       "version": "2.7.2",
@@ -23416,12 +23320,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/sonner@2.0.7?package-id=d8b364896c7e06b7",
+      "bom-ref": "pkg:npm/sonner@2.0.7?package-id=7a9bfe1679dca613",
       "type": "library",
       "name": "sonner",
       "version": "2.0.7",
@@ -23453,12 +23357,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/tailwind-merge@2.6.1?package-id=49be4da59fb280d1",
+      "bom-ref": "pkg:npm/tailwind-merge@2.6.1?package-id=239188c498a7ef96",
       "type": "library",
       "name": "tailwind-merge",
       "version": "2.6.1",
@@ -23510,12 +23414,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/taskorbit-frontend@0.1.0?package-id=5b901ce89cfa74ef",
+      "bom-ref": "pkg:npm/taskorbit-frontend@0.1.0?package-id=3162279df2b5f190",
       "type": "library",
       "name": "taskorbit-frontend",
       "version": "0.1.0",
@@ -23560,12 +23464,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/tslib@2.8.1?package-id=91de224ec44bf23b",
+      "bom-ref": "pkg:npm/tslib@2.8.1?package-id=732c6f5be784c8f2",
       "type": "library",
       "name": "tslib",
       "version": "2.8.1",
@@ -23597,12 +23501,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/typed-emitter@2.1.0?package-id=0173421cc5af9e30",
+      "bom-ref": "pkg:npm/typed-emitter@2.1.0?package-id=d0cde913a21d56e4",
       "type": "library",
       "name": "typed-emitter",
       "version": "2.1.0",
@@ -23654,12 +23558,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/use-callback-ref@1.3.3?package-id=4f3a9dd1c2db871a",
+      "bom-ref": "pkg:npm/use-callback-ref@1.3.3?package-id=a21124fefdef71f0",
       "type": "library",
       "name": "use-callback-ref",
       "version": "1.3.3",
@@ -23727,12 +23631,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/use-sidecar@1.1.3?package-id=e02b686f50154aa2",
+      "bom-ref": "pkg:npm/use-sidecar@1.1.3?package-id=abc543e28d4c0541",
       "type": "library",
       "name": "use-sidecar",
       "version": "1.1.3",
@@ -23784,12 +23688,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/use-sync-external-store@1.6.0?package-id=171b5f2ee4148db9",
+      "bom-ref": "pkg:npm/use-sync-external-store@1.6.0?package-id=02dcd85f21e25415",
       "type": "library",
       "name": "use-sync-external-store",
       "version": "1.6.0",
@@ -23873,12 +23777,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/usehooks-ts@3.1.1?package-id=44ee8aeedb75d6a7",
+      "bom-ref": "pkg:npm/usehooks-ts@3.1.1?package-id=be05c51619620428",
       "type": "library",
       "name": "usehooks-ts",
       "version": "3.1.1",
@@ -23930,12 +23834,12 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     },
     {
-      "bom-ref": "pkg:npm/webrtc-adapter@9.0.5?package-id=7d75283d05aa1759",
+      "bom-ref": "pkg:npm/webrtc-adapter@9.0.5?package-id=68babb9526e5cdf0",
       "type": "library",
       "name": "webrtc-adapter",
       "version": "9.0.5",
@@ -23987,752 +23891,752 @@
         },
         {
           "name": "syft:location:0:path",
-          "value": "\\package-lock.json"
+          "value": "/package-lock.json"
         }
       ]
     }
   ],
   "dependencies": [
     {
-      "ref": "pkg:pypi/aiohttp@3.13.5?package-id=61ac925a2c71d760",
+      "ref": "pkg:pypi/aiohttp@3.13.5?package-id=81a9b3973b8d20c1",
       "dependsOn": [
-        "pkg:pypi/aiohappyeyeballs@2.6.1?package-id=d632f7b0f6ea1c70",
-        "pkg:pypi/aiosignal@1.4.0?package-id=cddc08006decda59",
-        "pkg:pypi/attrs@26.1.0?package-id=f6d3c7caaee86bfb",
-        "pkg:pypi/frozenlist@1.8.0?package-id=fe35ffc840e9dce7",
-        "pkg:pypi/multidict@6.7.1?package-id=c2c1322eb691f040",
-        "pkg:pypi/propcache@0.4.1?package-id=11b3500780a1b957",
-        "pkg:pypi/yarl@1.23.0?package-id=5d6f6d034ab5cced"
+        "pkg:pypi/aiohappyeyeballs@2.6.1?package-id=079485c0b91997e9",
+        "pkg:pypi/aiosignal@1.4.0?package-id=21740e59e5b72600",
+        "pkg:pypi/attrs@26.1.0?package-id=d805380d06856e32",
+        "pkg:pypi/frozenlist@1.8.0?package-id=1df35f87e79f5bb8",
+        "pkg:pypi/multidict@6.7.1?package-id=9c2ffc65ed44fa3c",
+        "pkg:pypi/propcache@0.4.1?package-id=4a3f6d5a81da1f22",
+        "pkg:pypi/yarl@1.23.0?package-id=ef6164c662636c13"
       ]
     },
     {
-      "ref": "pkg:pypi/aiosignal@1.4.0?package-id=cddc08006decda59",
+      "ref": "pkg:pypi/aiosignal@1.4.0?package-id=21740e59e5b72600",
       "dependsOn": [
-        "pkg:pypi/frozenlist@1.8.0?package-id=fe35ffc840e9dce7",
-        "pkg:pypi/typing-extensions@4.15.0?package-id=edf2b7042f4381c6"
+        "pkg:pypi/frozenlist@1.8.0?package-id=1df35f87e79f5bb8",
+        "pkg:pypi/typing-extensions@4.15.0?package-id=eb79741fe86d4cc5"
       ]
     },
     {
-      "ref": "pkg:pypi/aiosqlite@0.22.1?package-id=5cedc9c7adbd6357",
+      "ref": "pkg:pypi/aiosqlite@0.22.1?package-id=65a67001cc7c3be6",
       "dependsOn": [
-        "pkg:pypi/mypy@1.20.2?package-id=d6a1671259b7a6dc"
+        "pkg:pypi/mypy@1.20.2?package-id=c2df07cbd4a29779"
       ]
     },
     {
-      "ref": "pkg:pypi/alembic@1.18.4?package-id=b23f5cd6ccfbfe2d",
+      "ref": "pkg:pypi/alembic@1.18.4?package-id=2196fe3b734a4979",
       "dependsOn": [
-        "pkg:pypi/typing-extensions@4.15.0?package-id=edf2b7042f4381c6",
-        "pkg:pypi/tzdata@2026.2?package-id=b5a9ff2e63e7d80b"
+        "pkg:pypi/typing-extensions@4.15.0?package-id=eb79741fe86d4cc5",
+        "pkg:pypi/tzdata@2026.2?package-id=7ebbf0cbb2d88e7f"
       ]
     },
     {
-      "ref": "pkg:pypi/anyio@4.13.0?package-id=09f43b75d27c1649",
+      "ref": "pkg:pypi/anyio@4.13.0?package-id=dd7a30acc1941c57",
       "dependsOn": [
-        "pkg:pypi/idna@3.13?package-id=80fd09286b26f857"
+        "pkg:pypi/idna@3.13?package-id=4a51eb5410f3c522"
       ]
     },
     {
-      "ref": "pkg:pypi/cffi@2.0.0?package-id=fd36e4ea971e893f",
+      "ref": "pkg:pypi/cffi@2.0.0?package-id=3d14ae29c07d8958",
       "dependsOn": [
-        "pkg:pypi/pycparser@3.0?package-id=25542df6df0a5b93"
+        "pkg:pypi/pycparser@3.0?package-id=840d6fb5376bee90"
       ]
     },
     {
-      "ref": "pkg:pypi/click@8.3.3?package-id=fdb465bde40d6ec0",
+      "ref": "pkg:pypi/click@8.3.3?package-id=ba074497e9646292",
       "dependsOn": [
-        "pkg:pypi/colorama@0.4.6?package-id=c585db8dba13d75c"
+        "pkg:pypi/colorama@0.4.6?package-id=754ada8d4566a598"
       ]
     },
     {
-      "ref": "pkg:pypi/cryptography@47.0.0?package-id=0c9003c758b0d1a8",
+      "ref": "pkg:pypi/cryptography@47.0.0?package-id=ddfff5617051594d",
       "dependsOn": [
-        "pkg:pypi/cffi@2.0.0?package-id=fd36e4ea971e893f"
+        "pkg:pypi/cffi@2.0.0?package-id=3d14ae29c07d8958"
       ]
     },
     {
-      "ref": "pkg:pypi/docstring-parser@0.18.0?package-id=676582fcf4eb44ca",
+      "ref": "pkg:pypi/docstring-parser@0.18.0?package-id=017b2a593405441d",
       "dependsOn": [
-        "pkg:pypi/pre-commit@4.6.0?package-id=b46a700d9466dc3d",
-        "pkg:pypi/pytest@8.4.2?package-id=086e1f387c1091be"
+        "pkg:pypi/pre-commit@4.6.0?package-id=665f9e00bd0aa560",
+        "pkg:pypi/pytest@8.4.2?package-id=1a3f555bd1c55e23"
       ]
     },
     {
-      "ref": "pkg:pypi/eval-type-backport@0.3.1?package-id=2380ca72c8ba4b97",
+      "ref": "pkg:pypi/eval-type-backport@0.3.1?package-id=15164a29a6866b24",
       "dependsOn": [
-        "pkg:pypi/pytest@8.4.2?package-id=086e1f387c1091be"
+        "pkg:pypi/pytest@8.4.2?package-id=1a3f555bd1c55e23"
       ]
     },
     {
-      "ref": "pkg:pypi/fastapi@0.115.14?package-id=9ffd762569de805a",
+      "ref": "pkg:pypi/fastapi@0.115.14?package-id=10654eb209bf8f7a",
       "dependsOn": [
-        "pkg:pypi/httpx@0.28.1?package-id=29fbac9ddb126cb2",
-        "pkg:pypi/pydantic-settings@2.14.0?package-id=ccaf4c6c1e0781d7",
-        "pkg:pypi/pydantic@2.13.3?package-id=7cf8d7f7ea805ec8",
-        "pkg:pypi/pyyaml@6.0.3?package-id=a206bfee8846e016",
-        "pkg:pypi/starlette@0.46.2?package-id=09b3017d6b825693",
-        "pkg:pypi/typing-extensions@4.15.0?package-id=edf2b7042f4381c6",
-        "pkg:pypi/uvicorn@0.32.1?package-id=61b67ad3cde5c30f"
+        "pkg:pypi/httpx@0.28.1?package-id=611c010fb13f03ea",
+        "pkg:pypi/pydantic-settings@2.14.0?package-id=8ed22ae2fa2caff2",
+        "pkg:pypi/pydantic@2.13.3?package-id=f24eb5e85c249d2b",
+        "pkg:pypi/pyyaml@6.0.3?package-id=9c1816750b11992a",
+        "pkg:pypi/starlette@0.46.2?package-id=65dcb33a67dab4ec",
+        "pkg:pypi/typing-extensions@4.15.0?package-id=eb79741fe86d4cc5",
+        "pkg:pypi/uvicorn@0.32.1?package-id=66ffe047c1c6c69a"
       ]
     },
     {
-      "ref": "pkg:pypi/google-api-core@2.30.3?package-id=af2e87dd40e58055",
+      "ref": "pkg:pypi/google-api-core@2.30.3?package-id=4b8dab614bebe419",
       "dependsOn": [
-        "pkg:pypi/google-auth@2.49.2?package-id=362156e819a1bf4b",
-        "pkg:pypi/googleapis-common-protos@1.74.0?package-id=de241ebc97d4cf82",
-        "pkg:pypi/grpcio-status@1.80.0?package-id=95cd3f9b24f5f302",
-        "pkg:pypi/grpcio@1.80.0?package-id=3bce3a37b1406cb4",
-        "pkg:pypi/proto-plus@1.27.2?package-id=81506234e1df9f8e",
-        "pkg:pypi/protobuf@6.33.6?package-id=c1c5117453c3a982",
-        "pkg:pypi/requests@2.33.1?package-id=9cbca4ee9edb162d"
+        "pkg:pypi/google-auth@2.49.2?package-id=bfaeceac70260ae7",
+        "pkg:pypi/googleapis-common-protos@1.74.0?package-id=7747eb6265dd774e",
+        "pkg:pypi/grpcio-status@1.80.0?package-id=24ab1fcf5d8e9608",
+        "pkg:pypi/grpcio@1.80.0?package-id=9b5a2495bafe2ae3",
+        "pkg:pypi/proto-plus@1.27.2?package-id=c639410c28b90b56",
+        "pkg:pypi/protobuf@6.33.6?package-id=0cd42d293e973539",
+        "pkg:pypi/requests@2.33.1?package-id=c5ed5ce606f1aa6a"
       ]
     },
     {
-      "ref": "pkg:pypi/google-auth@2.49.2?package-id=362156e819a1bf4b",
+      "ref": "pkg:pypi/google-auth@2.49.2?package-id=bfaeceac70260ae7",
       "dependsOn": [
-        "pkg:pypi/aiohttp@3.13.5?package-id=61ac925a2c71d760",
-        "pkg:pypi/cryptography@47.0.0?package-id=0c9003c758b0d1a8",
-        "pkg:pypi/grpcio@1.80.0?package-id=3bce3a37b1406cb4",
-        "pkg:pypi/packaging@26.2?package-id=6a1c3d6787fc8034",
-        "pkg:pypi/pyasn1-modules@0.4.2?package-id=aa986c49209cae67",
-        "pkg:pypi/pyjwt@2.12.1?package-id=134344ffa2e547ec",
-        "pkg:pypi/pytest-asyncio@0.24.0?package-id=89dc5872d0b949d1",
-        "pkg:pypi/pytest@8.4.2?package-id=086e1f387c1091be",
-        "pkg:pypi/requests@2.33.1?package-id=9cbca4ee9edb162d",
-        "pkg:pypi/urllib3@2.6.3?package-id=a9c7778826d56544"
+        "pkg:pypi/aiohttp@3.13.5?package-id=81a9b3973b8d20c1",
+        "pkg:pypi/cryptography@47.0.0?package-id=ddfff5617051594d",
+        "pkg:pypi/grpcio@1.80.0?package-id=9b5a2495bafe2ae3",
+        "pkg:pypi/packaging@26.2?package-id=b8adc5391298f612",
+        "pkg:pypi/pyasn1-modules@0.4.2?package-id=9ecaec961c32cf33",
+        "pkg:pypi/pyjwt@2.12.1?package-id=7a57a50661c6ebb4",
+        "pkg:pypi/pytest-asyncio@0.24.0?package-id=6f53b70f2a7166e4",
+        "pkg:pypi/pytest@8.4.2?package-id=1a3f555bd1c55e23",
+        "pkg:pypi/requests@2.33.1?package-id=c5ed5ce606f1aa6a",
+        "pkg:pypi/urllib3@2.6.3?package-id=e2ece809fea9628e"
       ]
     },
     {
-      "ref": "pkg:pypi/google-cloud-speech@2.38.0?package-id=8b014d3f019169a4",
+      "ref": "pkg:pypi/google-cloud-speech@2.38.0?package-id=857d5054c474c7b7",
       "dependsOn": [
-        "pkg:pypi/google-api-core@2.30.3?package-id=af2e87dd40e58055",
-        "pkg:pypi/google-auth@2.49.2?package-id=362156e819a1bf4b",
-        "pkg:pypi/grpcio@1.80.0?package-id=3bce3a37b1406cb4",
-        "pkg:pypi/proto-plus@1.27.2?package-id=81506234e1df9f8e",
-        "pkg:pypi/protobuf@6.33.6?package-id=c1c5117453c3a982"
+        "pkg:pypi/google-api-core@2.30.3?package-id=4b8dab614bebe419",
+        "pkg:pypi/google-auth@2.49.2?package-id=bfaeceac70260ae7",
+        "pkg:pypi/grpcio@1.80.0?package-id=9b5a2495bafe2ae3",
+        "pkg:pypi/proto-plus@1.27.2?package-id=c639410c28b90b56",
+        "pkg:pypi/protobuf@6.33.6?package-id=0cd42d293e973539"
       ]
     },
     {
-      "ref": "pkg:pypi/google-cloud-texttospeech@2.36.0?package-id=2176b261449c7253",
+      "ref": "pkg:pypi/google-cloud-texttospeech@2.36.0?package-id=ce34f27aa1c4f61d",
       "dependsOn": [
-        "pkg:pypi/google-api-core@2.30.3?package-id=af2e87dd40e58055",
-        "pkg:pypi/google-auth@2.49.2?package-id=362156e819a1bf4b",
-        "pkg:pypi/grpcio@1.80.0?package-id=3bce3a37b1406cb4",
-        "pkg:pypi/proto-plus@1.27.2?package-id=81506234e1df9f8e",
-        "pkg:pypi/protobuf@6.33.6?package-id=c1c5117453c3a982"
+        "pkg:pypi/google-api-core@2.30.3?package-id=4b8dab614bebe419",
+        "pkg:pypi/google-auth@2.49.2?package-id=bfaeceac70260ae7",
+        "pkg:pypi/grpcio@1.80.0?package-id=9b5a2495bafe2ae3",
+        "pkg:pypi/proto-plus@1.27.2?package-id=c639410c28b90b56",
+        "pkg:pypi/protobuf@6.33.6?package-id=0cd42d293e973539"
       ]
     },
     {
-      "ref": "pkg:pypi/google-genai@1.73.1?package-id=05daa1e161f5c8f9",
+      "ref": "pkg:pypi/google-genai@1.73.1?package-id=69e0aa473278f6d3",
       "dependsOn": [
-        "pkg:pypi/aiohttp@3.13.5?package-id=61ac925a2c71d760",
-        "pkg:pypi/anyio@4.13.0?package-id=09f43b75d27c1649",
-        "pkg:pypi/distro@1.9.0?package-id=64e9a1ba8cc6e66b",
-        "pkg:pypi/google-auth@2.49.2?package-id=362156e819a1bf4b",
-        "pkg:pypi/httpx@0.28.1?package-id=29fbac9ddb126cb2",
-        "pkg:pypi/protobuf@6.33.6?package-id=c1c5117453c3a982",
-        "pkg:pypi/pydantic@2.13.3?package-id=7cf8d7f7ea805ec8",
-        "pkg:pypi/requests@2.33.1?package-id=9cbca4ee9edb162d",
-        "pkg:pypi/sniffio@1.3.1?package-id=f19b513e003ae36a",
-        "pkg:pypi/tenacity@9.1.4?package-id=fc6470adc7bc928f",
-        "pkg:pypi/typing-extensions@4.15.0?package-id=edf2b7042f4381c6",
-        "pkg:pypi/websockets@15.0.1?package-id=fa1ff361fd7a5186"
+        "pkg:pypi/aiohttp@3.13.5?package-id=81a9b3973b8d20c1",
+        "pkg:pypi/anyio@4.13.0?package-id=dd7a30acc1941c57",
+        "pkg:pypi/distro@1.9.0?package-id=8dc5a61d0877617a",
+        "pkg:pypi/google-auth@2.49.2?package-id=bfaeceac70260ae7",
+        "pkg:pypi/httpx@0.28.1?package-id=611c010fb13f03ea",
+        "pkg:pypi/protobuf@6.33.6?package-id=0cd42d293e973539",
+        "pkg:pypi/pydantic@2.13.3?package-id=f24eb5e85c249d2b",
+        "pkg:pypi/requests@2.33.1?package-id=c5ed5ce606f1aa6a",
+        "pkg:pypi/sniffio@1.3.1?package-id=cccc3177ef1d0e78",
+        "pkg:pypi/tenacity@9.1.4?package-id=efc969e124a83093",
+        "pkg:pypi/typing-extensions@4.15.0?package-id=eb79741fe86d4cc5",
+        "pkg:pypi/websockets@15.0.1?package-id=fbb2bb8ed7253bdd"
       ]
     },
     {
-      "ref": "pkg:pypi/googleapis-common-protos@1.74.0?package-id=de241ebc97d4cf82",
+      "ref": "pkg:pypi/googleapis-common-protos@1.74.0?package-id=7747eb6265dd774e",
       "dependsOn": [
-        "pkg:pypi/grpcio@1.80.0?package-id=3bce3a37b1406cb4",
-        "pkg:pypi/protobuf@6.33.6?package-id=c1c5117453c3a982"
+        "pkg:pypi/grpcio@1.80.0?package-id=9b5a2495bafe2ae3",
+        "pkg:pypi/protobuf@6.33.6?package-id=0cd42d293e973539"
       ]
     },
     {
-      "ref": "pkg:pypi/greenlet@3.5.1?package-id=c46b8f9ad386d9bf",
+      "ref": "pkg:pypi/greenlet@3.5.1?package-id=d677995ebace7370",
       "dependsOn": [
-        "pkg:pypi/psutil@7.2.2?package-id=5ae44ad7908641e6"
+        "pkg:pypi/psutil@7.2.2?package-id=3f1b7912afcbbdc6"
       ]
     },
     {
-      "ref": "pkg:pypi/grpcio-status@1.80.0?package-id=95cd3f9b24f5f302",
+      "ref": "pkg:pypi/grpcio-status@1.80.0?package-id=24ab1fcf5d8e9608",
       "dependsOn": [
-        "pkg:pypi/googleapis-common-protos@1.74.0?package-id=de241ebc97d4cf82",
-        "pkg:pypi/grpcio@1.80.0?package-id=3bce3a37b1406cb4",
-        "pkg:pypi/protobuf@6.33.6?package-id=c1c5117453c3a982"
+        "pkg:pypi/googleapis-common-protos@1.74.0?package-id=7747eb6265dd774e",
+        "pkg:pypi/grpcio@1.80.0?package-id=9b5a2495bafe2ae3",
+        "pkg:pypi/protobuf@6.33.6?package-id=0cd42d293e973539"
       ]
     },
     {
-      "ref": "pkg:pypi/grpcio@1.80.0?package-id=3bce3a37b1406cb4",
+      "ref": "pkg:pypi/grpcio@1.80.0?package-id=9b5a2495bafe2ae3",
       "dependsOn": [
-        "pkg:pypi/typing-extensions@4.15.0?package-id=edf2b7042f4381c6"
+        "pkg:pypi/typing-extensions@4.15.0?package-id=eb79741fe86d4cc5"
       ]
     },
     {
-      "ref": "pkg:pypi/httpcore@1.0.9?package-id=827a7d161ad36dac",
+      "ref": "pkg:pypi/httpcore@1.0.9?package-id=933f0c7a979e0551",
       "dependsOn": [
-        "pkg:pypi/anyio@4.13.0?package-id=09f43b75d27c1649",
-        "pkg:pypi/certifi@2026.4.22?package-id=356c972cf59623a2",
-        "pkg:pypi/h11@0.16.0?package-id=3fad88e799f994ac"
+        "pkg:pypi/anyio@4.13.0?package-id=dd7a30acc1941c57",
+        "pkg:pypi/certifi@2026.4.22?package-id=45223ca3cd8f8a36",
+        "pkg:pypi/h11@0.16.0?package-id=eb9fe3a945d9c1c9"
       ]
     },
     {
-      "ref": "pkg:pypi/httpx@0.28.1?package-id=29fbac9ddb126cb2",
+      "ref": "pkg:pypi/httpx@0.28.1?package-id=611c010fb13f03ea",
       "dependsOn": [
-        "pkg:pypi/anyio@4.13.0?package-id=09f43b75d27c1649",
-        "pkg:pypi/certifi@2026.4.22?package-id=356c972cf59623a2",
-        "pkg:pypi/click@8.3.3?package-id=fdb465bde40d6ec0",
-        "pkg:pypi/httpcore@1.0.9?package-id=827a7d161ad36dac",
-        "pkg:pypi/idna@3.13?package-id=80fd09286b26f857",
-        "pkg:pypi/pygments@2.20.0?package-id=10b15264407cb9f0",
-        "pkg:pypi/rich@15.0.0?package-id=53932d5ebab6e624"
+        "pkg:pypi/anyio@4.13.0?package-id=dd7a30acc1941c57",
+        "pkg:pypi/certifi@2026.4.22?package-id=45223ca3cd8f8a36",
+        "pkg:pypi/click@8.3.3?package-id=ba074497e9646292",
+        "pkg:pypi/httpcore@1.0.9?package-id=933f0c7a979e0551",
+        "pkg:pypi/idna@3.13?package-id=4a51eb5410f3c522",
+        "pkg:pypi/pygments@2.20.0?package-id=c18e2222175f061e",
+        "pkg:pypi/rich@15.0.0?package-id=26ac973998902eb5"
       ]
     },
     {
-      "ref": "pkg:pypi/idna@3.13?package-id=80fd09286b26f857",
+      "ref": "pkg:pypi/idna@3.13?package-id=4a51eb5410f3c522",
       "dependsOn": [
-        "pkg:pypi/mypy@1.20.2?package-id=d6a1671259b7a6dc",
-        "pkg:pypi/pytest@8.4.2?package-id=086e1f387c1091be",
-        "pkg:pypi/ruff@0.7.4?package-id=cbff75ddaf9bf40b"
+        "pkg:pypi/mypy@1.20.2?package-id=c2df07cbd4a29779",
+        "pkg:pypi/pytest@8.4.2?package-id=1a3f555bd1c55e23",
+        "pkg:pypi/ruff@0.7.4?package-id=c07f6e25d5ddd8a3"
       ]
     },
     {
-      "ref": "pkg:pypi/importlib-metadata@8.7.1?package-id=0d3cb7e4f9c343b1",
+      "ref": "pkg:pypi/importlib-metadata@8.7.1?package-id=545b214b4ff37a47",
       "dependsOn": [
-        "pkg:pypi/mypy@1.20.2?package-id=d6a1671259b7a6dc",
-        "pkg:pypi/packaging@26.2?package-id=6a1c3d6787fc8034",
-        "pkg:pypi/pytest@8.4.2?package-id=086e1f387c1091be",
-        "pkg:pypi/zipp@3.23.1?package-id=d74c21f6fd203436"
+        "pkg:pypi/mypy@1.20.2?package-id=c2df07cbd4a29779",
+        "pkg:pypi/packaging@26.2?package-id=b8adc5391298f612",
+        "pkg:pypi/pytest@8.4.2?package-id=1a3f555bd1c55e23",
+        "pkg:pypi/zipp@3.23.1?package-id=3cb95c191cbeccbe"
       ]
     },
     {
-      "ref": "pkg:pypi/jsonpath-python@1.1.6?package-id=b94694bd8361cd90",
+      "ref": "pkg:pypi/jsonpath-python@1.1.6?package-id=0f4833d411444534",
       "dependsOn": [
-        "pkg:pypi/pytest@8.4.2?package-id=086e1f387c1091be",
-        "pkg:pypi/ruff@0.7.4?package-id=cbff75ddaf9bf40b"
+        "pkg:pypi/pytest@8.4.2?package-id=1a3f555bd1c55e23",
+        "pkg:pypi/ruff@0.7.4?package-id=c07f6e25d5ddd8a3"
       ]
     },
     {
-      "ref": "pkg:pypi/jsonschema-specifications@2025.9.1?package-id=da4dcc3d86fa2615",
+      "ref": "pkg:pypi/jsonschema-specifications@2025.9.1?package-id=26190073cddfe72a",
       "dependsOn": [
-        "pkg:pypi/referencing@0.37.0?package-id=56a21c6a4eb97d5d"
+        "pkg:pypi/referencing@0.37.0?package-id=4673a49256ce1b9c"
       ]
     },
     {
-      "ref": "pkg:pypi/jsonschema@4.26.0?package-id=0bf7d4aee5e5c9db",
+      "ref": "pkg:pypi/jsonschema@4.26.0?package-id=955fb8f9a68326e5",
       "dependsOn": [
-        "pkg:pypi/attrs@26.1.0?package-id=f6d3c7caaee86bfb",
-        "pkg:pypi/idna@3.13?package-id=80fd09286b26f857",
-        "pkg:pypi/jsonschema-specifications@2025.9.1?package-id=da4dcc3d86fa2615",
-        "pkg:pypi/referencing@0.37.0?package-id=56a21c6a4eb97d5d",
-        "pkg:pypi/rpds-py@0.30.0?package-id=a52fbba3759575c7"
+        "pkg:pypi/attrs@26.1.0?package-id=d805380d06856e32",
+        "pkg:pypi/idna@3.13?package-id=4a51eb5410f3c522",
+        "pkg:pypi/jsonschema-specifications@2025.9.1?package-id=26190073cddfe72a",
+        "pkg:pypi/referencing@0.37.0?package-id=4673a49256ce1b9c",
+        "pkg:pypi/rpds-py@0.30.0?package-id=b9d21f53918484d7"
       ]
     },
     {
-      "ref": "pkg:pypi/livekit-agents@1.5.6?package-id=7d2cd2ce127ff8d7",
+      "ref": "pkg:pypi/livekit-agents@1.5.6?package-id=4a68c3b9e6ee4193",
       "dependsOn": [
-        "pkg:pypi/aiofiles@25.1.0?package-id=32ccb2ac0a5bb837",
-        "pkg:pypi/aiohttp@3.13.5?package-id=61ac925a2c71d760",
-        "pkg:pypi/av@17.0.1?package-id=e24721aa1ccabd48",
-        "pkg:pypi/certifi@2026.4.22?package-id=356c972cf59623a2",
-        "pkg:pypi/click@8.3.3?package-id=fdb465bde40d6ec0",
-        "pkg:pypi/colorama@0.4.6?package-id=c585db8dba13d75c",
-        "pkg:pypi/docstring-parser@0.18.0?package-id=676582fcf4eb44ca",
-        "pkg:pypi/eval-type-backport@0.3.1?package-id=2380ca72c8ba4b97",
-        "pkg:pypi/livekit-api@1.1.0?package-id=3d83081d0077d159",
-        "pkg:pypi/livekit-blingfire@1.1.0?package-id=7a3cd579cc65a431",
-        "pkg:pypi/livekit-plugins-deepgram@1.5.6?package-id=55b494246d20556a",
-        "pkg:pypi/livekit-plugins-elevenlabs@1.5.6?package-id=f43d46aaaece6b9e",
-        "pkg:pypi/livekit-plugins-google@1.5.6?package-id=c49f984c790c2473",
-        "pkg:pypi/livekit-plugins-openai@1.5.6?package-id=047e6e67c5365725",
-        "pkg:pypi/livekit-plugins-silero@1.5.6?package-id=4747d7b632e99f85",
-        "pkg:pypi/livekit-protocol@1.1.6?package-id=070da468350fb2a1",
-        "pkg:pypi/livekit@1.1.5?package-id=dd368d06d52df992",
-        "pkg:pypi/nest-asyncio@1.6.0?package-id=cab2ec3b80a8bc3a",
-        "pkg:pypi/numpy@2.4.4?package-id=0157583016de8721",
-        "pkg:pypi/openai@2.32.0?package-id=720d949a7eb35306",
-        "pkg:pypi/opentelemetry-api@1.39.1?package-id=12bfba68d7719836",
-        "pkg:pypi/opentelemetry-exporter-otlp@1.39.1?package-id=d6d07463422b59d3",
-        "pkg:pypi/opentelemetry-sdk@1.39.1?package-id=575ab52ff736f607",
-        "pkg:pypi/pillow@12.2.0?package-id=a94d081dfed6e339",
-        "pkg:pypi/prometheus-client@0.22.1?package-id=69f549bf446e0667",
-        "pkg:pypi/protobuf@6.33.6?package-id=c1c5117453c3a982",
-        "pkg:pypi/psutil@7.2.2?package-id=5ae44ad7908641e6",
-        "pkg:pypi/pydantic@2.13.3?package-id=7cf8d7f7ea805ec8",
-        "pkg:pypi/pyjwt@2.12.1?package-id=134344ffa2e547ec",
-        "pkg:pypi/sounddevice@0.5.5?package-id=a8f69a0159d17eb9",
-        "pkg:pypi/typer@0.25.0?package-id=8945a0cf85c3e2b5",
-        "pkg:pypi/types-protobuf@7.34.1.20260408?package-id=cc7cdf560956790d",
-        "pkg:pypi/typing-extensions@4.15.0?package-id=edf2b7042f4381c6",
-        "pkg:pypi/watchfiles@1.1.1?package-id=9b28bec4bd9dbf21"
+        "pkg:pypi/aiofiles@25.1.0?package-id=4d3664aae92f9770",
+        "pkg:pypi/aiohttp@3.13.5?package-id=81a9b3973b8d20c1",
+        "pkg:pypi/av@17.0.1?package-id=1b7817e9db5e427d",
+        "pkg:pypi/certifi@2026.4.22?package-id=45223ca3cd8f8a36",
+        "pkg:pypi/click@8.3.3?package-id=ba074497e9646292",
+        "pkg:pypi/colorama@0.4.6?package-id=754ada8d4566a598",
+        "pkg:pypi/docstring-parser@0.18.0?package-id=017b2a593405441d",
+        "pkg:pypi/eval-type-backport@0.3.1?package-id=15164a29a6866b24",
+        "pkg:pypi/livekit-api@1.1.0?package-id=41ebcd813d880a79",
+        "pkg:pypi/livekit-blingfire@1.1.0?package-id=ec2737faf9ed1acf",
+        "pkg:pypi/livekit-plugins-deepgram@1.5.6?package-id=d69cee3728027e78",
+        "pkg:pypi/livekit-plugins-elevenlabs@1.5.6?package-id=83435990f37ab5d4",
+        "pkg:pypi/livekit-plugins-google@1.5.6?package-id=2c80ed23193c9929",
+        "pkg:pypi/livekit-plugins-openai@1.5.6?package-id=f2d7658c70904d6b",
+        "pkg:pypi/livekit-plugins-silero@1.5.6?package-id=177592d7782adef1",
+        "pkg:pypi/livekit-protocol@1.1.6?package-id=39d05ec0487a1a76",
+        "pkg:pypi/livekit@1.1.5?package-id=cf53bc403061e6cf",
+        "pkg:pypi/nest-asyncio@1.6.0?package-id=63c94873b82a4a97",
+        "pkg:pypi/numpy@2.4.4?package-id=f860eeb4b2f98233",
+        "pkg:pypi/openai@2.32.0?package-id=6e683301f7a8f3a9",
+        "pkg:pypi/opentelemetry-api@1.39.1?package-id=8c4104285ae28830",
+        "pkg:pypi/opentelemetry-exporter-otlp@1.39.1?package-id=8cff6d23cbd4aa00",
+        "pkg:pypi/opentelemetry-sdk@1.39.1?package-id=5fad4934d617dbec",
+        "pkg:pypi/pillow@12.2.0?package-id=f13780a57a3c9931",
+        "pkg:pypi/prometheus-client@0.22.1?package-id=c49f58248390e5c3",
+        "pkg:pypi/protobuf@6.33.6?package-id=0cd42d293e973539",
+        "pkg:pypi/psutil@7.2.2?package-id=3f1b7912afcbbdc6",
+        "pkg:pypi/pydantic@2.13.3?package-id=f24eb5e85c249d2b",
+        "pkg:pypi/pyjwt@2.12.1?package-id=7a57a50661c6ebb4",
+        "pkg:pypi/sounddevice@0.5.5?package-id=16d07060fa8993dc",
+        "pkg:pypi/typer@0.25.0?package-id=1b139e8819d91207",
+        "pkg:pypi/types-protobuf@7.34.1.20260408?package-id=14f7674d04916b8e",
+        "pkg:pypi/typing-extensions@4.15.0?package-id=eb79741fe86d4cc5",
+        "pkg:pypi/watchfiles@1.1.1?package-id=937a8e9f1a6cd878"
       ]
     },
     {
-      "ref": "pkg:pypi/livekit-api@1.1.0?package-id=3d83081d0077d159",
+      "ref": "pkg:pypi/livekit-api@1.1.0?package-id=41ebcd813d880a79",
       "dependsOn": [
-        "pkg:pypi/aiohttp@3.13.5?package-id=61ac925a2c71d760",
-        "pkg:pypi/livekit-protocol@1.1.6?package-id=070da468350fb2a1",
-        "pkg:pypi/protobuf@6.33.6?package-id=c1c5117453c3a982",
-        "pkg:pypi/pyjwt@2.12.1?package-id=134344ffa2e547ec",
-        "pkg:pypi/types-protobuf@7.34.1.20260408?package-id=cc7cdf560956790d"
+        "pkg:pypi/aiohttp@3.13.5?package-id=81a9b3973b8d20c1",
+        "pkg:pypi/livekit-protocol@1.1.6?package-id=39d05ec0487a1a76",
+        "pkg:pypi/protobuf@6.33.6?package-id=0cd42d293e973539",
+        "pkg:pypi/pyjwt@2.12.1?package-id=7a57a50661c6ebb4",
+        "pkg:pypi/types-protobuf@7.34.1.20260408?package-id=14f7674d04916b8e"
       ]
     },
     {
-      "ref": "pkg:pypi/livekit-plugins-deepgram@1.5.6?package-id=55b494246d20556a",
+      "ref": "pkg:pypi/livekit-plugins-deepgram@1.5.6?package-id=d69cee3728027e78",
       "dependsOn": [
-        "pkg:pypi/livekit-agents@1.5.6?package-id=7d2cd2ce127ff8d7",
-        "pkg:pypi/numpy@2.4.4?package-id=0157583016de8721"
+        "pkg:pypi/livekit-agents@1.5.6?package-id=4a68c3b9e6ee4193",
+        "pkg:pypi/numpy@2.4.4?package-id=f860eeb4b2f98233"
       ]
     },
     {
-      "ref": "pkg:pypi/livekit-plugins-elevenlabs@1.5.6?package-id=f43d46aaaece6b9e",
+      "ref": "pkg:pypi/livekit-plugins-elevenlabs@1.5.6?package-id=83435990f37ab5d4",
       "dependsOn": [
-        "pkg:pypi/livekit-agents@1.5.6?package-id=7d2cd2ce127ff8d7"
+        "pkg:pypi/livekit-agents@1.5.6?package-id=4a68c3b9e6ee4193"
       ]
     },
     {
-      "ref": "pkg:pypi/livekit-plugins-google@1.5.6?package-id=c49f984c790c2473",
+      "ref": "pkg:pypi/livekit-plugins-google@1.5.6?package-id=2c80ed23193c9929",
       "dependsOn": [
-        "pkg:pypi/google-auth@2.49.2?package-id=362156e819a1bf4b",
-        "pkg:pypi/google-cloud-speech@2.38.0?package-id=8b014d3f019169a4",
-        "pkg:pypi/google-cloud-texttospeech@2.36.0?package-id=2176b261449c7253",
-        "pkg:pypi/google-genai@1.73.1?package-id=05daa1e161f5c8f9",
-        "pkg:pypi/livekit-agents@1.5.6?package-id=7d2cd2ce127ff8d7"
+        "pkg:pypi/google-auth@2.49.2?package-id=bfaeceac70260ae7",
+        "pkg:pypi/google-cloud-speech@2.38.0?package-id=857d5054c474c7b7",
+        "pkg:pypi/google-cloud-texttospeech@2.36.0?package-id=ce34f27aa1c4f61d",
+        "pkg:pypi/google-genai@1.73.1?package-id=69e0aa473278f6d3",
+        "pkg:pypi/livekit-agents@1.5.6?package-id=4a68c3b9e6ee4193"
       ]
     },
     {
-      "ref": "pkg:pypi/livekit-plugins-openai@1.5.6?package-id=047e6e67c5365725",
+      "ref": "pkg:pypi/livekit-plugins-openai@1.5.6?package-id=f2d7658c70904d6b",
       "dependsOn": [
-        "pkg:pypi/google-auth@2.49.2?package-id=362156e819a1bf4b",
-        "pkg:pypi/livekit-agents@1.5.6?package-id=7d2cd2ce127ff8d7",
-        "pkg:pypi/openai@2.32.0?package-id=720d949a7eb35306"
+        "pkg:pypi/google-auth@2.49.2?package-id=bfaeceac70260ae7",
+        "pkg:pypi/livekit-agents@1.5.6?package-id=4a68c3b9e6ee4193",
+        "pkg:pypi/openai@2.32.0?package-id=6e683301f7a8f3a9"
       ]
     },
     {
-      "ref": "pkg:pypi/livekit-plugins-silero@1.5.6?package-id=4747d7b632e99f85",
+      "ref": "pkg:pypi/livekit-plugins-silero@1.5.6?package-id=177592d7782adef1",
       "dependsOn": [
-        "pkg:pypi/livekit-agents@1.5.6?package-id=7d2cd2ce127ff8d7",
-        "pkg:pypi/numpy@2.4.4?package-id=0157583016de8721",
-        "pkg:pypi/onnxruntime@1.25.0?package-id=9c217cb1d06d4f64"
+        "pkg:pypi/livekit-agents@1.5.6?package-id=4a68c3b9e6ee4193",
+        "pkg:pypi/numpy@2.4.4?package-id=f860eeb4b2f98233",
+        "pkg:pypi/onnxruntime@1.25.0?package-id=a33aec0b46c05cb1"
       ]
     },
     {
-      "ref": "pkg:pypi/livekit-protocol@1.1.6?package-id=070da468350fb2a1",
+      "ref": "pkg:pypi/livekit-protocol@1.1.6?package-id=39d05ec0487a1a76",
       "dependsOn": [
-        "pkg:pypi/protobuf@6.33.6?package-id=c1c5117453c3a982",
-        "pkg:pypi/types-protobuf@7.34.1.20260408?package-id=cc7cdf560956790d"
+        "pkg:pypi/protobuf@6.33.6?package-id=0cd42d293e973539",
+        "pkg:pypi/types-protobuf@7.34.1.20260408?package-id=14f7674d04916b8e"
       ]
     },
     {
-      "ref": "pkg:pypi/livekit@1.1.5?package-id=dd368d06d52df992",
+      "ref": "pkg:pypi/livekit@1.1.5?package-id=cf53bc403061e6cf",
       "dependsOn": [
-        "pkg:pypi/aiofiles@25.1.0?package-id=32ccb2ac0a5bb837",
-        "pkg:pypi/numpy@2.4.4?package-id=0157583016de8721",
-        "pkg:pypi/protobuf@6.33.6?package-id=c1c5117453c3a982",
-        "pkg:pypi/types-protobuf@7.34.1.20260408?package-id=cc7cdf560956790d"
+        "pkg:pypi/aiofiles@25.1.0?package-id=4d3664aae92f9770",
+        "pkg:pypi/numpy@2.4.4?package-id=f860eeb4b2f98233",
+        "pkg:pypi/protobuf@6.33.6?package-id=0cd42d293e973539",
+        "pkg:pypi/types-protobuf@7.34.1.20260408?package-id=14f7674d04916b8e"
       ]
     },
     {
-      "ref": "pkg:pypi/mako@1.3.11?package-id=4e6dfa32b78f301c",
+      "ref": "pkg:pypi/mako@1.3.11?package-id=9fdbe6a5a7ea854b",
       "dependsOn": [
-        "pkg:pypi/pytest@8.4.2?package-id=086e1f387c1091be"
+        "pkg:pypi/pytest@8.4.2?package-id=1a3f555bd1c55e23"
       ]
     },
     {
-      "ref": "pkg:pypi/markdown-it-py@4.0.0?package-id=713b3ed3d15cc17b",
+      "ref": "pkg:pypi/markdown-it-py@4.0.0?package-id=4ecdacaf3fb4d15f",
       "dependsOn": [
-        "pkg:pypi/mdurl@0.1.2?package-id=6b7ff8cb319b573b",
-        "pkg:pypi/psutil@7.2.2?package-id=5ae44ad7908641e6",
-        "pkg:pypi/pytest@8.4.2?package-id=086e1f387c1091be",
-        "pkg:pypi/pyyaml@6.0.3?package-id=a206bfee8846e016",
-        "pkg:pypi/requests@2.33.1?package-id=9cbca4ee9edb162d"
+        "pkg:pypi/mdurl@0.1.2?package-id=4297aa70f6c0d98a",
+        "pkg:pypi/psutil@7.2.2?package-id=3f1b7912afcbbdc6",
+        "pkg:pypi/pytest@8.4.2?package-id=1a3f555bd1c55e23",
+        "pkg:pypi/pyyaml@6.0.3?package-id=9c1816750b11992a",
+        "pkg:pypi/requests@2.33.1?package-id=c5ed5ce606f1aa6a"
       ]
     },
     {
-      "ref": "pkg:pypi/mypy@1.20.2?package-id=d6a1671259b7a6dc",
+      "ref": "pkg:pypi/mypy@1.20.2?package-id=c2df07cbd4a29779",
       "dependsOn": [
-        "pkg:pypi/librt@0.9.0?package-id=0b39676ce458ab32",
-        "pkg:pypi/pathspec@1.1.0?package-id=ca88e571cfc0494f",
-        "pkg:pypi/psutil@7.2.2?package-id=5ae44ad7908641e6"
+        "pkg:pypi/librt@0.9.0?package-id=8306673b836b4c01",
+        "pkg:pypi/pathspec@1.1.0?package-id=ae7d07b618871f4f",
+        "pkg:pypi/psutil@7.2.2?package-id=3f1b7912afcbbdc6"
       ]
     },
     {
-      "ref": "pkg:pypi/onnxruntime@1.25.0?package-id=9c217cb1d06d4f64",
+      "ref": "pkg:pypi/onnxruntime@1.25.0?package-id=a33aec0b46c05cb1",
       "dependsOn": [
-        "pkg:pypi/flatbuffers@25.12.19?package-id=9bd51b69d84f0e1c",
-        "pkg:pypi/numpy@2.4.4?package-id=0157583016de8721",
-        "pkg:pypi/packaging@26.2?package-id=6a1c3d6787fc8034",
-        "pkg:pypi/protobuf@6.33.6?package-id=c1c5117453c3a982"
+        "pkg:pypi/flatbuffers@25.12.19?package-id=9ab5e616b24c13ce",
+        "pkg:pypi/numpy@2.4.4?package-id=f860eeb4b2f98233",
+        "pkg:pypi/packaging@26.2?package-id=b8adc5391298f612",
+        "pkg:pypi/protobuf@6.33.6?package-id=0cd42d293e973539"
       ]
     },
     {
-      "ref": "pkg:pypi/openai@2.32.0?package-id=720d949a7eb35306",
+      "ref": "pkg:pypi/openai@2.32.0?package-id=6e683301f7a8f3a9",
       "dependsOn": [
-        "pkg:pypi/aiohttp@3.13.5?package-id=61ac925a2c71d760",
-        "pkg:pypi/anyio@4.13.0?package-id=09f43b75d27c1649",
-        "pkg:pypi/distro@1.9.0?package-id=64e9a1ba8cc6e66b",
-        "pkg:pypi/httpx@0.28.1?package-id=29fbac9ddb126cb2",
-        "pkg:pypi/jiter@0.14.0?package-id=0bbc9b91e55e0859",
-        "pkg:pypi/numpy@2.4.4?package-id=0157583016de8721",
-        "pkg:pypi/pydantic@2.13.3?package-id=7cf8d7f7ea805ec8",
-        "pkg:pypi/sniffio@1.3.1?package-id=f19b513e003ae36a",
-        "pkg:pypi/sounddevice@0.5.5?package-id=a8f69a0159d17eb9",
-        "pkg:pypi/tqdm@4.67.3?package-id=21753a98cfa0dc60",
-        "pkg:pypi/typing-extensions@4.15.0?package-id=edf2b7042f4381c6",
-        "pkg:pypi/websockets@15.0.1?package-id=fa1ff361fd7a5186"
+        "pkg:pypi/aiohttp@3.13.5?package-id=81a9b3973b8d20c1",
+        "pkg:pypi/anyio@4.13.0?package-id=dd7a30acc1941c57",
+        "pkg:pypi/distro@1.9.0?package-id=8dc5a61d0877617a",
+        "pkg:pypi/httpx@0.28.1?package-id=611c010fb13f03ea",
+        "pkg:pypi/jiter@0.14.0?package-id=bcd51875dbe07b21",
+        "pkg:pypi/numpy@2.4.4?package-id=f860eeb4b2f98233",
+        "pkg:pypi/pydantic@2.13.3?package-id=f24eb5e85c249d2b",
+        "pkg:pypi/sniffio@1.3.1?package-id=cccc3177ef1d0e78",
+        "pkg:pypi/sounddevice@0.5.5?package-id=16d07060fa8993dc",
+        "pkg:pypi/tqdm@4.67.3?package-id=9e18ac289a848534",
+        "pkg:pypi/typing-extensions@4.15.0?package-id=eb79741fe86d4cc5",
+        "pkg:pypi/websockets@15.0.1?package-id=fbb2bb8ed7253bdd"
       ]
     },
     {
-      "ref": "pkg:pypi/openrouter@0.10.0?package-id=eb1af4a73928b4f6",
+      "ref": "pkg:pypi/openrouter@0.10.0?package-id=f51d54a3dcb2ae99",
       "dependsOn": [
-        "pkg:pypi/httpcore@1.0.9?package-id=827a7d161ad36dac",
-        "pkg:pypi/httpx@0.28.1?package-id=29fbac9ddb126cb2",
-        "pkg:pypi/jsonpath-python@1.1.6?package-id=b94694bd8361cd90",
-        "pkg:pypi/pydantic@2.13.3?package-id=7cf8d7f7ea805ec8"
+        "pkg:pypi/httpcore@1.0.9?package-id=933f0c7a979e0551",
+        "pkg:pypi/httpx@0.28.1?package-id=611c010fb13f03ea",
+        "pkg:pypi/jsonpath-python@1.1.6?package-id=0f4833d411444534",
+        "pkg:pypi/pydantic@2.13.3?package-id=f24eb5e85c249d2b"
       ]
     },
     {
-      "ref": "pkg:pypi/opentelemetry-api@1.39.1?package-id=12bfba68d7719836",
+      "ref": "pkg:pypi/opentelemetry-api@1.39.1?package-id=8c4104285ae28830",
       "dependsOn": [
-        "pkg:pypi/importlib-metadata@8.7.1?package-id=0d3cb7e4f9c343b1",
-        "pkg:pypi/typing-extensions@4.15.0?package-id=edf2b7042f4381c6"
+        "pkg:pypi/importlib-metadata@8.7.1?package-id=545b214b4ff37a47",
+        "pkg:pypi/typing-extensions@4.15.0?package-id=eb79741fe86d4cc5"
       ]
     },
     {
-      "ref": "pkg:pypi/opentelemetry-exporter-otlp-proto-common@1.39.1?package-id=822d5ef515dcb845",
+      "ref": "pkg:pypi/opentelemetry-exporter-otlp-proto-common@1.39.1?package-id=d9566100f31002f4",
       "dependsOn": [
-        "pkg:pypi/opentelemetry-proto@1.39.1?package-id=c11ae11a90879754"
+        "pkg:pypi/opentelemetry-proto@1.39.1?package-id=af7ee0dddb8f38b2"
       ]
     },
     {
-      "ref": "pkg:pypi/opentelemetry-exporter-otlp-proto-grpc@1.39.1?package-id=6d87b8d781c11980",
+      "ref": "pkg:pypi/opentelemetry-exporter-otlp-proto-grpc@1.39.1?package-id=704d87a3dc4580a2",
       "dependsOn": [
-        "pkg:pypi/googleapis-common-protos@1.74.0?package-id=de241ebc97d4cf82",
-        "pkg:pypi/grpcio@1.80.0?package-id=3bce3a37b1406cb4",
-        "pkg:pypi/opentelemetry-api@1.39.1?package-id=12bfba68d7719836",
-        "pkg:pypi/opentelemetry-exporter-otlp-proto-common@1.39.1?package-id=822d5ef515dcb845",
-        "pkg:pypi/opentelemetry-proto@1.39.1?package-id=c11ae11a90879754",
-        "pkg:pypi/opentelemetry-sdk@1.39.1?package-id=575ab52ff736f607",
-        "pkg:pypi/typing-extensions@4.15.0?package-id=edf2b7042f4381c6"
+        "pkg:pypi/googleapis-common-protos@1.74.0?package-id=7747eb6265dd774e",
+        "pkg:pypi/grpcio@1.80.0?package-id=9b5a2495bafe2ae3",
+        "pkg:pypi/opentelemetry-api@1.39.1?package-id=8c4104285ae28830",
+        "pkg:pypi/opentelemetry-exporter-otlp-proto-common@1.39.1?package-id=d9566100f31002f4",
+        "pkg:pypi/opentelemetry-proto@1.39.1?package-id=af7ee0dddb8f38b2",
+        "pkg:pypi/opentelemetry-sdk@1.39.1?package-id=5fad4934d617dbec",
+        "pkg:pypi/typing-extensions@4.15.0?package-id=eb79741fe86d4cc5"
       ]
     },
     {
-      "ref": "pkg:pypi/opentelemetry-exporter-otlp-proto-http@1.39.1?package-id=0ce6c7d20a79db4c",
+      "ref": "pkg:pypi/opentelemetry-exporter-otlp-proto-http@1.39.1?package-id=ce21ba192503db99",
       "dependsOn": [
-        "pkg:pypi/googleapis-common-protos@1.74.0?package-id=de241ebc97d4cf82",
-        "pkg:pypi/opentelemetry-api@1.39.1?package-id=12bfba68d7719836",
-        "pkg:pypi/opentelemetry-exporter-otlp-proto-common@1.39.1?package-id=822d5ef515dcb845",
-        "pkg:pypi/opentelemetry-proto@1.39.1?package-id=c11ae11a90879754",
-        "pkg:pypi/opentelemetry-sdk@1.39.1?package-id=575ab52ff736f607",
-        "pkg:pypi/requests@2.33.1?package-id=9cbca4ee9edb162d",
-        "pkg:pypi/typing-extensions@4.15.0?package-id=edf2b7042f4381c6"
+        "pkg:pypi/googleapis-common-protos@1.74.0?package-id=7747eb6265dd774e",
+        "pkg:pypi/opentelemetry-api@1.39.1?package-id=8c4104285ae28830",
+        "pkg:pypi/opentelemetry-exporter-otlp-proto-common@1.39.1?package-id=d9566100f31002f4",
+        "pkg:pypi/opentelemetry-proto@1.39.1?package-id=af7ee0dddb8f38b2",
+        "pkg:pypi/opentelemetry-sdk@1.39.1?package-id=5fad4934d617dbec",
+        "pkg:pypi/requests@2.33.1?package-id=c5ed5ce606f1aa6a",
+        "pkg:pypi/typing-extensions@4.15.0?package-id=eb79741fe86d4cc5"
       ]
     },
     {
-      "ref": "pkg:pypi/opentelemetry-exporter-otlp@1.39.1?package-id=d6d07463422b59d3",
+      "ref": "pkg:pypi/opentelemetry-exporter-otlp@1.39.1?package-id=8cff6d23cbd4aa00",
       "dependsOn": [
-        "pkg:pypi/opentelemetry-exporter-otlp-proto-grpc@1.39.1?package-id=6d87b8d781c11980",
-        "pkg:pypi/opentelemetry-exporter-otlp-proto-http@1.39.1?package-id=0ce6c7d20a79db4c"
+        "pkg:pypi/opentelemetry-exporter-otlp-proto-grpc@1.39.1?package-id=704d87a3dc4580a2",
+        "pkg:pypi/opentelemetry-exporter-otlp-proto-http@1.39.1?package-id=ce21ba192503db99"
       ]
     },
     {
-      "ref": "pkg:pypi/opentelemetry-proto@1.39.1?package-id=c11ae11a90879754",
+      "ref": "pkg:pypi/opentelemetry-proto@1.39.1?package-id=af7ee0dddb8f38b2",
       "dependsOn": [
-        "pkg:pypi/protobuf@6.33.6?package-id=c1c5117453c3a982"
+        "pkg:pypi/protobuf@6.33.6?package-id=0cd42d293e973539"
       ]
     },
     {
-      "ref": "pkg:pypi/opentelemetry-sdk@1.39.1?package-id=575ab52ff736f607",
+      "ref": "pkg:pypi/opentelemetry-sdk@1.39.1?package-id=5fad4934d617dbec",
       "dependsOn": [
-        "pkg:pypi/opentelemetry-api@1.39.1?package-id=12bfba68d7719836",
-        "pkg:pypi/opentelemetry-semantic-conventions@0.60b1?package-id=276aa5b9c06d13fd",
-        "pkg:pypi/typing-extensions@4.15.0?package-id=edf2b7042f4381c6"
+        "pkg:pypi/opentelemetry-api@1.39.1?package-id=8c4104285ae28830",
+        "pkg:pypi/opentelemetry-semantic-conventions@0.60b1?package-id=18525cade5ea6330",
+        "pkg:pypi/typing-extensions@4.15.0?package-id=eb79741fe86d4cc5"
       ]
     },
     {
-      "ref": "pkg:pypi/opentelemetry-semantic-conventions@0.60b1?package-id=276aa5b9c06d13fd",
+      "ref": "pkg:pypi/opentelemetry-semantic-conventions@0.60b1?package-id=18525cade5ea6330",
       "dependsOn": [
-        "pkg:pypi/opentelemetry-api@1.39.1?package-id=12bfba68d7719836",
-        "pkg:pypi/typing-extensions@4.15.0?package-id=edf2b7042f4381c6"
+        "pkg:pypi/opentelemetry-api@1.39.1?package-id=8c4104285ae28830",
+        "pkg:pypi/typing-extensions@4.15.0?package-id=eb79741fe86d4cc5"
       ]
     },
     {
-      "ref": "pkg:pypi/pathspec@1.1.0?package-id=ca88e571cfc0494f",
+      "ref": "pkg:pypi/pathspec@1.1.0?package-id=ae7d07b618871f4f",
       "dependsOn": [
-        "pkg:pypi/typing-extensions@4.15.0?package-id=edf2b7042f4381c6"
+        "pkg:pypi/typing-extensions@4.15.0?package-id=eb79741fe86d4cc5"
       ]
     },
     {
-      "ref": "pkg:pypi/pillow@12.2.0?package-id=a94d081dfed6e339",
+      "ref": "pkg:pypi/pillow@12.2.0?package-id=f13780a57a3c9931",
       "dependsOn": [
-        "pkg:pypi/packaging@26.2?package-id=6a1c3d6787fc8034",
-        "pkg:pypi/pytest@8.4.2?package-id=086e1f387c1091be"
+        "pkg:pypi/packaging@26.2?package-id=b8adc5391298f612",
+        "pkg:pypi/pytest@8.4.2?package-id=1a3f555bd1c55e23"
       ]
     },
     {
-      "ref": "pkg:pypi/pluggy@1.6.0?package-id=91fb1bb84d24d7de",
+      "ref": "pkg:pypi/pluggy@1.6.0?package-id=5df01262af715857",
       "dependsOn": [
-        "pkg:pypi/pre-commit@4.6.0?package-id=b46a700d9466dc3d",
-        "pkg:pypi/pytest@8.4.2?package-id=086e1f387c1091be"
+        "pkg:pypi/pre-commit@4.6.0?package-id=665f9e00bd0aa560",
+        "pkg:pypi/pytest@8.4.2?package-id=1a3f555bd1c55e23"
       ]
     },
     {
-      "ref": "pkg:pypi/pre-commit@4.6.0?package-id=b46a700d9466dc3d",
+      "ref": "pkg:pypi/pre-commit@4.6.0?package-id=665f9e00bd0aa560",
       "dependsOn": [
-        "pkg:pypi/cfgv@3.5.0?package-id=7c655c6b47a94214",
-        "pkg:pypi/identify@2.6.19?package-id=08ea9d8dac86e1f8",
-        "pkg:pypi/nodeenv@1.10.0?package-id=20d22c52d2ee890e",
-        "pkg:pypi/pyyaml@6.0.3?package-id=a206bfee8846e016",
-        "pkg:pypi/virtualenv@21.2.4?package-id=63ac7461a99b0543"
+        "pkg:pypi/cfgv@3.5.0?package-id=ecc23af31ece41c8",
+        "pkg:pypi/identify@2.6.19?package-id=7f79a571cef735e6",
+        "pkg:pypi/nodeenv@1.10.0?package-id=cfcc23953d3f0967",
+        "pkg:pypi/pyyaml@6.0.3?package-id=9c1816750b11992a",
+        "pkg:pypi/virtualenv@21.2.4?package-id=f8d1dbf2b7a2feed"
       ]
     },
     {
-      "ref": "pkg:pypi/prometheus-fastapi-instrumentator@7.1.0?package-id=8daaf6aa0ce97bb5",
+      "ref": "pkg:pypi/prometheus-fastapi-instrumentator@7.1.0?package-id=f5c168d071a49b6c",
       "dependsOn": [
-        "pkg:pypi/prometheus-client@0.22.1?package-id=69f549bf446e0667",
-        "pkg:pypi/starlette@0.46.2?package-id=09b3017d6b825693"
+        "pkg:pypi/prometheus-client@0.22.1?package-id=c49f58248390e5c3",
+        "pkg:pypi/starlette@0.46.2?package-id=65dcb33a67dab4ec"
       ]
     },
     {
-      "ref": "pkg:pypi/proto-plus@1.27.2?package-id=81506234e1df9f8e",
+      "ref": "pkg:pypi/proto-plus@1.27.2?package-id=c639410c28b90b56",
       "dependsOn": [
-        "pkg:pypi/google-api-core@2.30.3?package-id=af2e87dd40e58055",
-        "pkg:pypi/protobuf@6.33.6?package-id=c1c5117453c3a982"
+        "pkg:pypi/google-api-core@2.30.3?package-id=4b8dab614bebe419",
+        "pkg:pypi/protobuf@6.33.6?package-id=0cd42d293e973539"
       ]
     },
     {
-      "ref": "pkg:pypi/psutil@7.2.2?package-id=5ae44ad7908641e6",
+      "ref": "pkg:pypi/psutil@7.2.2?package-id=3f1b7912afcbbdc6",
       "dependsOn": [
-        "pkg:pypi/colorama@0.4.6?package-id=c585db8dba13d75c",
-        "pkg:pypi/packaging@26.2?package-id=6a1c3d6787fc8034",
-        "pkg:pypi/pytest@8.4.2?package-id=086e1f387c1091be",
-        "pkg:pypi/requests@2.33.1?package-id=9cbca4ee9edb162d",
-        "pkg:pypi/ruff@0.7.4?package-id=cbff75ddaf9bf40b",
-        "pkg:pypi/virtualenv@21.2.4?package-id=63ac7461a99b0543"
+        "pkg:pypi/colorama@0.4.6?package-id=754ada8d4566a598",
+        "pkg:pypi/packaging@26.2?package-id=b8adc5391298f612",
+        "pkg:pypi/pytest@8.4.2?package-id=1a3f555bd1c55e23",
+        "pkg:pypi/requests@2.33.1?package-id=c5ed5ce606f1aa6a",
+        "pkg:pypi/ruff@0.7.4?package-id=c07f6e25d5ddd8a3",
+        "pkg:pypi/virtualenv@21.2.4?package-id=f8d1dbf2b7a2feed"
       ]
     },
     {
-      "ref": "pkg:pypi/psycopg@3.3.3?package-id=9a484a3493500761",
+      "ref": "pkg:pypi/psycopg@3.3.3?package-id=62f9749d39e6c47b",
       "dependsOn": [
-        "pkg:pypi/anyio@4.13.0?package-id=09f43b75d27c1649",
-        "pkg:pypi/mypy@1.20.2?package-id=d6a1671259b7a6dc",
-        "pkg:pypi/pre-commit@4.6.0?package-id=b46a700d9466dc3d",
-        "pkg:pypi/psycopg-binary@3.3.3?package-id=99d42ccb3de94615",
-        "pkg:pypi/pytest@8.4.2?package-id=086e1f387c1091be",
-        "pkg:pypi/typing-extensions@4.15.0?package-id=edf2b7042f4381c6",
-        "pkg:pypi/tzdata@2026.2?package-id=b5a9ff2e63e7d80b"
+        "pkg:pypi/anyio@4.13.0?package-id=dd7a30acc1941c57",
+        "pkg:pypi/mypy@1.20.2?package-id=c2df07cbd4a29779",
+        "pkg:pypi/pre-commit@4.6.0?package-id=665f9e00bd0aa560",
+        "pkg:pypi/psycopg-binary@3.3.3?package-id=b492fd63bdd46b1d",
+        "pkg:pypi/pytest@8.4.2?package-id=1a3f555bd1c55e23",
+        "pkg:pypi/typing-extensions@4.15.0?package-id=eb79741fe86d4cc5",
+        "pkg:pypi/tzdata@2026.2?package-id=7ebbf0cbb2d88e7f"
       ]
     },
     {
-      "ref": "pkg:pypi/pyasn1-modules@0.4.2?package-id=aa986c49209cae67",
+      "ref": "pkg:pypi/pyasn1-modules@0.4.2?package-id=9ecaec961c32cf33",
       "dependsOn": [
-        "pkg:pypi/pyasn1@0.6.3?package-id=7d4dc83166126366"
+        "pkg:pypi/pyasn1@0.6.3?package-id=79892a0ce66d9b25"
       ]
     },
     {
-      "ref": "pkg:pypi/pydantic-core@2.46.3?package-id=6dd68365980d96ce",
+      "ref": "pkg:pypi/pydantic-core@2.46.3?package-id=905a6dea4399c013",
       "dependsOn": [
-        "pkg:pypi/typing-extensions@4.15.0?package-id=edf2b7042f4381c6"
+        "pkg:pypi/typing-extensions@4.15.0?package-id=eb79741fe86d4cc5"
       ]
     },
     {
-      "ref": "pkg:pypi/pydantic-settings@2.14.0?package-id=ccaf4c6c1e0781d7",
+      "ref": "pkg:pypi/pydantic-settings@2.14.0?package-id=8ed22ae2fa2caff2",
       "dependsOn": [
-        "pkg:pypi/pydantic@2.13.3?package-id=7cf8d7f7ea805ec8",
-        "pkg:pypi/python-dotenv@1.2.2?package-id=0470558254dd7bd8",
-        "pkg:pypi/pyyaml@6.0.3?package-id=a206bfee8846e016",
-        "pkg:pypi/typing-inspection@0.4.2?package-id=b3f5df281e104ce3"
+        "pkg:pypi/pydantic@2.13.3?package-id=f24eb5e85c249d2b",
+        "pkg:pypi/python-dotenv@1.2.2?package-id=fc8d42d675af41c6",
+        "pkg:pypi/pyyaml@6.0.3?package-id=9c1816750b11992a",
+        "pkg:pypi/typing-inspection@0.4.2?package-id=2ef764047264f01e"
       ]
     },
     {
-      "ref": "pkg:pypi/pydantic@2.13.3?package-id=7cf8d7f7ea805ec8",
+      "ref": "pkg:pypi/pydantic@2.13.3?package-id=f24eb5e85c249d2b",
       "dependsOn": [
-        "pkg:pypi/annotated-types@0.7.0?package-id=659d0bb4288c7baa",
-        "pkg:pypi/pydantic-core@2.46.3?package-id=6dd68365980d96ce",
-        "pkg:pypi/typing-extensions@4.15.0?package-id=edf2b7042f4381c6",
-        "pkg:pypi/typing-inspection@0.4.2?package-id=b3f5df281e104ce3",
-        "pkg:pypi/tzdata@2026.2?package-id=b5a9ff2e63e7d80b"
+        "pkg:pypi/annotated-types@0.7.0?package-id=73e887ebca9deeb2",
+        "pkg:pypi/pydantic-core@2.46.3?package-id=905a6dea4399c013",
+        "pkg:pypi/typing-extensions@4.15.0?package-id=eb79741fe86d4cc5",
+        "pkg:pypi/typing-inspection@0.4.2?package-id=2ef764047264f01e",
+        "pkg:pypi/tzdata@2026.2?package-id=7ebbf0cbb2d88e7f"
       ]
     },
     {
-      "ref": "pkg:pypi/pygments@2.20.0?package-id=10b15264407cb9f0",
+      "ref": "pkg:pypi/pygments@2.20.0?package-id=c18e2222175f061e",
       "dependsOn": [
-        "pkg:pypi/colorama@0.4.6?package-id=c585db8dba13d75c"
+        "pkg:pypi/colorama@0.4.6?package-id=754ada8d4566a598"
       ]
     },
     {
-      "ref": "pkg:pypi/pyjwt@2.12.1?package-id=134344ffa2e547ec",
+      "ref": "pkg:pypi/pyjwt@2.12.1?package-id=7a57a50661c6ebb4",
       "dependsOn": [
-        "pkg:pypi/cryptography@47.0.0?package-id=0c9003c758b0d1a8",
-        "pkg:pypi/pre-commit@4.6.0?package-id=b46a700d9466dc3d",
-        "pkg:pypi/pytest@8.4.2?package-id=086e1f387c1091be"
+        "pkg:pypi/cryptography@47.0.0?package-id=ddfff5617051594d",
+        "pkg:pypi/pre-commit@4.6.0?package-id=665f9e00bd0aa560",
+        "pkg:pypi/pytest@8.4.2?package-id=1a3f555bd1c55e23"
       ]
     },
     {
-      "ref": "pkg:pypi/pytest-asyncio@0.24.0?package-id=89dc5872d0b949d1",
+      "ref": "pkg:pypi/pytest-asyncio@0.24.0?package-id=6f53b70f2a7166e4",
       "dependsOn": [
-        "pkg:pypi/pytest@8.4.2?package-id=086e1f387c1091be"
+        "pkg:pypi/pytest@8.4.2?package-id=1a3f555bd1c55e23"
       ]
     },
     {
-      "ref": "pkg:pypi/pytest@8.4.2?package-id=086e1f387c1091be",
+      "ref": "pkg:pypi/pytest@8.4.2?package-id=1a3f555bd1c55e23",
       "dependsOn": [
-        "pkg:pypi/attrs@26.1.0?package-id=f6d3c7caaee86bfb",
-        "pkg:pypi/colorama@0.4.6?package-id=c585db8dba13d75c",
-        "pkg:pypi/iniconfig@2.3.0?package-id=cd756d68d714b620",
-        "pkg:pypi/packaging@26.2?package-id=6a1c3d6787fc8034",
-        "pkg:pypi/pluggy@1.6.0?package-id=91fb1bb84d24d7de",
-        "pkg:pypi/pygments@2.20.0?package-id=10b15264407cb9f0",
-        "pkg:pypi/requests@2.33.1?package-id=9cbca4ee9edb162d"
+        "pkg:pypi/attrs@26.1.0?package-id=d805380d06856e32",
+        "pkg:pypi/colorama@0.4.6?package-id=754ada8d4566a598",
+        "pkg:pypi/iniconfig@2.3.0?package-id=0c93ec96c96b3e59",
+        "pkg:pypi/packaging@26.2?package-id=b8adc5391298f612",
+        "pkg:pypi/pluggy@1.6.0?package-id=5df01262af715857",
+        "pkg:pypi/pygments@2.20.0?package-id=c18e2222175f061e",
+        "pkg:pypi/requests@2.33.1?package-id=c5ed5ce606f1aa6a"
       ]
     },
     {
-      "ref": "pkg:pypi/python-discovery@1.2.2?package-id=369a71227909402a",
+      "ref": "pkg:pypi/python-discovery@1.2.2?package-id=0dac2bfcc64908e7",
       "dependsOn": [
-        "pkg:pypi/filelock@3.29.0?package-id=b0c09ff3f931ef20",
-        "pkg:pypi/platformdirs@4.9.6?package-id=72931ed35d737cc8",
-        "pkg:pypi/pytest@8.4.2?package-id=086e1f387c1091be"
+        "pkg:pypi/filelock@3.29.0?package-id=2f1e3a7c3c19a3b8",
+        "pkg:pypi/platformdirs@4.9.6?package-id=780c07aa247287a5",
+        "pkg:pypi/pytest@8.4.2?package-id=1a3f555bd1c55e23"
       ]
     },
     {
-      "ref": "pkg:pypi/python-dotenv@1.2.2?package-id=0470558254dd7bd8",
+      "ref": "pkg:pypi/python-dotenv@1.2.2?package-id=fc8d42d675af41c6",
       "dependsOn": [
-        "pkg:pypi/click@8.3.3?package-id=fdb465bde40d6ec0"
+        "pkg:pypi/click@8.3.3?package-id=ba074497e9646292"
       ]
     },
     {
-      "ref": "pkg:pypi/referencing@0.37.0?package-id=56a21c6a4eb97d5d",
+      "ref": "pkg:pypi/referencing@0.37.0?package-id=4673a49256ce1b9c",
       "dependsOn": [
-        "pkg:pypi/attrs@26.1.0?package-id=f6d3c7caaee86bfb",
-        "pkg:pypi/rpds-py@0.30.0?package-id=a52fbba3759575c7",
-        "pkg:pypi/typing-extensions@4.15.0?package-id=edf2b7042f4381c6"
+        "pkg:pypi/attrs@26.1.0?package-id=d805380d06856e32",
+        "pkg:pypi/rpds-py@0.30.0?package-id=b9d21f53918484d7",
+        "pkg:pypi/typing-extensions@4.15.0?package-id=eb79741fe86d4cc5"
       ]
     },
     {
-      "ref": "pkg:pypi/requests@2.33.1?package-id=9cbca4ee9edb162d",
+      "ref": "pkg:pypi/requests@2.33.1?package-id=c5ed5ce606f1aa6a",
       "dependsOn": [
-        "pkg:pypi/certifi@2026.4.22?package-id=356c972cf59623a2",
-        "pkg:pypi/idna@3.13?package-id=80fd09286b26f857",
-        "pkg:pypi/urllib3@2.6.3?package-id=a9c7778826d56544"
+        "pkg:pypi/certifi@2026.4.22?package-id=45223ca3cd8f8a36",
+        "pkg:pypi/idna@3.13?package-id=4a51eb5410f3c522",
+        "pkg:pypi/urllib3@2.6.3?package-id=e2ece809fea9628e"
       ]
     },
     {
-      "ref": "pkg:pypi/rich@15.0.0?package-id=53932d5ebab6e624",
+      "ref": "pkg:pypi/rich@15.0.0?package-id=26ac973998902eb5",
       "dependsOn": [
-        "pkg:pypi/markdown-it-py@4.0.0?package-id=713b3ed3d15cc17b",
-        "pkg:pypi/pygments@2.20.0?package-id=10b15264407cb9f0"
+        "pkg:pypi/markdown-it-py@4.0.0?package-id=4ecdacaf3fb4d15f",
+        "pkg:pypi/pygments@2.20.0?package-id=c18e2222175f061e"
       ]
     },
     {
-      "ref": "pkg:pypi/sounddevice@0.5.5?package-id=a8f69a0159d17eb9",
+      "ref": "pkg:pypi/sounddevice@0.5.5?package-id=16d07060fa8993dc",
       "dependsOn": [
-        "pkg:pypi/cffi@2.0.0?package-id=fd36e4ea971e893f",
-        "pkg:pypi/numpy@2.4.4?package-id=0157583016de8721"
+        "pkg:pypi/cffi@2.0.0?package-id=3d14ae29c07d8958",
+        "pkg:pypi/numpy@2.4.4?package-id=f860eeb4b2f98233"
       ]
     },
     {
-      "ref": "pkg:pypi/sqlalchemy@2.0.49?package-id=b3f0048e460b26d4",
+      "ref": "pkg:pypi/sqlalchemy@2.0.49?package-id=87810eb480b66c37",
       "dependsOn": [
-        "pkg:pypi/aiosqlite@0.22.1?package-id=5cedc9c7adbd6357",
-        "pkg:pypi/greenlet@3.5.1?package-id=c46b8f9ad386d9bf",
-        "pkg:pypi/mypy@1.20.2?package-id=d6a1671259b7a6dc",
-        "pkg:pypi/psycopg@3.3.3?package-id=9a484a3493500761",
-        "pkg:pypi/typing-extensions@4.15.0?package-id=edf2b7042f4381c6"
+        "pkg:pypi/aiosqlite@0.22.1?package-id=65a67001cc7c3be6",
+        "pkg:pypi/greenlet@3.5.1?package-id=d677995ebace7370",
+        "pkg:pypi/mypy@1.20.2?package-id=c2df07cbd4a29779",
+        "pkg:pypi/psycopg@3.3.3?package-id=62f9749d39e6c47b",
+        "pkg:pypi/typing-extensions@4.15.0?package-id=eb79741fe86d4cc5"
       ]
     },
     {
-      "ref": "pkg:pypi/starlette@0.46.2?package-id=09b3017d6b825693",
+      "ref": "pkg:pypi/starlette@0.46.2?package-id=65dcb33a67dab4ec",
       "dependsOn": [
-        "pkg:pypi/anyio@4.13.0?package-id=09f43b75d27c1649",
-        "pkg:pypi/httpx@0.28.1?package-id=29fbac9ddb126cb2",
-        "pkg:pypi/pyyaml@6.0.3?package-id=a206bfee8846e016"
+        "pkg:pypi/anyio@4.13.0?package-id=dd7a30acc1941c57",
+        "pkg:pypi/httpx@0.28.1?package-id=611c010fb13f03ea",
+        "pkg:pypi/pyyaml@6.0.3?package-id=9c1816750b11992a"
       ]
     },
     {
-      "ref": "pkg:pypi/structlog@24.4.0?package-id=6a0e3d6a94c25515",
+      "ref": "pkg:pypi/structlog@24.4.0?package-id=f83c2c78040d4dcb",
       "dependsOn": [
-        "pkg:pypi/mypy@1.20.2?package-id=d6a1671259b7a6dc",
-        "pkg:pypi/pytest-asyncio@0.24.0?package-id=89dc5872d0b949d1",
-        "pkg:pypi/pytest@8.4.2?package-id=086e1f387c1091be",
-        "pkg:pypi/rich@15.0.0?package-id=53932d5ebab6e624"
+        "pkg:pypi/mypy@1.20.2?package-id=c2df07cbd4a29779",
+        "pkg:pypi/pytest-asyncio@0.24.0?package-id=6f53b70f2a7166e4",
+        "pkg:pypi/pytest@8.4.2?package-id=1a3f555bd1c55e23",
+        "pkg:pypi/rich@15.0.0?package-id=26ac973998902eb5"
       ]
     },
     {
-      "ref": "pkg:pypi/tenacity@9.1.4?package-id=fc6470adc7bc928f",
+      "ref": "pkg:pypi/tenacity@9.1.4?package-id=efc969e124a83093",
       "dependsOn": [
-        "pkg:pypi/pytest@8.4.2?package-id=086e1f387c1091be"
+        "pkg:pypi/pytest@8.4.2?package-id=1a3f555bd1c55e23"
       ]
     },
     {
-      "ref": "pkg:pypi/tqdm@4.67.3?package-id=21753a98cfa0dc60",
+      "ref": "pkg:pypi/tqdm@4.67.3?package-id=9e18ac289a848534",
       "dependsOn": [
-        "pkg:pypi/colorama@0.4.6?package-id=c585db8dba13d75c",
-        "pkg:pypi/pytest-asyncio@0.24.0?package-id=89dc5872d0b949d1",
-        "pkg:pypi/pytest@8.4.2?package-id=086e1f387c1091be",
-        "pkg:pypi/requests@2.33.1?package-id=9cbca4ee9edb162d"
+        "pkg:pypi/colorama@0.4.6?package-id=754ada8d4566a598",
+        "pkg:pypi/pytest-asyncio@0.24.0?package-id=6f53b70f2a7166e4",
+        "pkg:pypi/pytest@8.4.2?package-id=1a3f555bd1c55e23",
+        "pkg:pypi/requests@2.33.1?package-id=c5ed5ce606f1aa6a"
       ]
     },
     {
-      "ref": "pkg:pypi/typer@0.25.0?package-id=8945a0cf85c3e2b5",
+      "ref": "pkg:pypi/typer@0.25.0?package-id=1b139e8819d91207",
       "dependsOn": [
-        "pkg:pypi/annotated-doc@0.0.4?package-id=94a6a516dc2dc64f",
-        "pkg:pypi/click@8.3.3?package-id=fdb465bde40d6ec0",
-        "pkg:pypi/rich@15.0.0?package-id=53932d5ebab6e624",
-        "pkg:pypi/shellingham@1.5.4?package-id=c0fafe8874df9fa4"
+        "pkg:pypi/annotated-doc@0.0.4?package-id=51275cd48646b69e",
+        "pkg:pypi/click@8.3.3?package-id=ba074497e9646292",
+        "pkg:pypi/rich@15.0.0?package-id=26ac973998902eb5",
+        "pkg:pypi/shellingham@1.5.4?package-id=85b092c246e8d056"
       ]
     },
     {
-      "ref": "pkg:pypi/typing-inspection@0.4.2?package-id=b3f5df281e104ce3",
+      "ref": "pkg:pypi/typing-inspection@0.4.2?package-id=2ef764047264f01e",
       "dependsOn": [
-        "pkg:pypi/typing-extensions@4.15.0?package-id=edf2b7042f4381c6"
+        "pkg:pypi/typing-extensions@4.15.0?package-id=eb79741fe86d4cc5"
       ]
     },
     {
-      "ref": "pkg:pypi/uvicorn@0.32.1?package-id=61b67ad3cde5c30f",
+      "ref": "pkg:pypi/uvicorn@0.32.1?package-id=66ffe047c1c6c69a",
       "dependsOn": [
-        "pkg:pypi/click@8.3.3?package-id=fdb465bde40d6ec0",
-        "pkg:pypi/colorama@0.4.6?package-id=c585db8dba13d75c",
-        "pkg:pypi/h11@0.16.0?package-id=3fad88e799f994ac",
-        "pkg:pypi/httptools@0.7.1?package-id=3056ab8d4a708194",
-        "pkg:pypi/python-dotenv@1.2.2?package-id=0470558254dd7bd8",
-        "pkg:pypi/pyyaml@6.0.3?package-id=a206bfee8846e016",
-        "pkg:pypi/uvloop@0.22.1?package-id=d27197c5669e320c",
-        "pkg:pypi/watchfiles@1.1.1?package-id=9b28bec4bd9dbf21",
-        "pkg:pypi/websockets@15.0.1?package-id=fa1ff361fd7a5186"
+        "pkg:pypi/click@8.3.3?package-id=ba074497e9646292",
+        "pkg:pypi/colorama@0.4.6?package-id=754ada8d4566a598",
+        "pkg:pypi/h11@0.16.0?package-id=eb9fe3a945d9c1c9",
+        "pkg:pypi/httptools@0.7.1?package-id=78e4505ea4b74e7d",
+        "pkg:pypi/python-dotenv@1.2.2?package-id=fc8d42d675af41c6",
+        "pkg:pypi/pyyaml@6.0.3?package-id=9c1816750b11992a",
+        "pkg:pypi/uvloop@0.22.1?package-id=201f6f21b3d6eb6a",
+        "pkg:pypi/watchfiles@1.1.1?package-id=937a8e9f1a6cd878",
+        "pkg:pypi/websockets@15.0.1?package-id=fbb2bb8ed7253bdd"
       ]
     },
     {
-      "ref": "pkg:pypi/uvloop@0.22.1?package-id=d27197c5669e320c",
+      "ref": "pkg:pypi/uvloop@0.22.1?package-id=201f6f21b3d6eb6a",
       "dependsOn": [
-        "pkg:pypi/aiohttp@3.13.5?package-id=61ac925a2c71d760",
-        "pkg:pypi/mypy@1.20.2?package-id=d6a1671259b7a6dc",
-        "pkg:pypi/psutil@7.2.2?package-id=5ae44ad7908641e6"
+        "pkg:pypi/aiohttp@3.13.5?package-id=81a9b3973b8d20c1",
+        "pkg:pypi/mypy@1.20.2?package-id=c2df07cbd4a29779",
+        "pkg:pypi/psutil@7.2.2?package-id=3f1b7912afcbbdc6"
       ]
     },
     {
-      "ref": "pkg:pypi/virtualenv@21.2.4?package-id=63ac7461a99b0543",
+      "ref": "pkg:pypi/virtualenv@21.2.4?package-id=f8d1dbf2b7a2feed",
       "dependsOn": [
-        "pkg:pypi/distlib@0.4.0?package-id=1ad59358d8d8cbdb",
-        "pkg:pypi/filelock@3.29.0?package-id=b0c09ff3f931ef20",
-        "pkg:pypi/platformdirs@4.9.6?package-id=72931ed35d737cc8",
-        "pkg:pypi/python-discovery@1.2.2?package-id=369a71227909402a"
+        "pkg:pypi/distlib@0.4.0?package-id=1fff6aefda257a6a",
+        "pkg:pypi/filelock@3.29.0?package-id=2f1e3a7c3c19a3b8",
+        "pkg:pypi/platformdirs@4.9.6?package-id=780c07aa247287a5",
+        "pkg:pypi/python-discovery@1.2.2?package-id=0dac2bfcc64908e7"
       ]
     },
     {
-      "ref": "pkg:pypi/watchfiles@1.1.1?package-id=9b28bec4bd9dbf21",
+      "ref": "pkg:pypi/watchfiles@1.1.1?package-id=937a8e9f1a6cd878",
       "dependsOn": [
-        "pkg:pypi/anyio@4.13.0?package-id=09f43b75d27c1649"
+        "pkg:pypi/anyio@4.13.0?package-id=dd7a30acc1941c57"
       ]
     },
     {
-      "ref": "pkg:pypi/yarl@1.23.0?package-id=5d6f6d034ab5cced",
+      "ref": "pkg:pypi/yarl@1.23.0?package-id=ef6164c662636c13",
       "dependsOn": [
-        "pkg:pypi/idna@3.13?package-id=80fd09286b26f857",
-        "pkg:pypi/multidict@6.7.1?package-id=c2c1322eb691f040",
-        "pkg:pypi/propcache@0.4.1?package-id=11b3500780a1b957"
+        "pkg:pypi/idna@3.13?package-id=4a51eb5410f3c522",
+        "pkg:pypi/multidict@6.7.1?package-id=9c2ffc65ed44fa3c",
+        "pkg:pypi/propcache@0.4.1?package-id=4a3f6d5a81da1f22"
       ]
     },
     {
-      "ref": "pkg:pypi/zipp@3.23.1?package-id=d74c21f6fd203436",
+      "ref": "pkg:pypi/zipp@3.23.1?package-id=3cb95c191cbeccbe",
       "dependsOn": [
-        "pkg:pypi/pytest@8.4.2?package-id=086e1f387c1091be"
+        "pkg:pypi/pytest@8.4.2?package-id=1a3f555bd1c55e23"
       ]
     }
   ]
