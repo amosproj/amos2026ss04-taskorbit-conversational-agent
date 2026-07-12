@@ -82,20 +82,47 @@ export function ActiveAgentProvider({ children }: { children: ReactNode }) {
   // On mount: load the default user agent from the backend if localStorage
   // has no saved choice. Falls back silently to JOHN_DOE_AGENT if the API
   // is unreachable (e.g. backend not running locally).
+  //
+  // If localStorage DOES have a saved choice that's a real backend-tracked
+  // user-agent (loadedConfigId starts with "ua:"), re-fetch that specific
+  // entry and overwrite the cached copy with it (bug: this provider used to
+  // trust the localStorage snapshot forever once present, so an edit saved
+  // in another tab/browser -- e.g. switching an agent's LLM provider --
+  // never reached a session that already had an older copy cached, even
+  // across hard reloads, and voice/text calls silently kept using the
+  // stale settings). Falls back to the cached copy if the backend is
+  // unreachable or the agent was deleted elsewhere.
   useEffect(() => {
-    if (readFromStorage()) return; // user already has a saved choice
+    const stored = readFromStorage();
     const controller = new AbortController();
-    fetchUserAgents(controller.signal)
-      .then((entries) => {
-        const defaultEntry = entries.find((e) => e.is_default) ?? entries[0];
-        if (defaultEntry) {
-          setAgent(backendToFrontendAgent(defaultEntry));
-          setLoadedConfigId(`ua:${defaultEntry.template_id ?? defaultEntry.id}`);
-        }
-      })
-      .catch(() => {
-        // Backend unavailable — keep JOHN_DOE_AGENT as fallback.
-      });
+
+    if (!stored) {
+      fetchUserAgents(controller.signal)
+        .then((entries) => {
+          const defaultEntry = entries.find((e) => e.is_default) ?? entries[0];
+          if (defaultEntry) {
+            setAgent(backendToFrontendAgent(defaultEntry));
+            setLoadedConfigId(`ua:${defaultEntry.template_id ?? defaultEntry.id}`);
+          }
+        })
+        .catch(() => {
+          // Backend unavailable — keep JOHN_DOE_AGENT as fallback.
+        });
+      return () => controller.abort();
+    }
+
+    if (stored.loadedConfigId?.startsWith("ua:")) {
+      const uaId = stored.loadedConfigId.slice(3);
+      fetchUserAgents(controller.signal)
+        .then((entries) => {
+          const fresh = entries.find((e) => e.id === uaId);
+          if (fresh) setAgent(backendToFrontendAgent(fresh));
+        })
+        .catch(() => {
+          // Backend unavailable — keep the cached copy.
+        });
+    }
+
     return () => controller.abort();
   }, []);
 
