@@ -263,6 +263,14 @@ export function WorkflowSection({
   const [loading, setLoading] = useState(true);
   const [pendingAddError, setPendingAddError] = useState<string | null>(null);
 
+  // A blocked-add error is scoped to whatever agent/section triggered it —
+  // WorkflowSection doesn't remount on "Load agent", so without this it can
+  // silently keep Save/Update disabled after switching agents or hiding the
+  // section that showed the error (e.g. toggling off conditional prerequisites).
+  useEffect(() => {
+    setPendingAddError(null);
+  }, [currentAgentId]);
+
   const savedWhenAgents = agents.filter((a) => a.isCustomized);
   const builtInWhenAgents = agents.filter((a) => !a.isCustomized);
 
@@ -402,6 +410,7 @@ export function WorkflowSection({
                 checked={simpleRules.enabled}
                 disabled={conditionalAdvanced}
                 onCheckedChange={(on) => {
+                  setPendingAddError(null);
                   if (on) {
                     onWorkflowRulesChange(
                       buildSimpleWorkflowRules(
