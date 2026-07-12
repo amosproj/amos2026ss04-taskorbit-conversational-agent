@@ -205,9 +205,12 @@ export function AgentConfigPage() {
     try {
       await deleteAgentConfig(target.id);
       toast.success(`"${target.name}" deleted.`);
+      // Always refresh — a stale list here keeps the deleted agent showing
+      // up in the Workflow dropdowns and can falsely trip the duplicate
+      // agent_id check, not just when you delete the agent you have open.
+      const fresh = await fetchUserAgents();
+      setUserAgents(fresh);
       if (loadedConfigId === target.id) {
-        const fresh = await fetchUserAgents();
-        setUserAgents(fresh);
         const defaultEntry = fresh.find((a) => a.is_default) ?? fresh[0];
         if (defaultEntry) {
           loadUserAgent(defaultEntry);
