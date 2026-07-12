@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 
-import { useBackendHealth } from "@/hooks/useBackendHealth";
+import { useBackendHealth, type HealthState } from "@/hooks/useBackendHealth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -12,6 +12,24 @@ type Check = {
   tone: CheckTone;
   detail: string;
 };
+
+type HealthOk = Extract<HealthState, { status: "ok" }>;
+
+/** Derives a traffic-light Check from the shared /health polling state. */
+function checkFromHealth(
+  health: HealthState,
+  label: string,
+  render: {
+    loading: string;
+    ok: (h: HealthOk) => Pick<Check, "tone" | "detail">;
+    error: (message: string) => string;
+  },
+): Check {
+  if (health.status === "loading") return { label, tone: "loading", detail: render.loading };
+  if (health.status === "error")
+    return { label, tone: "error", detail: render.error(health.message) };
+  return { label, ...render.ok(health) };
+}
 
 const toneClasses: Record<CheckTone, string> = {
   ok: "bg-primary",
@@ -32,40 +50,26 @@ export function PreCallDiagnostics({ className }: { className?: string }) {
   const apiUrl = import.meta.env.VITE_API_URL ?? "";
   const [showDetail, setShowDetail] = useState(false);
 
-  const backendCheck: Check =
-    health.status === "loading"
-      ? { label: "Backend", tone: "loading", detail: "Checking /health…" }
-      : health.status === "ok"
-        ? {
-            label: "Backend",
-            tone: "ok",
-            detail: `${health.service} v${health.version}`,
-          }
-        : {
-            label: "Backend",
-            tone: "error",
-            detail: `unreachable · ${health.message}`,
-          };
+  const backendCheck = checkFromHealth(health, "Backend", {
+    loading: "Checking /health…",
+    ok: (h) => ({ tone: "ok", detail: `${h.service} v${h.version}` }),
+    error: (message) => `unreachable · ${message}`,
+  });
 
   // LiveKit URL/credentials live only in backend Settings and are handed to the
   // frontend per-session via POST /v1/livekit/token — there is no frontend env
   // var to check. The backend reports whether it's configured via /health.
-  const livekitCheck: Check =
-    health.status === "loading"
-      ? { label: "LiveKit", tone: "loading", detail: "Checking backend config…" }
-      : health.status === "ok"
-        ? health.livekit_configured
-          ? { label: "LiveKit", tone: "ok", detail: "Configured on backend" }
-          : {
-              label: "LiveKit",
-              tone: "warn",
-              detail: "LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET not set on backend.",
-            }
+  const livekitCheck = checkFromHealth(health, "LiveKit", {
+    loading: "Checking backend config…",
+    ok: (h) =>
+      h.livekit_configured
+        ? { tone: "ok", detail: "Configured on backend" }
         : {
-            label: "LiveKit",
-            tone: "error",
-            detail: "Cannot verify — backend unreachable.",
-          };
+            tone: "warn",
+            detail: "LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET not set on backend.",
+          },
+    error: () => "Cannot verify — backend unreachable.",
+  });
 
   const checks: Check[] = [backendCheck, livekitCheck];
   const hasIssue = checks.some((c) => c.tone === "error" || c.tone === "warn");
