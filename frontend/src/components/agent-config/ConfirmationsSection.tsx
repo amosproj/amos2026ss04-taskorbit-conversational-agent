@@ -22,11 +22,16 @@ const DEFAULT: ConfirmationsConfig = { required: true, tools: [] };
 
 export function ConfirmationsSection({ value, tools, onChange }: Props) {
   const idEnabled = useId();
-  const enabled = !!value;
+  // Keyed off `required`, not mere presence of `value` -- a loaded config
+  // can have `confirmations: { required: false, tools: [] }` (e.g. saved by
+  // an older UI build or a direct API edit), and the switch must reflect
+  // that as OFF rather than showing ON for a config that will never
+  // actually ask for confirmation (BUG-001).
+  const enabled = !!value?.required;
 
   const toggleEnabled = (next: boolean) => {
-    if (next) onChange(value ?? DEFAULT);
-    else onChange(undefined);
+    if (next) onChange(value ? { ...value, required: true } : DEFAULT);
+    else onChange(value ? { ...value, required: false } : undefined);
   };
 
   const toggleTool = (toolName: string, on: boolean) => {
