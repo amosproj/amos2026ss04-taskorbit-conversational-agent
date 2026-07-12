@@ -163,6 +163,11 @@ export function AgentConfigPage() {
 
   const loadPreset = () => {
     setActiveAgent(JOHN_DOE_AGENT, null);
+    // Clear stale flags from whatever was loaded before — otherwise a prior
+    // built-in load leaves Update hidden, or a stale activeUserAgentId makes
+    // a later Update silently target the wrong row.
+    setActiveUserAgentId(null);
+    setIsLoadedBuiltIn(false);
     setShowErrors(false);
     toast.success("Preset loaded.");
   };
@@ -181,6 +186,10 @@ export function AgentConfigPage() {
         is_customized: true,
       });
       setActiveAgent(normalized, saved.id);
+      // Same reasoning as loadPreset — this legacy path is a different row
+      // than whatever was loaded before, so stale flags must not carry over.
+      setActiveUserAgentId(null);
+      setIsLoadedBuiltIn(false);
       setShowErrors(false);
       toast.success("Configuration loaded.", {
         description: `Loaded "${saved.name}".`,
