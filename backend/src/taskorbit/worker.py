@@ -177,8 +177,34 @@ async def entrypoint(ctx: JobContext) -> None:
                 audio_duration_ms=round(m.audio_duration * 1000, 1),
             )
 
+    # Timestamp (event-clock, from UserStateChangedEvent.created_at) of the
+    # last user_state_changed transition, so each new transition can log how
+    # long the PREVIOUS state actually held. Diagnostic for bug 2: VAD has
+    # been observed staying in "speaking" for 30-40s straight (no transition
+    # to "listening" at all) before force_commit ever fires, which this
+    # makes directly visible instead of inferring it from STT heartbeat gaps.
+    _last_user_state_change_at: float | None = None
+
     @session.on("user_state_changed")
     def _on_user_state(ev: AgentEvent) -> None:
+        nonlocal _last_user_state_change_at
+        old_state = getattr(ev, "old_state", None)
+        new_state = getattr(ev, "new_state", None)
+        created_at = getattr(ev, "created_at", None)
+        held_ms = (
+            round((created_at - _last_user_state_change_at) * 1000, 1)
+            if created_at is not None and _last_user_state_change_at is not None
+            else None
+        )
+        if created_at is not None:
+            _last_user_state_change_at = created_at
+        logger.info(
+            "user_state_changed",
+            old_state=old_state,
+            new_state=new_state,
+            held_ms=held_ms,
+        )
+
         # Server-side VAD end-of-speech backstop (#153). When Silero detects the
         # user has stopped (speaking -> listening), nudge the frontend to commit
         # the turn. The frontend's amplitude silence detection is the primary
@@ -186,7 +212,7 @@ async def entrypoint(ctx: JobContext) -> None:
         # analyser above its threshold so it never fires and the turn hangs. The
         # frontend ignores the nudge unless it is still recording, so a turn it
         # already committed is unaffected.
-        if getattr(ev, "new_state", None) != "listening":
+        if new_state != "listening":
             return
 
         async def _publish_force_commit() -> None:
