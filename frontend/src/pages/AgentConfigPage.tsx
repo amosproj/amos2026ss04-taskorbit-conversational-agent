@@ -99,9 +99,7 @@ export function AgentConfigPage() {
   // loadById() (the "Saved agents" legacy load path) updates loadedConfigId
   // on every load but never touches activeUserAgentId, so relying on the
   // latter here would flag a freshly-loaded agent as a duplicate of itself.
-  const currentRowId = loadedConfigId?.startsWith("ua:")
-    ? loadedConfigId.slice(3)
-    : loadedConfigId;
+  const currentRowId = loadedConfigId?.startsWith("ua:") ? loadedConfigId.slice(3) : loadedConfigId;
   const trimmedAgentId = (agent.agent_id ?? "").trim();
   const duplicateAgentId = trimmedAgentId
     ? userAgents.find(

@@ -121,7 +121,9 @@ async def create_user_agent(
     fresh row so the caller's currently-loaded agent is never touched.
     """
     try:
-        agent = await create_user_agent_in_db(db, user_id=user_id, name=body.name, config=body.config)
+        agent = await create_user_agent_in_db(
+            db, user_id=user_id, name=body.name, config=body.config
+        )
     except DuplicateAgentIdError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
     if not agent:

@@ -897,7 +897,9 @@ async def update_user_agent(
     if not agent:
         return None
     if config is not None:
-        await _assert_agent_id_available(db, config.get("agent_id"), user_id, exclude_row_id=agent.id)
+        await _assert_agent_id_available(
+            db, config.get("agent_id"), user_id, exclude_row_id=agent.id
+        )
     try:
         if name is not None:
             agent.name = name
