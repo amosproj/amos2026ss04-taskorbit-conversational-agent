@@ -115,7 +115,16 @@ export function ActiveAgentProvider({ children }: { children: ReactNode }) {
       const uaId = stored.loadedConfigId.slice(3);
       fetchUserAgents(controller.signal)
         .then((entries) => {
-          const fresh = entries.find((e) => e.id === uaId);
+          // loadedConfigId is always built from template_id ?? id (see
+          // AgentConfigPage/useAgentHandoff/ConversationalChat), so for a
+          // customized copy of a built-in, uaId is the template's slug, not
+          // the row's UUID. list_user_agents_merged returns both that
+          // customized row (template_id === slug) and the pristine template
+          // (id === slug), so a plain id match resolves to the template and
+          // reverts the user's customization (PR #232 review). Prefer the
+          // customized row when one matches.
+          const matches = (e: (typeof entries)[number]) => e.id === uaId || e.template_id === uaId;
+          const fresh = entries.find((e) => matches(e) && e.is_customized) ?? entries.find(matches);
           if (fresh) setAgent(backendToFrontendAgent(fresh));
         })
         .catch(() => {
