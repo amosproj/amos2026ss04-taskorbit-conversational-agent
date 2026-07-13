@@ -17,7 +17,7 @@ By standardizing conversational automation across different business domains, Ta
 
 ### Project Mission
 
-The mission of this project is to create an MVP for a Voice AI Agent platform. Within the given project time-frame, the team is committed to delivering a fully functional conversational interface supporting configurable single-agent and multi-agent workflows. 
+The mission of this project is to create an MVP for a Voice AI Agent platform. Within the given project time-frame, the team is committed to delivering a fully functional conversational interface supporting configurable single-agent and multi-agent workflows.
 Core functionality will include the integration of STT for user input, a LLM backend for conversational processing and reasoning, agent orchestration capabilities, and TTS for audio output. The primary objective of this project is to provide a reliable and extensible end-to-end conversational system through the integration of these core components.
 
 
@@ -64,7 +64,7 @@ The frontend ships a ChatGPT-style mic button: tap to record, **Stop** mutes wit
 
    ```bash
    docker compose up --build
-   # postgres → :5435  api → :8000  worker → (no host port)  frontend → :5173
+   # postgres → :5435  api → :8000  worker → :8001  frontend → :5173
    ```
 
    Or run each piece directly without Docker:
@@ -88,11 +88,14 @@ See [`backend/README.md`](backend/README.md) and [`frontend/README.md`](frontend
 
 | Where               | Var                                                              | Notes                                                                            |
 | ------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `backend/.env`      | `DATABASE_URL`                                                   | Postgres connection string. The compose `postgres` service matches the example default. |
 | `backend/.env`      | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`          | LiveKit Cloud project credentials. The URL is `wss://...livekit.cloud`.          |
 | `backend/.env`      | `DEEPGRAM_API_KEY`, `DEEPGRAM_MODEL`, `DEEPGRAM_LANGUAGE`        | Defaults to `nova-3` / `multi`.                                                  |
-| `backend/.env`      | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL`  | Defaults to Rachel + `eleven_multilingual_v2`.                                   |
-| `backend/.env`      | `OPENAI_API_KEY` / `GOOGLE_API_KEY` (optional)                  | Reserved for the upcoming real-LLM integration; the orchestrator is currently an echo stub. |
+| `backend/.env`      | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL`  | Defaults to George + `eleven_multilingual_v2`.                                   |
+| `backend/.env`      | `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `OPENROUTER_API_KEY`, `OLLAMA_BASE_URL` | LLM provider credentials. Provider selection is per-task (`agent_config.pipeline.llm.provider`); set the key(s) for the provider(s) you use. Default models via `OPENAI_MODEL`, `GOOGLE_MODEL`, `OPENROUTER_MODEL`, `OLLAMA_MODEL`. |
+| `backend/.env`      | `METRICS_ENABLED`, `OTEL_ENABLED` (optional)                    | Prometheus `/metrics` endpoint and OpenTelemetry SDK toggles.                    |
 | `frontend/.env.local` | `VITE_API_URL`                                                 | Where the React app proxies `/api/*`. Defaults to `http://localhost:8000`.       |
+| `frontend/.env.local` | `VITE_LIVEKIT_URL`                                             | LiveKit WebSocket URL used by the browser client — same value as the backend's `LIVEKIT_URL`. |
 
 ---
 
@@ -103,7 +106,20 @@ See [`backend/README.md`](backend/README.md) and [`frontend/README.md`](frontend
 | `GET`  | `/health`                   | Liveness check used by the pre-call diagnostics card.        |
 | `POST` | `/v1/livekit/token`         | Mints a per-call JWT. Optional `metadata` object is JSON-encoded onto the participant for the worker to read. |
 | `POST` | `/v1/conversations/process` | Text-fallback turn (orchestrator round-trip).                |
+| `POST` | `/v1/conversations/stream`  | Streaming variant of the text-fallback turn.                 |
+| `POST` | `/v1/conversations`         | Creates a bare conversation row.                             |
+| `GET`  | `/v1/conversations`         | Lists conversations.                                         |
+| `GET`  | `/v1/conversations/{id}/history` | Returns the persisted turn history for a conversation.  |
+| `GET`  | `/v1/conversations/{id}/messages` | Returns the persisted messages for a conversation.      |
+| `DELETE` | `/v1/conversations/{id}`  | Deletes a conversation.                                      |
 | `POST` | `/v1/tts/synthesize`        | ElevenLabs MP3 used only by the typed-input fallback.        |
+| `POST` | `/v1/tts/synthesize-with-timestamps` | Base64 MP3 plus word-level timestamps from ElevenLabs. |
+| `GET`/`POST` | `/v1/agent-configs`   | List / create agent configurations.                          |
+| `GET`/`PUT`/`DELETE` | `/v1/agent-configs/{id}` | Fetch / update / delete a single agent configuration. |
+| `GET`/`POST` | `/v1/user-agents`     | List / create user agents.                                   |
+| `GET`  | `/v1/user-agents/templates` | Returns the default agent templates.                         |
+| `PUT`/`DELETE` | `/v1/user-agents/{id}` | Update / delete a user agent.                             |
+| `GET`  | `/metrics`                  | Prometheus metrics (when `METRICS_ENABLED=true`).            |
 
 ---
 
@@ -118,7 +134,7 @@ Three quality-gate workflows run on every push and pull request. A fourth deploy
 | **Backend Linting**   | [`backend-lint.yml`](.github/workflows/backend-lint.yml)                              | `poetry install` → `ruff check` → `ruff format --check` → `pytest`                        |
 | **Deploy to GCP**     | [`deploy.yml`](.github/workflows/deploy.yml)                                          | Builds Docker images, pushes to Artifact Registry, deploys to Cloud Run (runs after all three above pass) |
 
-Each workflow is split into named stages chained with `needs:`, so a single failing stage shows up clearly in the GitHub Checks UI. The full team-facing guide — local commands, troubleshooting, and how to extend the pipeline — lives in [`Documentation/ci-cd.md`](Documentation/ci-cd.md). 
+Each workflow is split into named stages chained with `needs:`, so a single failing stage shows up clearly in the GitHub Checks UI. The full team-facing guide — local commands, troubleshooting, and how to extend the pipeline — lives in [`Documentation/ci-cd.md`](Documentation/ci-cd.md).
 
 ### Pre-commit Hooks
 
@@ -147,11 +163,4 @@ After this, ruff (backend) and ESLint + Prettier (frontend) auto-fix staged file
 - **Interrupts** — `AgentSession` allows barge-in by default; tap the mic again while the agent is speaking and the agent stops.
 - **Auto-reconnect** — `livekit-client` retries transient drops and the UI surfaces a `Reconnecting…` banner.
 - **Waveform** — the mic-button row draws live frequency bars from a `WebAudio AnalyserNode` attached to the published mic track.
-
----
-
-## Known Limitations / Out of Scope
-
-- The `ConversationOrchestrator` is an echo stub. Wiring a real LLM is a one-class change in `backend/src/taskorbit/orchestration/__init__.py`; the LiveKit pipeline does not need to change.
-- Chat history is not persisted to Postgres yet (DB schema is in place, no writes from the orchestrator).
-- The mute-AI-voice toggle and mobile-only UI polish are not in this iteration.
+- **Mute AI voice** — an in-call toggle silences agent audio playback; transcription captions keep streaming.

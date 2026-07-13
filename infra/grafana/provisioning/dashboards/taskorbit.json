@@ -63,9 +63,7 @@
       "options": {
         "reduceOptions": {
           "values": false,
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": ""
         },
         "orientation": "auto",
@@ -115,9 +113,7 @@
       "options": {
         "reduceOptions": {
           "values": false,
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": ""
         },
         "orientation": "horizontal",
@@ -169,9 +165,7 @@
       "options": {
         "reduceOptions": {
           "values": false,
-          "calcs": [
-            "mean"
-          ],
+          "calcs": ["mean"],
           "fields": ""
         },
         "orientation": "horizontal",
@@ -241,9 +235,7 @@
       "options": {
         "reduceOptions": {
           "values": false,
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": ""
         },
         "orientation": "auto",
@@ -295,10 +287,7 @@
       "id": 7,
       "options": {
         "legend": {
-          "calcs": [
-            "mean",
-            "max"
-          ],
+          "calcs": ["mean", "max"],
           "displayMode": "list",
           "placement": "bottom"
         },
@@ -348,10 +337,7 @@
       "id": 9,
       "options": {
         "legend": {
-          "calcs": [
-            "mean",
-            "max"
-          ],
+          "calcs": ["mean", "max"],
           "displayMode": "list",
           "placement": "bottom"
         },
@@ -479,7 +465,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "sum by (level) (rate({job=\"cloud-run-logs\"} | json | level != \"\" [5m]))",
+          "expr": "sum by (level) (rate({job=\"cloud-run-logs\"} |~ \"^{\" | json | level != \"\" [5m]))",
           "legendFormat": "{{level}}",
           "refId": "A"
         }
@@ -515,7 +501,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "{job=\"cloud-run-logs\"} | json ${log_query}",
+          "expr": "{job=\"cloud-run-logs\"} |~ \"^{\" | json ${log_query}",
           "legendFormat": "",
           "refId": "A"
         }
@@ -763,9 +749,7 @@
         "justifyMode": "center",
         "orientation": "horizontal",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": "",
           "values": false
         },
@@ -1106,10 +1090,7 @@
       "id": 56,
       "options": {
         "legend": {
-          "calcs": [
-            "mean",
-            "max"
-          ],
+          "calcs": ["mean", "max"],
           "displayMode": "list",
           "placement": "bottom"
         },
@@ -1177,10 +1158,7 @@
       "id": 57,
       "options": {
         "legend": {
-          "calcs": [
-            "mean",
-            "max"
-          ],
+          "calcs": ["mean", "max"],
           "displayMode": "list",
           "placement": "bottom"
         },
@@ -1248,10 +1226,7 @@
       "id": 58,
       "options": {
         "legend": {
-          "calcs": [
-            "mean",
-            "max"
-          ],
+          "calcs": ["mean", "max"],
           "displayMode": "list",
           "placement": "bottom"
         },
@@ -1335,7 +1310,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "{service=~\"backend|worker\"} | json | level =~ \"error|warning\"",
+          "expr": "{job=\"cloud-run-logs\"} |~ \"^{\" | json | level =~ \"error|warning\"",
           "legendFormat": "",
           "refId": "A"
         }
@@ -1371,7 +1346,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "{service=~\"backend|worker\"} | json | trace_id != \"\"",
+          "expr": "{job=\"cloud-run-logs\"} |~ \"^{\" | json | trace_id != \"\"",
           "legendFormat": "",
           "refId": "A"
         }
@@ -1438,11 +1413,7 @@
   ],
   "refresh": "5s",
   "schemaVersion": 39,
-  "tags": [
-    "taskorbit",
-    "fastapi",
-    "observability"
-  ],
+  "tags": ["taskorbit", "fastapi", "observability"],
   "templating": {
     "list": [
       {

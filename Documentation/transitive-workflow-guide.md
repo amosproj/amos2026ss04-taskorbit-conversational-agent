@@ -2,7 +2,7 @@
 
 This guide explains how TaskOrbit resolves **transitive** prerequisite agents: when agent A depends on B and B depends on C, the orchestration engine runs **C → B → A** at runtime even if A only lists B in its configuration.
 
-For a minimal test setup using `agent-a` / `agent-b` / `agent-c`, see [demo-2-transitive-chain.md](./demo-2-transitive-chain.md).
+For a minimal test setup using `agent-a` / `agent-b` / `agent-c`, follow the **Voice walkthrough** section below.
 
 > **Platform note:** TaskOrbit is **voice-first**. The typed text input is legacy and will be **removed in upcoming sprints**. All walkthroughs below use **mic + Send** and the **Proceed** card. Automated backend tests still use text requests.
 
@@ -179,9 +179,9 @@ The same graph can be tested with short IDs for QA:
 | After Proceed, *continue* returns wrong persona | Restart backend + worker; ensure orchestration uses the routed agent’s config for the LLM prompt |
 | Title shows intent name (e.g. General Inquiry) | Use latest frontend/backend; entry display name should remain in the session title |
 | No Proceed card | Entry agent has prerequisites configured; STT/LLM/TTS models are set |
-| UI Proceed but voice step wrong | Hard refresh; `workflow_state` sync (see [demo-3-voice-ui-proceed-sync.md](./demo-3-voice-ui-proceed-sync.md)) |
+| UI Proceed but voice step wrong | Hard refresh; confirm `workflow_state` sync between UI and LiveKit session |
 
-More detail: [demo-2-transitive-chain.md](./demo-2-transitive-chain.md#if-something-fails).
+More detail: see the **Troubleshooting** table above and restart backend + worker if persona routing looks stale.
 
 ---
 
