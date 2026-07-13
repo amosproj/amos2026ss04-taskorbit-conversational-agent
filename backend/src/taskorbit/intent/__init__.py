@@ -188,8 +188,6 @@ class MockIntentDetector:
           5. Book service appointment — default when nothing else matches.
         """
         lowered = prompt.lower()
-        # if any(kw in lowered for kw in _APPOINTMENT_MANAGEMENT_KEYWORDS):
-        #     return replace(_KNOWN_INTENTS["appointment_management"])
         if any(kw in lowered for kw in _TECHNICAL_SUPPORT_KEYWORDS):
             return replace(_TECHNICAL_SUPPORT_REQUEST)
         if any(kw in lowered for kw in _DISSATISFACTION_KEYWORDS):

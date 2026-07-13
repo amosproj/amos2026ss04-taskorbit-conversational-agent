@@ -6,11 +6,13 @@
 #   1. install  — set up Node, restore npm cache, `npm ci`
 #   2. lint     — `npm run lint`         (ESLint v9, flat config)
 #   3. format   — `npm run format:check` (Prettier --check)
+#   4. test     - `npm run test`         (Vitest, unit tests in src/**/*.test.ts)
 #
 # Local equivalents (run from `frontend/`):
 #   npm install
 #   npm run lint
 #   npm run format:check
+#   npm run test
 
 name: Frontend Linting
 
@@ -83,3 +85,21 @@ jobs:
       - name: Check formatting with Prettier
         working-directory: frontend
         run: npm run format:check
+
+  test:
+    name: "4. Test (Vitest)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: format
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Bootstrap frontend environment
+        uses: ./.github/actions/frontend-bootstrap
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Run unit tests
+        working-directory: frontend
+        run: npm run test

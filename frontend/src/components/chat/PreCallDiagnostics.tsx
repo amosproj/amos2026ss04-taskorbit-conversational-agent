@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 
-import { useBackendHealth } from "@/hooks/useBackendHealth";
+import { useBackendHealth, type HealthState } from "@/hooks/useBackendHealth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -12,6 +12,24 @@ type Check = {
   tone: CheckTone;
   detail: string;
 };
+
+type HealthOk = Extract<HealthState, { status: "ok" }>;
+
+/** Derives a traffic-light Check from the shared /health polling state. */
+function checkFromHealth(
+  health: HealthState,
+  label: string,
+  render: {
+    loading: string;
+    ok: (h: HealthOk) => Pick<Check, "tone" | "detail">;
+    error: (message: string) => string;
+  },
+): Check {
+  if (health.status === "loading") return { label, tone: "loading", detail: render.loading };
+  if (health.status === "error")
+    return { label, tone: "error", detail: render.error(health.message) };
+  return { label, ...render.ok(health) };
+}
 
 const toneClasses: Record<CheckTone, string> = {
   ok: "bg-primary",
@@ -30,31 +48,28 @@ const toneClasses: Record<CheckTone, string> = {
 export function PreCallDiagnostics({ className }: { className?: string }) {
   const { health } = useBackendHealth();
   const apiUrl = import.meta.env.VITE_API_URL ?? "";
-  const livekitUrl = import.meta.env.VITE_LIVEKIT_URL ?? "";
   const [showDetail, setShowDetail] = useState(false);
 
-  const backendCheck: Check =
-    health.status === "loading"
-      ? { label: "Backend", tone: "loading", detail: "Checking /health…" }
-      : health.status === "ok"
-        ? {
-            label: "Backend",
-            tone: "ok",
-            detail: `${health.service} v${health.version}`,
-          }
-        : {
-            label: "Backend",
-            tone: "error",
-            detail: `unreachable · ${health.message}`,
-          };
+  const backendCheck = checkFromHealth(health, "Backend", {
+    loading: "Checking /health…",
+    ok: (h) => ({ tone: "ok", detail: `${h.service} v${h.version}` }),
+    error: (message) => `unreachable · ${message}`,
+  });
 
-  const livekitCheck: Check = livekitUrl
-    ? { label: "LiveKit", tone: "ok", detail: livekitUrl }
-    : {
-        label: "LiveKit",
-        tone: "warn",
-        detail: "VITE_LIVEKIT_URL is not set — voice will not connect.",
-      };
+  // LiveKit URL/credentials live only in backend Settings and are handed to the
+  // frontend per-session via POST /v1/livekit/token — there is no frontend env
+  // var to check. The backend reports whether it's configured via /health.
+  const livekitCheck = checkFromHealth(health, "LiveKit", {
+    loading: "Checking backend config…",
+    ok: (h) =>
+      h.livekit_configured
+        ? { tone: "ok", detail: "Configured on backend" }
+        : {
+            tone: "warn",
+            detail: "LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET not set on backend.",
+          },
+    error: () => "Cannot verify — backend unreachable.",
+  });
 
   const checks: Check[] = [backendCheck, livekitCheck];
   const hasIssue = checks.some((c) => c.tone === "error" || c.tone === "warn");
@@ -115,8 +130,6 @@ export function PreCallDiagnostics({ className }: { className?: string }) {
             <dd className="font-mono break-all text-muted-foreground">
               {apiUrl || "(using Vite /api proxy)"}
             </dd>
-            <dt className="font-medium text-muted-foreground">VITE_LIVEKIT_URL</dt>
-            <dd className="font-mono break-all text-muted-foreground">{livekitUrl || "(unset)"}</dd>
           </dl>
         ) : null}
       </CardContent>
