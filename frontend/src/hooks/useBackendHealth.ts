@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 export type HealthState =
   | { status: "loading" }
-  | { status: "ok"; service: string; version: string }
+  | { status: "ok"; service: string; version: string; livekit_configured: boolean }
   | { status: "error"; message: string };
 
 const HEALTH_URL = "/api/health";
@@ -29,7 +29,11 @@ export function useBackendHealth() {
       try {
         const res = await fetch(HEALTH_URL, { signal: controller.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const body = (await res.json()) as { service: string; version: string };
+        const body = (await res.json()) as {
+          service: string;
+          version: string;
+          livekit_configured: boolean;
+        };
         if (!cancelled) setHealth({ status: "ok", ...body });
       } catch (err) {
         const error = err as Error;

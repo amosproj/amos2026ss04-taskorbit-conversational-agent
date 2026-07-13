@@ -547,6 +547,177 @@ async def test_external_api_dispatch_passes_full_config_plus_args() -> None:
     assert ctx["args"] == {"city": "Berlin"}
 
 
+def test_external_api_requires_args_helper() -> None:
+    """Helper returns True only for EXTERNAL_API tools whose args_schema
+    declares a non-empty ``required`` list. Everything else, including
+    other tool types and empty/missing required lists, returns False."""
+    from taskorbit.orchestration import _external_api_requires_args
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    def _mk(tool_type: ToolType, params: dict[str, Any] | None) -> ToolDefinition:
+        return ToolDefinition(
+            id="t",
+            name="t",
+            type=tool_type,
+            description="d",
+            confirmation=ConfirmationConfig(required=False, prompt=""),
+            parameters=params or {},
+        )
+
+    with_required = _mk(
+        ToolType.EXTERNAL_API,
+        {"args_schema": {"type": "object", "required": ["city"], "properties": {}}},
+    )
+    empty_required = _mk(
+        ToolType.EXTERNAL_API,
+        {"args_schema": {"type": "object", "required": [], "properties": {}}},
+    )
+    no_schema = _mk(ToolType.EXTERNAL_API, {})
+    non_api = _mk(
+        ToolType.DATA_EXTRACTION,
+        {"args_schema": {"type": "object", "required": ["x"], "properties": {}}},
+    )
+
+    assert _external_api_requires_args(with_required) is True
+    assert _external_api_requires_args(empty_required) is False
+    assert _external_api_requires_args(no_schema) is False
+    assert _external_api_requires_args(non_api) is False
+
+
+def test_build_system_prompt_injects_tool_data() -> None:
+    """When tool_data is passed, its JSON is injected into the system prompt
+    with an instruction telling the LLM to use it instead of prior knowledge.
+    This is what lets an external_api result (e.g. current time from
+    timeapi.io) actually reach the LLM."""
+    from taskorbit.types import (
+        AgentConfig as _AC,
+    )
+    from taskorbit.types import (
+        ConfirmationConfig,
+        ToolDefinition,
+        ToolType,
+    )
+
+    orch = ConversationOrchestrator()
+    config = _AC(id="a", name="a", persona="p", greeting="g")
+    tool = ToolDefinition(
+        id="t",
+        name="get_time",
+        type=ToolType.EXTERNAL_API,
+        description="Returns current time",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={},
+    )
+    tool_data = {"status": 200, "data": {"dateTime": "2026-07-08T14:30:00"}}
+
+    prompt = orch._build_system_prompt(config, tool, None, routed_agent=None, tool_data=tool_data)
+
+    assert "Tool result" in prompt
+    assert "dateTime" in prompt
+    assert "2026-07-08T14:30:00" in prompt
+    assert "do NOT answer from prior knowledge" in prompt
+
+
+def test_build_system_prompt_omits_tool_data_when_aborted() -> None:
+    """An aborted tool_data payload (e.g. user rejected a confirmation)
+    must NOT be injected: the LLM should not see partial or void tool
+    output as authoritative ground truth."""
+    from taskorbit.types import (
+        AgentConfig as _AC,
+    )
+    from taskorbit.types import (
+        ConfirmationConfig,
+        ToolDefinition,
+        ToolType,
+    )
+
+    orch = ConversationOrchestrator()
+    config = _AC(id="a", name="a", persona="p", greeting="g")
+    tool = ToolDefinition(
+        id="t",
+        name="t",
+        type=ToolType.EXTERNAL_API,
+        description="d",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={},
+    )
+
+    prompt = orch._build_system_prompt(
+        config, tool, None, routed_agent=None, tool_data={"aborted": True}
+    )
+
+    assert "Tool result" not in prompt
+    assert "aborted" not in prompt
+
+
+@pytest.mark.asyncio
+async def test_no_arg_external_api_dispatches_and_llm_sees_result() -> None:
+    """End-to-end for Carl's bug: an EXTERNAL_API tool with no required args
+    (e.g. Current_Date_and_Time_Tool) must dispatch BEFORE the LLM call,
+    and the resulting tool_data must land in the system prompt so the LLM
+    can quote a fresh value instead of answering from its training cutoff."""
+    from taskorbit.slots.models import SlotExtractionResult
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    orch = ConversationOrchestrator()
+    intent = _intent_result(required_inputs=[])
+    tool = ToolDefinition(
+        id="current-time",
+        name="Current_Date_and_Time_Tool",
+        type=ToolType.EXTERNAL_API,
+        description="Returns current time in Europe/Berlin",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={
+            "request": {
+                "method": "GET",
+                "url": "https://timeapi.io/api/Time/current/zone?timeZone=Europe/Berlin",
+            },
+            "response": {"extract": {"dateTime": "dateTime"}},
+            "args_schema": {"type": "object", "required": [], "properties": {}},
+        },
+    )
+    slot_result = SlotExtractionResult(filled={}, missing=[])
+
+    async def _fake_dispatch(
+        _self: ConversationOrchestrator,
+        _tool: ToolDefinition,
+        _ctx: dict[str, Any],
+        **_kwargs: Any,
+    ) -> tuple[dict[str, Any], float]:
+        return {"status": 200, "data": {"dateTime": "2026-07-08T14:30:00"}}, 0.0
+
+    seen_prompts: list[str] = []
+
+    async def _capture_llm(
+        _self: ConversationOrchestrator,
+        system_prompt: str,
+        *_a: Any,
+        **_kw: Any,
+    ) -> str:
+        seen_prompts.append(system_prompt)
+        return "It is 2026-07-08 14:30 in Berlin."
+
+    with (
+        patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
+        patch.object(ConversationOrchestrator, "_select_active_tool", return_value=tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_extract_slots",
+            new_callable=AsyncMock,
+            return_value=slot_result,
+        ),
+        patch.object(ConversationOrchestrator, "_dispatch_tool", new=_fake_dispatch),
+        patch.object(ConversationOrchestrator, "_call_llm", new=_capture_llm),
+    ):
+        response = await orch.process_message(_make_request("what time is it?"))
+
+    assert response.tool_invoked is not None
+    assert response.tool_invoked.type == ToolType.EXTERNAL_API
+    assert len(seen_prompts) == 1
+    assert "2026-07-08T14:30:00" in seen_prompts[0]
+    assert "Tool result" in seen_prompts[0]
+
+
 @pytest.mark.asyncio
 async def test_process_message_confirmation_flow(mock_good_intent: Any) -> None:
     """AC #49: End-to-end confirmation flow (pending -> approved -> rejected)."""
@@ -1688,3 +1859,217 @@ async def test_handler_ordering_llm_config_still_routes_to_llm_config_bucket(
         "LLMConfigError leaked into the llm_provider_error bucket — check handler ordering "
         "in orchestration/__init__.py: LLMConfigError must be caught BEFORE LLMError base."
     )
+
+
+# ---------------------------------------------------------------------------
+# _select_active_tool — intent-driven transfer selection (#212)
+# ---------------------------------------------------------------------------
+
+
+class _FakeAgent:
+    """Minimal stand-in exposing get_task_definitions like BaseAgent."""
+
+    def __init__(self, tools):
+        self._tools = tools
+
+    def get_task_definitions(self):
+        return self._tools
+
+
+def _john_max_tools():
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    confirm = ConfirmationConfig(required=False, prompt="")
+    return [
+        ToolDefinition(
+            id="collect_user_info",
+            name="collect_user_info",
+            type=ToolType.DATA_EXTRACTION,
+            description="collect",
+            confirmation=confirm,
+            parameters={"params": []},
+        ),
+        ToolDefinition(
+            id="end_call",
+            name="end_call",
+            type=ToolType.END_CALL,
+            description="end",
+            confirmation=confirm,
+            parameters={},
+        ),
+        ToolDefinition(
+            id="transfer_to_inquiry_agent",
+            name="transfer_to_inquiry_agent",
+            type=ToolType.AGENT_TRANSFER,
+            description="hand off",
+            confirmation=confirm,
+            parameters={"targets": ["inquiry-agent"]},
+        ),
+    ]
+
+
+def _intent_for(agent_name: str):
+    from taskorbit.intent import IntentResult
+
+    return IntentResult(name=agent_name or "unknown", description="", agent_name=agent_name)
+
+
+def test_select_transfer_when_intent_routes_away() -> None:
+    """#212: intent routing away + matching transfer tool selects the transfer,
+    not tools[0], even though the target is the sloppy prod value."""
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool(
+        [],
+        _FakeAgent(_john_max_tools()),
+        intent=_intent_for("general_inquiry"),
+        current_agent="demoday",
+    )
+    assert tool is not None
+    assert tool.id == "transfer_to_inquiry_agent"
+
+
+def test_select_pin_wins_over_transfer_rule() -> None:
+    """A confirmation round-trip pin must still take precedence."""
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool(
+        [],
+        _FakeAgent(_john_max_tools()),
+        active_tool_id="collect_user_info",
+        intent=_intent_for("general_inquiry"),
+        current_agent="demoday",
+    )
+    assert tool is not None
+    assert tool.id == "collect_user_info"
+
+
+def test_select_stays_on_first_tool_when_intent_matches_current_agent() -> None:
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool(
+        [],
+        _FakeAgent(_john_max_tools()),
+        intent=_intent_for("general_inquiry"),
+        current_agent="general_inquiry",
+    )
+    assert tool is not None
+    assert tool.id == "collect_user_info"
+
+
+def test_select_stays_on_first_tool_when_no_target_matches_destination() -> None:
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool(
+        [],
+        _FakeAgent(_john_max_tools()),
+        intent=_intent_for("sales"),
+        current_agent="demoday",
+    )
+    assert tool is not None
+    assert tool.id == "collect_user_info"
+
+
+def test_select_stays_on_first_tool_for_unknown_intent() -> None:
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool(
+        [],
+        _FakeAgent(_john_max_tools()),
+        intent=_intent_for(""),
+        current_agent="demoday",
+    )
+    assert tool is not None
+    assert tool.id == "collect_user_info"
+
+
+def test_select_unchanged_without_intent_argument() -> None:
+    """Callers that never pass intent keep the legacy tools[0] behaviour."""
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool([], _FakeAgent(_john_max_tools()))
+    assert tool is not None
+    assert tool.id == "collect_user_info"
+
+
+def test_select_no_tools_returns_none_still() -> None:
+    orch = ConversationOrchestrator()
+    assert (
+        orch._select_active_tool(
+            [], _FakeAgent([]), intent=_intent_for("general_inquiry"), current_agent="x"
+        )
+        is None
+    )
+
+
+# ---------------------------------------------------------------------------
+# tool_invoked carries the RESOLVED transfer target (#212)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_transfer_tool_invoked_carries_canonical_target() -> None:
+    """The response's tool_invoked must expose the canonical target, not the
+    raw config string: the voice worker publishes parameters.targets[0] and
+    the FE swap matches on it."""
+    from unittest.mock import AsyncMock, patch
+
+    from taskorbit.slots.models import SlotExtractionResult, SlotValue
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    orch = ConversationOrchestrator()
+    intent = _intent_result(
+        required_inputs=[{"name": "caller_name", "type": "string", "required": True}]
+    )
+    transfer_tool = ToolDefinition(
+        id="transfer_to_inquiry_agent",
+        name="transfer_to_inquiry_agent",
+        type=ToolType.AGENT_TRANSFER,
+        description="hand off",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={"targets": ["inquiry-agent"]},
+    )
+    slot_result = SlotExtractionResult(
+        filled={"caller_name": SlotValue(name="caller_name", value="Asad", slot_type="string")},
+        missing=[],
+    )
+
+    with (
+        patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
+        patch.object(ConversationOrchestrator, "_select_active_tool", return_value=transfer_tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_extract_slots",
+            new_callable=AsyncMock,
+            return_value=slot_result,
+        ),
+        patch.object(
+            ConversationOrchestrator,
+            "_dispatch_tool",
+            new_callable=AsyncMock,
+            return_value=(
+                {
+                    "transferred_to": "general_inquiry",
+                    "requested_target": "inquiry-agent",
+                    "history_preserved": True,
+                },
+                0.0,
+            ),
+        ),
+        patch.object(
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+        ),
+    ):
+        response = await orch.process_message(_make_request("transfer me"))
+
+    assert response.tool_invoked is not None
+    assert response.tool_invoked.type == ToolType.AGENT_TRANSFER
+    assert response.tool_invoked.parameters["targets"] == ["general_inquiry"]
+
+
+def test_select_no_refire_when_current_agent_is_template_slug() -> None:
+    """After a completed voice handoff the worker reports the canonical
+    template slug as the current agent; the transfer must NOT re-fire (#212)."""
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool(
+        [],
+        _FakeAgent(_john_max_tools()),
+        intent=_intent_for("general_inquiry"),
+        current_agent="general-inquiry-agent",
+    )
+    assert tool is not None
+    assert tool.id == "collect_user_info"

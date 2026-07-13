@@ -6,7 +6,13 @@
  * (instructions, first_message, agent_id).
  */
 
-import type { AgentConfig, SttProvider, ToolDefinition, TtsProvider } from "@/types/agentConfig";
+import type {
+  AgentConfig,
+  FirstMessage,
+  SttProvider,
+  ToolDefinition,
+  TtsProvider,
+} from "@/types/agentConfig";
 
 // ---------------------------------------------------------------------------
 // Wire types (backend shape)
@@ -29,8 +35,12 @@ type BackendAgentConfig = {
   agent_id: string;
   id?: string; // present on old rows and templates (backend shape); read via agent_id ?? id
   name: string;
-  persona: string;
-  greeting: string;
+  persona?: string;
+  greeting?: string;
+  // Some older rows were saved with the frontend shape verbatim (predating
+  // the persona/greeting convention) — fall back to these when present.
+  instructions?: string;
+  first_message?: FirstMessage;
   stt: { provider: string; language?: string; model: string };
   llm: { provider: string; model: string };
   tts: { provider: string; voice_id: string; model: string };
@@ -61,9 +71,11 @@ export function backendToFrontendAgent(entry: UserAgentEntry): AgentConfig {
   const frontendTools: ToolDefinition[] = (Array.isArray(c.tools) ? c.tools : []).map(
     (t: BackendToolWithParams) => {
       if (t.type === "agent_transfer") {
+        const resolved = t.parameters?.targets || t.targets || [];
         return {
           ...t,
-          targets: t.parameters?.targets || t.targets || [],
+          targets: resolved,
+          parameters: { targets: resolved },
         };
       }
       return t as ToolDefinition;
@@ -73,8 +85,8 @@ export function backendToFrontendAgent(entry: UserAgentEntry): AgentConfig {
   const agent: AgentConfig = {
     agent_id: c.agent_id ?? c.id ?? "",
     name: c.name,
-    instructions: c.persona ?? "",
-    first_message: { type: "text", message: c.greeting ?? "", prompt: "" },
+    instructions: c.persona ?? c.instructions ?? "",
+    first_message: c.first_message ?? { type: "text", message: c.greeting ?? "", prompt: "" },
     stt: { provider: c.stt.provider as SttProvider, model: c.stt.model },
     llm: {
       provider: (c.llm.provider ?? "openai") as "openai" | "gemini" | "openrouter" | "ollama",

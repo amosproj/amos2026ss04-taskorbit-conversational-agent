@@ -114,11 +114,23 @@ export function AgentConfigPage() {
     const controller = new AbortController();
     void refreshList(controller.signal);
     fetchUserAgents(controller.signal)
-      .then(setUserAgents)
+      .then((fetched) => {
+        setUserAgents(fetched);
+        // isLoadedBuiltIn always starts false (unlike activeUserAgentId, which
+        // parses synchronously from the persisted loadedConfigId) — correct it
+        // once we know whether the restored agent is actually a customized
+        // row or an untouched template, so Update doesn't wrongly show for a
+        // built-in agent restored from a previous session.
+        if (activeUserAgentId) {
+          const entry = fetched.find((a) => a.id === activeUserAgentId);
+          if (entry) setIsLoadedBuiltIn(!entry.is_customized);
+        }
+      })
       .catch(() => {
         /* backend unavailable — silently skip */
       });
     return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshList]);
 
   const loadUserAgent = (entry: UserAgentEntry) => {
@@ -145,6 +157,11 @@ export function AgentConfigPage() {
 
   const loadPreset = () => {
     setActiveAgent(JOHN_DOE_AGENT, null);
+    // Clear stale flags from whatever was loaded before — otherwise a prior
+    // built-in load leaves Update hidden, or a stale activeUserAgentId makes
+    // a later Update silently target the wrong row.
+    setActiveUserAgentId(null);
+    setIsLoadedBuiltIn(false);
     setShowErrors(false);
     toast.success("Preset loaded.");
   };
@@ -152,19 +169,21 @@ export function AgentConfigPage() {
   const loadById = async (id: string) => {
     try {
       const saved = await loadAgentConfig(id);
-      const raw = saved.config as unknown as AgentConfig;
-      const normalized: AgentConfig = {
-        ...raw,
-        instructions: raw.instructions ?? "",
-        first_message: raw.first_message ?? { type: "text", message: "", prompt: "" },
-        tools: raw.tools ?? [],
-        variables: raw.variables ?? {},
-        engine: raw.engine ?? {},
-        workflow_dependencies: raw.workflow_dependencies ?? [],
-        workflow_rules: raw.workflow_rules,
-        allowed_handoffs: raw.allowed_handoffs ?? [],
-      };
+      // The backend stores configs in its own shape (persona/greeting/etc.),
+      // not the frontend AgentConfig shape — same conversion as loadUserAgent.
+      const normalized = backendToFrontendAgent({
+        id: saved.id,
+        template_id: null,
+        name: saved.name,
+        config: saved.config as unknown as UserAgentEntry["config"],
+        is_default: false,
+        is_customized: true,
+      });
       setActiveAgent(normalized, saved.id);
+      // Same reasoning as loadPreset — this legacy path is a different row
+      // than whatever was loaded before, so stale flags must not carry over.
+      setActiveUserAgentId(null);
+      setIsLoadedBuiltIn(false);
       setShowErrors(false);
       toast.success("Configuration loaded.", {
         description: `Loaded "${saved.name}".`,
@@ -189,9 +208,12 @@ export function AgentConfigPage() {
     try {
       await deleteAgentConfig(target.id);
       toast.success(`"${target.name}" deleted.`);
+      // Always refresh — a stale list here keeps the deleted agent showing
+      // up in the Workflow dropdowns and can falsely trip the duplicate
+      // agent_id check, not just when you delete the agent you have open.
+      const fresh = await fetchUserAgents();
+      setUserAgents(fresh);
       if (loadedConfigId === target.id) {
-        const fresh = await fetchUserAgents();
-        setUserAgents(fresh);
         const defaultEntry = fresh.find((a) => a.is_default) ?? fresh[0];
         if (defaultEntry) {
           loadUserAgent(defaultEntry);
@@ -243,6 +265,7 @@ export function AgentConfigPage() {
       toast.success("Agent saved.", { description: `Saved "${saved.name}".` });
       const updated = await fetchUserAgents();
       setUserAgents(updated);
+      void refreshList();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error.";
       toast.error("Could not save agent.", { description: message });
@@ -270,6 +293,7 @@ export function AgentConfigPage() {
         toast.success("Agent updated.", { description: `Updated "${saved.name}".` });
         const updated = await fetchUserAgents();
         setUserAgents(updated);
+        void refreshList();
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error.";
         toast.error("Could not update agent.", { description: message });
@@ -374,30 +398,6 @@ export function AgentConfigPage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-64">
-                {/* My agents — user copies (is_customized=true) */}
-                {userAgents.filter((e) => e.is_customized).length > 0 ? (
-                  <>
-                    <DropdownMenuLabel className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-                      My agents
-                    </DropdownMenuLabel>
-                    {userAgents
-                      .filter((e) => e.is_customized)
-                      .map((entry) => (
-                        <DropdownMenuItem
-                          key={entry.id}
-                          onClick={() => loadUserAgent(entry)}
-                          className={cn(
-                            "flex items-center gap-2",
-                            activeUserAgentId === entry.id && "bg-muted",
-                          )}
-                        >
-                          <Bot className="h-3 w-3 shrink-0 text-muted-foreground" />
-                          <span className="truncate">{entry.name}</span>
-                        </DropdownMenuItem>
-                      ))}
-                    <DropdownMenuSeparator />
-                  </>
-                ) : null}
                 {/* Built-in agents — unmodified templates (is_customized=false) */}
                 {userAgents.filter((e) => !e.is_customized).length > 0 ? (
                   <>

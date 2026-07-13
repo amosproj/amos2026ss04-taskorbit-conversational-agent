@@ -18,7 +18,14 @@ from fastapi.responses import JSONResponse
 
 from taskorbit import __version__
 from taskorbit.api import health
-from taskorbit.api.routes import agent_configs, conversations, livekit, tts, user_agents
+from taskorbit.api.routes import (
+    agent_configs,
+    conversations,
+    livekit,
+    tools,
+    tts,
+    user_agents,
+)
 from taskorbit.config import get_settings
 from taskorbit.logging.setup import configure_logging, get_logger
 from taskorbit.observability.metrics import configure_default_metrics, get_metrics
@@ -99,6 +106,7 @@ def create_app() -> FastAPI:
     app.include_router(tts.router)  # /v1/tts/synthesize
     app.include_router(agent_configs.router)  # /v1/agent-configs
     app.include_router(user_agents.router)  # /v1/user-agents
+    app.include_router(tools.router)  # /v1/tools/try
 
     @app.exception_handler(Exception)
     async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:

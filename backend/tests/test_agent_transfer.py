@@ -6,7 +6,11 @@ from unittest.mock import patch
 
 import pytest
 
-from taskorbit.tools.agent_transfer import AgentTransferTool
+from taskorbit.tools.agent_transfer import (
+    AgentTransferTool,
+    resolve_builtin_transfer_target,
+    resolve_transfer_target,
+)
 
 
 @pytest.fixture
@@ -138,10 +142,23 @@ async def test_transfer_to_unknown_custom_agent_fails_with_db() -> None:
 
     mock_db = AsyncMock()
 
-    with patch(
-        "taskorbit.database.crud.get_agent_configuration_by_id",
-        new_callable=AsyncMock,
-        return_value=None,
+    # The resolver consults all three lookups (#212); none may match here.
+    with (
+        patch(
+            "taskorbit.database.crud.get_agent_configuration_by_id",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "taskorbit.database.crud.get_default_agent_template",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "taskorbit.database.crud.get_agent_configuration_by_name",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
     ):
         tool = AgentTransferTool(db=mock_db)
         result = await tool.execute({"target_agent_id": "nonexistent_custom_id"})
@@ -174,3 +191,199 @@ async def test_custom_agent_history_preserved_with_db() -> None:
         result = await tool.execute({"target_agent_id": "abc123", "conversation_history": history})
 
     assert result.data["message_count"] == 2
+
+
+# ---------------------------------------------------------------------------
+# resolve_transfer_target() — the #212 resolution matrix
+# ---------------------------------------------------------------------------
+
+
+async def test_resolve_exact_builtin_name_without_db() -> None:
+    resolved = await resolve_transfer_target("general_inquiry")
+    assert resolved is not None
+    assert resolved.canonical_id == "general_inquiry"
+    assert resolved.kind == "builtin"
+
+
+async def test_resolve_kebab_near_miss_via_keywords() -> None:
+    # The exact prod value that broke #212: "inquiry-agent" is neither a
+    # registry name nor a DB id, but the keyword map lands it on general_inquiry.
+    resolved = await resolve_transfer_target("inquiry-agent")
+    assert resolved is not None
+    assert resolved.canonical_id == "general_inquiry"
+    assert resolved.kind == "builtin"
+
+
+async def test_resolve_display_name_with_spaces_and_case() -> None:
+    resolved = await resolve_transfer_target("General Inquiry Agent")
+    assert resolved is not None
+    assert resolved.canonical_id == "general_inquiry"
+
+
+async def test_resolve_capitalised_agent_suffix() -> None:
+    # removesuffix("-agent") in the old normalisation was case-sensitive;
+    # the keyword map is not.
+    resolved = await resolve_transfer_target("General-Inquiry-Agent")
+    assert resolved is not None
+    assert resolved.canonical_id == "general_inquiry"
+
+
+async def test_resolve_template_slug_with_db() -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock_db = AsyncMock()
+    fake_template = MagicMock()
+    fake_template.name = "General Inquiry Agent"
+
+    with (
+        patch(
+            "taskorbit.database.crud.get_agent_configuration_by_id",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "taskorbit.database.crud.get_default_agent_template",
+            new_callable=AsyncMock,
+            return_value=fake_template,
+        ),
+    ):
+        resolved = await resolve_transfer_target("general-inquiry-agent", db=mock_db)
+
+    assert resolved is not None
+    assert resolved.canonical_id == "general-inquiry-agent"
+    assert resolved.kind == "template"
+    assert resolved.display_name == "General Inquiry Agent"
+
+
+async def test_resolve_custom_agent_by_uuid_with_db() -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    from taskorbit.database.models import AgentConfiguration
+
+    mock_db = AsyncMock()
+    fake_record = MagicMock(spec=AgentConfiguration)
+    fake_record.name = "John Max"
+
+    with patch(
+        "taskorbit.database.crud.get_agent_configuration_by_id",
+        new_callable=AsyncMock,
+        return_value=fake_record,
+    ):
+        resolved = await resolve_transfer_target(
+            "33834dd8d88d4c73ab899a188f949a99", db=mock_db, user_id=1
+        )
+
+    assert resolved is not None
+    assert resolved.canonical_id == "33834dd8d88d4c73ab899a188f949a99"
+    assert resolved.kind == "config"
+
+
+async def test_resolve_custom_agent_by_display_name_with_db() -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    from taskorbit.database.models import AgentConfiguration
+
+    mock_db = AsyncMock()
+    fake_record = MagicMock(spec=AgentConfiguration)
+    fake_record.id = "row99"
+    fake_record.name = "Max-Agent-Pizza"
+
+    with (
+        patch(
+            "taskorbit.database.crud.get_agent_configuration_by_id",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "taskorbit.database.crud.get_default_agent_template",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "taskorbit.database.crud.get_agent_configuration_by_name",
+            new_callable=AsyncMock,
+            return_value=fake_record,
+        ),
+    ):
+        resolved = await resolve_transfer_target("Max-Agent-Pizza", db=mock_db, user_id=1)
+
+    assert resolved is not None
+    assert resolved.canonical_id == "row99"
+    assert resolved.kind == "config"
+
+
+async def test_resolve_name_match_beats_keyword_fuzz() -> None:
+    # A saved agent whose NAME contains a registry keyword ("tech") must
+    # resolve to that saved agent, never fuzz-map to technical_support.
+    from unittest.mock import AsyncMock, MagicMock
+
+    from taskorbit.database.models import AgentConfiguration
+
+    mock_db = AsyncMock()
+    fake_record = MagicMock(spec=AgentConfiguration)
+    fake_record.id = "row42"
+    fake_record.name = "Tech Billing"
+
+    with (
+        patch(
+            "taskorbit.database.crud.get_agent_configuration_by_id",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "taskorbit.database.crud.get_default_agent_template",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "taskorbit.database.crud.get_agent_configuration_by_name",
+            new_callable=AsyncMock,
+            return_value=fake_record,
+        ),
+    ):
+        resolved = await resolve_transfer_target("Tech Billing", db=mock_db, user_id=1)
+
+    assert resolved is not None
+    assert resolved.canonical_id == "row42"
+    assert resolved.kind == "config"
+
+
+async def test_resolve_unknown_returns_none() -> None:
+    assert await resolve_transfer_target("emergency-line-xyz") is None
+
+
+async def test_resolve_empty_returns_none() -> None:
+    assert await resolve_transfer_target("") is None
+    assert await resolve_transfer_target("   ") is None
+
+
+async def test_execute_resolves_inquiry_agent_to_general_inquiry() -> None:
+    # End-to-end through the tool: the #212 prod config value now transfers.
+    tool = AgentTransferTool()
+    result = await tool.execute({"target_agent_id": "inquiry-agent"})
+    assert result.success is True
+    assert result.data["transferred_to"] == "general_inquiry"
+    assert result.data["requested_target"] == "inquiry-agent"
+    assert result.data["target_kind"] == "builtin"
+
+
+# ---------------------------------------------------------------------------
+# resolve_builtin_transfer_target() — sync subset used by tool selection (#212)
+# ---------------------------------------------------------------------------
+
+
+def test_builtin_resolver_exact_name() -> None:
+    assert resolve_builtin_transfer_target("general_inquiry") == "general_inquiry"
+
+
+def test_builtin_resolver_keyword_near_miss() -> None:
+    assert resolve_builtin_transfer_target("inquiry-agent") == "general_inquiry"
+
+
+def test_builtin_resolver_display_name() -> None:
+    assert resolve_builtin_transfer_target("General Inquiry Agent") == "general_inquiry"
+
+
+def test_builtin_resolver_unknown_returns_none() -> None:
+    assert resolve_builtin_transfer_target("emergency-line-xyz") is None
+    assert resolve_builtin_transfer_target("") is None

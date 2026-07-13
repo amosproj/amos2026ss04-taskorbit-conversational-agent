@@ -82,20 +82,56 @@ export function ActiveAgentProvider({ children }: { children: ReactNode }) {
   // On mount: load the default user agent from the backend if localStorage
   // has no saved choice. Falls back silently to JOHN_DOE_AGENT if the API
   // is unreachable (e.g. backend not running locally).
+  //
+  // If localStorage DOES have a saved choice that's a real backend-tracked
+  // user-agent (loadedConfigId starts with "ua:"), re-fetch that specific
+  // entry and overwrite the cached copy with it (bug: this provider used to
+  // trust the localStorage snapshot forever once present, so an edit saved
+  // in another tab/browser -- e.g. switching an agent's LLM provider --
+  // never reached a session that already had an older copy cached, even
+  // across hard reloads, and voice/text calls silently kept using the
+  // stale settings). Falls back to the cached copy if the backend is
+  // unreachable or the agent was deleted elsewhere.
   useEffect(() => {
-    if (readFromStorage()) return; // user already has a saved choice
+    const stored = readFromStorage();
     const controller = new AbortController();
-    fetchUserAgents(controller.signal)
-      .then((entries) => {
-        const defaultEntry = entries.find((e) => e.is_default) ?? entries[0];
-        if (defaultEntry) {
-          setAgent(backendToFrontendAgent(defaultEntry));
-          setLoadedConfigId(`ua:${defaultEntry.template_id ?? defaultEntry.id}`);
-        }
-      })
-      .catch(() => {
-        // Backend unavailable — keep JOHN_DOE_AGENT as fallback.
-      });
+
+    if (!stored) {
+      fetchUserAgents(controller.signal)
+        .then((entries) => {
+          const defaultEntry = entries.find((e) => e.is_default) ?? entries[0];
+          if (defaultEntry) {
+            setAgent(backendToFrontendAgent(defaultEntry));
+            setLoadedConfigId(`ua:${defaultEntry.template_id ?? defaultEntry.id}`);
+          }
+        })
+        .catch(() => {
+          // Backend unavailable — keep JOHN_DOE_AGENT as fallback.
+        });
+      return () => controller.abort();
+    }
+
+    if (stored.loadedConfigId?.startsWith("ua:")) {
+      const uaId = stored.loadedConfigId.slice(3);
+      fetchUserAgents(controller.signal)
+        .then((entries) => {
+          // loadedConfigId is always built from template_id ?? id (see
+          // AgentConfigPage/useAgentHandoff/ConversationalChat), so for a
+          // customized copy of a built-in, uaId is the template's slug, not
+          // the row's UUID. list_user_agents_merged returns both that
+          // customized row (template_id === slug) and the pristine template
+          // (id === slug), so a plain id match resolves to the template and
+          // reverts the user's customization (PR #232 review). Prefer the
+          // customized row when one matches.
+          const matches = (e: (typeof entries)[number]) => e.id === uaId || e.template_id === uaId;
+          const fresh = entries.find((e) => matches(e) && e.is_customized) ?? entries.find(matches);
+          if (fresh) setAgent(backendToFrontendAgent(fresh));
+        })
+        .catch(() => {
+          // Backend unavailable — keep the cached copy.
+        });
+    }
+
     return () => controller.abort();
   }, []);
 

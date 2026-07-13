@@ -54,6 +54,11 @@ export type AgentTransferTool = {
   name: string;
   description: string;
   targets: string[];
+  // Wire duplicate of `targets` — the backend reads parameters.targets, not
+  // targets. Every writer must set both together (see ToolsSection's
+  // setTargets) so they can't drift; `targets` stays the FE-side source of
+  // truth other frontend code reads (conversationApi, livekitAgentMetadata).
+  parameters?: { targets: string[] };
 };
 
 /**
@@ -220,6 +225,7 @@ export function emptyToolByType(type: ToolType): ToolDefinition {
         name: "transfer_to_agent",
         description: "Hand off the conversation to a specialised agent.",
         targets: [],
+        parameters: { targets: [] },
       };
     case "external_api":
       return {

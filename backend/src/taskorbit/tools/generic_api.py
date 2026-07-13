@@ -20,10 +20,15 @@ The module covers:
 
 from __future__ import annotations
 
+import asyncio
+import ipaddress
 import os
 import re
+import socket
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -57,6 +62,7 @@ ERROR_HTTP_4XX = "HTTP_4XX"
 ERROR_HTTP_5XX = "HTTP_5XX"
 ERROR_HTTP_UNEXPECTED = "HTTP_UNEXPECTED"
 ERROR_INVALID_RESPONSE = "INVALID_RESPONSE"
+ERROR_URL_BLOCKED = "URL_BLOCKED"
 
 _DEFAULT_ERROR_MESSAGES: dict[str, str] = {
     ERROR_CONFIG_INVALID: "The external tool is misconfigured.",
@@ -68,7 +74,58 @@ _DEFAULT_ERROR_MESSAGES: dict[str, str] = {
     ERROR_HTTP_5XX: "The external service is unavailable.",
     ERROR_HTTP_UNEXPECTED: "The external service returned an unexpected status.",
     ERROR_INVALID_RESPONSE: "The external service returned a response we could not parse.",
+    ERROR_URL_BLOCKED: "The request target is not allowed.",
 }
+
+
+# ---------------------------------------------------------------------------
+# SSRF guard
+# ---------------------------------------------------------------------------
+
+
+class UrlBlockedError(ValueError):
+    """Raised when a request URL resolves to a target that must not be reached."""
+
+
+def assert_public_url(url: str) -> None:
+    """Raise ``UrlBlockedError`` unless ``url`` targets a public host.
+
+    Used by callers (e.g. the Try-it endpoint) that let a user trigger a
+    live server-side request and read the raw response. It rejects
+    non-http(s) schemes and any host that resolves to a non-global address.
+    ``is_global`` is an allow-list: it is False for private, loopback,
+    link-local, CGNAT (100.64/10), reserved, multicast, unspecified, and
+    IPv4-mapped IPv6 forms of those, which is more robust than enumerating
+    each range. The link-local block covers the cloud metadata endpoint
+    (169.254.169.254), which on a hosted deploy would otherwise hand back
+    service-account credentials.
+
+    Blocking is a syntactic decision (scheme + resolved IP), so this can run
+    off the event loop in a worker thread.
+
+    Note: this validates the address resolved here, not the one httpx dials,
+    so it does not by itself close DNS-rebinding (see the Try-it endpoint,
+    which strips the env whitelist so a rebind cannot exfiltrate secrets).
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise UrlBlockedError(f"URL scheme '{parsed.scheme}' is not allowed")
+    host = parsed.hostname
+    if not host:
+        raise UrlBlockedError("URL has no host")
+
+    default_port = 443 if parsed.scheme == "https" else 80
+    try:
+        infos = socket.getaddrinfo(host, parsed.port or default_port, proto=socket.IPPROTO_TCP)
+    except (socket.gaierror, UnicodeError) as exc:
+        # UnicodeError covers IDNA-unencodable hosts (e.g. a label >63 chars),
+        # which getaddrinfo raises instead of gaierror.
+        raise UrlBlockedError(f"could not resolve host '{host}'") from exc
+
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if not ip.is_global:
+            raise UrlBlockedError(f"host '{host}' resolves to a non-public address ({ip})")
 
 
 @dataclass(frozen=True)
@@ -127,6 +184,9 @@ def parse_config(raw: dict[str, Any]) -> GenericApiConfig:
         raise GenericApiConfigError(
             "parameters.request.url is required and must be a non-empty string"
         )
+    # Trim surrounding whitespace so a pasted URL with a stray leading/trailing
+    # space or tab does not reach httpx (which rejects it as an invalid URL).
+    url = url.strip()
 
     headers = request.get("headers") or {}
     if not isinstance(headers, dict):
@@ -406,7 +466,12 @@ def _check_args_against_schema(args: dict[str, Any], schema: dict[str, Any]) -> 
 class GenericApiTool(BaseTool):
     tool_type = ToolType.EXTERNAL_API
 
-    async def execute(self, parameters: dict[str, Any]) -> ToolResult:
+    async def execute(
+        self,
+        parameters: dict[str, Any],
+        *,
+        url_guard: Callable[[str], None] | None = None,
+    ) -> ToolResult:
         """Send the configured HTTP request and return the standardised result.
 
         Failures surface under a normalised envelope (#66 stage 5):
@@ -420,6 +485,13 @@ class GenericApiTool(BaseTool):
 
         Success paths return ``{status, data, headers}`` (plus ``raw`` when
         extraction was applied) exactly as Stage 4 left them.
+
+        ``url_guard`` is an optional callable run against the resolved URL
+        (post-substitution) before the request fires. Production dispatch
+        passes nothing and is unchanged; the Try-it endpoint passes
+        ``assert_public_url`` so a user-triggered request cannot reach an
+        internal or metadata address. It runs in a worker thread to keep DNS
+        resolution off the event loop.
         """
         # Pre-parse so we can pull error_mapping even before the config is
         # fully validated. A bad config falls back to an empty mapping,
@@ -460,6 +532,13 @@ class GenericApiTool(BaseTool):
         except TemplateSubstitutionError as exc:
             return build_error(ERROR_TEMPLATE_INVALID, str(exc), error_mapping)
 
+        if url_guard is not None:
+            try:
+                await asyncio.get_running_loop().run_in_executor(None, url_guard, url)
+            except UrlBlockedError as exc:
+                logger.warning("generic_api_url_blocked", url=url, reason=str(exc))
+                return build_error(ERROR_URL_BLOCKED, str(exc), error_mapping)
+
         logger.info(
             "generic_api_request",
             method=config.method,
@@ -489,6 +568,13 @@ class GenericApiTool(BaseTool):
                 f"request exceeded {config.timeout_seconds}s ({exc})",
                 error_mapping,
             )
+        except httpx.InvalidURL as exc:
+            # httpx.InvalidURL is NOT a RequestError, so it would otherwise
+            # escape as an unhandled 500. Fires when the resolved URL is
+            # malformed (stray control chars, missing host, unencoded braces
+            # from an unsubstituted template, etc.).
+            logger.warning("generic_api_invalid_url", url=url, error=str(exc))
+            return build_error(ERROR_NETWORK, f"invalid URL: {exc}", error_mapping)
         except httpx.RequestError as exc:
             # Covers ConnectError, ReadError, ConnectTimeout, DNS failures,
             # SSL errors, ... anything below the response layer. TimeoutException

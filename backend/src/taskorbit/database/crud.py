@@ -699,7 +699,10 @@ async def create_user_agent(
     """Create a brand-new user agent row, independent of any template.
 
     Used by the "Save as new" path so a fresh INSERT always happens — the
-    caller's currently-loaded agent is never touched.
+    caller's currently-loaded agent is never touched. Agents are allowed to
+    share an agent_id (rows are disambiguated by their own DB id where it
+    matters — see refFor/optionForRef in WorkflowSection.tsx), so no
+    uniqueness check runs here.
     """
     try:
         config = _ensure_persona_constraints(config)
@@ -853,10 +856,10 @@ async def update_user_agent(
     config: dict | None = None,
     is_default: bool | None = None,
 ) -> AgentConfiguration | None:
+    agent = await get_user_agent(db, agent_id, user_id)
+    if not agent:
+        return None
     try:
-        agent = await get_user_agent(db, agent_id, user_id)
-        if not agent:
-            return None
         if name is not None:
             agent.name = name
         if config is not None:
@@ -900,38 +903,50 @@ async def copy_on_write_user_agent(
     - If not → clone the template, mark is_customized=True, apply updates.
     - default_agent_templates is never modified.
     """
-    try:
-        result = await db.execute(
-            select(AgentConfiguration).where(
-                AgentConfiguration.user_id == user_id,
-                AgentConfiguration.template_id == template_id,
-            )
+    result = await db.execute(
+        select(AgentConfiguration).where(
+            AgentConfiguration.user_id == user_id,
+            AgentConfiguration.template_id == template_id,
         )
-        existing = result.scalar_one_or_none()
+    )
+    existing = result.scalar_one_or_none()
 
-        if existing:
+    if existing:
+        merged_config = {**existing.config, **(config_updates or {})}
+        try:
             if name is not None:
                 existing.name = name
             if config_updates is not None:
-                existing.config = {**existing.config, **config_updates}
+                existing.config = merged_config
             existing.is_customized = True
             existing.updated_at = datetime.now()
             await db.commit()
             await db.refresh(existing)
             logger.info("user_agent_updated", agent_id=existing.id, user_id=user_id)
             return existing
-
-        template = await get_default_agent_template(db, template_id)
-        if not template:
-            logger.warning("copy_on_write_template_not_found", template_id=template_id)
+        except SQLAlchemyError as e:
+            logger.error(
+                "copy_on_write_user_agent_failed",
+                template_id=template_id,
+                user_id=user_id,
+                error=str(e),
+            )
+            await db.rollback()
             return None
 
+    template = await get_default_agent_template(db, template_id)
+    if not template:
+        logger.warning("copy_on_write_template_not_found", template_id=template_id)
+        return None
+
+    merged_config = {**template.config, **(config_updates or {})}
+    try:
         agent = AgentConfiguration(
             id=uuid4().hex,
             user_id=user_id,
             template_id=template_id,
             name=name or template.name,
-            config={**template.config, **(config_updates or {})},
+            config=merged_config,
             is_default=False,
             is_customized=True,
         )
