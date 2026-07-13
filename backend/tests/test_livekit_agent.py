@@ -579,6 +579,69 @@ async def test_llm_node_persists_slots_when_tool_invoked_is_set() -> None:
     assert call_kwargs["slots"] == {"email": "alice@example.com"}
 
 
+@pytest.mark.parametrize("status", [ConversationStatus.SUCCESS, ConversationStatus.ENDED])
+@pytest.mark.asyncio
+async def test_llm_node_skips_duplicate_tool_execution_row_on_dispatch(
+    status: ConversationStatus,
+) -> None:
+    """Bug 4: on a turn where the orchestrator actually dispatched the tool
+    (status success/ended), it already wrote a confirmed=True tool_executions
+    row itself (_mark_tool_dispatched). The voice-turn persist block must NOT
+    write a second row for the same turn, or every dispatch produces two
+    near-duplicate rows."""
+    tool = ToolDefinition(
+        id="collect_user_info", name="Collect Info", type=ToolType.DATA_EXTRACTION
+    )
+    response = ConversationResponse(
+        conversation_id="test-conv",
+        reply=Message(role=MessageRole.ASSISTANT, content="All set."),
+        tool_invoked=tool,
+        status=status,
+    )
+    agent, _ = _make_agent("All set.", response=response)
+    chat_ctx = _make_chat_ctx([("user", "that's everything")])
+
+    with patch(
+        "taskorbit.livekit_agent.llm.create_tool_execution", new_callable=AsyncMock
+    ) as mock_create:
+        agent.request_reply()
+        [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
+
+    mock_create.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "status", [ConversationStatus.CONFIRMATION_REQUIRED, ConversationStatus.REJECTED]
+)
+@pytest.mark.asyncio
+async def test_llm_node_persists_tool_execution_row_when_not_yet_dispatched(
+    status: ConversationStatus,
+) -> None:
+    """Ask/reject turns are the only record of that tool_invoked event (the
+    orchestrator never calls _mark_tool_dispatched for them), so the
+    provenance write here must still happen."""
+    tool = ToolDefinition(
+        id="collect_user_info", name="Collect Info", type=ToolType.DATA_EXTRACTION
+    )
+    response = ConversationResponse(
+        conversation_id="test-conv",
+        reply=Message(role=MessageRole.ASSISTANT, content="Should I go ahead?"),
+        tool_invoked=tool,
+        status=status,
+    )
+    agent, _ = _make_agent("Should I go ahead?", response=response)
+    chat_ctx = _make_chat_ctx([("user", "yes")])
+
+    with patch(
+        "taskorbit.livekit_agent.llm.create_tool_execution", new_callable=AsyncMock
+    ) as mock_create:
+        agent.request_reply()
+        [_ async for _ in agent.llm_node(chat_ctx, [], MagicMock())]
+
+    mock_create.assert_called_once()
+    assert mock_create.call_args.kwargs["tool_id"] == "collect_user_info"
+
+
 # ---------------------------------------------------------------------------
 # #197: voice-path LLMError response handling
 # ---------------------------------------------------------------------------

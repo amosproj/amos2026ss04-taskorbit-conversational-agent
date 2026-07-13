@@ -37,6 +37,7 @@ from taskorbit.orchestration import ConversationOrchestrator
 from taskorbit.types import (
     AgentConfig,
     ConversationRequest,
+    ConversationStatus,
     LLMConfig,
     Message,
     MessageRole,
@@ -44,6 +45,15 @@ from taskorbit.types import (
     STTConfig,
     TTSConfig,
 )
+
+# Statuses where the orchestrator itself already wrote a confirmed=True
+# tool_executions row at the point of dispatch (_mark_tool_dispatched /
+# _run_dispatch_step). Writing another row for response.tool_invoked below
+# on these turns would just duplicate that row with confirmed defaulting to
+# False -- this set exists so that duplicate write is skipped, while still
+# keeping the unconditional provenance write for every other tool_invoked
+# turn (ask, reject, error), which is the only record of those turns.
+_DISPATCHED_STATUSES = frozenset({ConversationStatus.SUCCESS, ConversationStatus.ENDED})
 
 log = get_logger(__name__)
 
@@ -506,7 +516,12 @@ class OrchestratorAgent(Agent):
                         tool_id=response.tool_invoked.id,
                         slots=response.extracted_slots,
                     )
-                if response.tool_invoked:
+                # Skip on success/ended: the orchestrator's own dispatch path
+                # (_mark_tool_dispatched) already wrote a confirmed=True row
+                # for this exact turn, so writing another one here would just
+                # be a duplicate. Ask/reject/error turns still land here since
+                # this is the only record of those.
+                if response.tool_invoked and response.status not in _DISPATCHED_STATUSES:
                     tool_duration_ms = (
                         response.latency_ms.tool_call if response.latency_ms is not None else None
                     )
