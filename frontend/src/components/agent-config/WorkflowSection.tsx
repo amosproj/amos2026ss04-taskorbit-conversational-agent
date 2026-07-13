@@ -72,6 +72,39 @@ function logicalAgentId(c: ConfigBlob): string | undefined {
   return id || undefined;
 }
 
+// ── Row-identity refs (Prerequisite Steps only — see AgentListEditor) ──────
+
+const ROW_REF_PREFIX = "row:";
+
+/** Strips the "legacy:" wrapper AgentOption.rowId uses for /v1/agent-configs
+ * rows — both prefixes point at the same underlying agent_configurations.id. */
+function dbIdOf(rowId: string): string {
+  return rowId.startsWith("legacy:") ? rowId.slice("legacy:".length) : rowId;
+}
+
+/** Reference stored in workflow_dependencies for a given picker option.
+ * Saved rows get a row-id ref (backend resolves it via a direct PK lookup,
+ * see resolve_dependency_agent_config) so two rows sharing an agent_id stay
+ * distinguishable. Built-in templates have no row to reference, so they keep
+ * using their agent_id — same as before. */
+function refFor(option: AgentOption): string {
+  return option.isCustomized ? `${ROW_REF_PREFIX}${dbIdOf(option.rowId)}` : option.agentId;
+}
+
+/** Reverse of refFor, also backward-compatible with pre-existing data that
+ * stored a bare agent_id for a saved row (before row refs existed) — falls
+ * back to any row matching that agent_id. */
+function optionForRef(ref: string, agents: AgentOption[]): AgentOption | undefined {
+  if (ref.startsWith(ROW_REF_PREFIX)) {
+    const dbId = ref.slice(ROW_REF_PREFIX.length);
+    return agents.find((a) => dbIdOf(a.rowId) === dbId);
+  }
+  return (
+    agents.find((a) => !a.isCustomized && a.agentId === ref) ??
+    agents.find((a) => a.agentId === ref)
+  );
+}
+
 // ── Shared sub-components ────────────────────────────────────────────────────
 
 function SectionHeader({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
@@ -96,6 +129,12 @@ type AgentListEditorProps = {
   /** Inline error from a blocked Add attempt — also blocks save until cleared. */
   externalError?: string | null;
   onAddBlocked?: (message: string | null) => void;
+  /** Persist row-identity refs instead of bare agent_id (see refFor/optionForRef).
+   * Only safe where the backend resolves entries via a direct row lookup —
+   * workflow_dependencies does (resolve_dependency_agent_config tries the row's
+   * PK first), allowed_handoffs doesn't (it keyword-matches the raw string, so
+   * a row ref there would silently never match and block the handoff). */
+  enableRowRefs?: boolean;
 };
 
 function AgentListEditor({
@@ -109,19 +148,42 @@ function AgentListEditor({
   depGraph,
   externalError,
   onAddBlocked,
+  enableRowRefs,
 }: AgentListEditorProps) {
   // Tracks the selected row, not the agent_id — two rows can share an
   // agent_id, and Radix Select requires each SelectItem's value to be unique
   // or it garbles the displayed label (concatenates every matching item).
   const [pendingRowId, setPendingRowId] = useState("");
 
+  // Only relevant when !enableRowRefs, where multiple rows can map to the
+  // same persisted ref (their shared agent_id). Remembers which row you
+  // actually picked (session-only) so the "Selected" badge shows the right
+  // name instead of falling back to an arbitrary same-agent_id row.
+  const [selectedRowIds, setSelectedRowIds] = useState<Record<string, string>>({});
+
   const displayError = externalError;
 
-  // Only agents not already in this list appear in the dropdown.
-  const available = agents.filter((a) => !ids.includes(a.agentId));
+  const refOf = (a: AgentOption) => (enableRowRefs ? refFor(a) : a.agentId);
+  const optionForId = (id: string) => {
+    if (enableRowRefs) return optionForRef(id, agents);
+    const pickedRowId = selectedRowIds[id];
+    const picked = pickedRowId && agents.find((a) => a.rowId === pickedRowId);
+    return picked || agents.find((a) => a.agentId === id);
+  };
+
+  // With row refs, each row's ref is unique, so a row is only ever hidden
+  // once it's literally the one already added. Without row refs, several
+  // rows can share a ref — hide only the specific row currently backing that
+  // entry so siblings stay pickable instead of vanishing (see add() below).
+  const available = agents.filter((a) => {
+    const ref = refOf(a);
+    if (!ids.includes(ref)) return true;
+    return enableRowRefs ? false : selectedRowIds[ref] !== a.rowId;
+  });
   const availableSaved = available.filter((a) => a.isCustomized);
   const availableBuiltIn = available.filter((a) => !a.isCustomized);
-  const pendingAgentId = available.find((a) => a.rowId === pendingRowId)?.agentId ?? "";
+  const pendingOption = agents.find((a) => a.rowId === pendingRowId);
+  const pendingAgentId = pendingOption?.agentId ?? "";
 
   function handleValueChange(rowId: string) {
     setPendingRowId(rowId);
@@ -129,7 +191,17 @@ function AgentListEditor({
   }
 
   function add() {
-    if (!pendingAgentId || ids.includes(pendingAgentId)) return;
+    if (!pendingOption) return;
+    const ref = refOf(pendingOption);
+
+    // Same ref already added via a different row (only possible without row
+    // refs) — this isn't a new entry, just a different name for the one
+    // already there.
+    if (!enableRowRefs && ids.includes(ref)) {
+      setSelectedRowIds((prev) => ({ ...prev, [ref]: pendingRowId }));
+      setPendingRowId("");
+      return;
+    }
 
     if (currentAgentId && depGraph) {
       if (pendingAgentId === currentAgentId) {
@@ -143,16 +215,21 @@ function AgentListEditor({
     }
 
     onAddBlocked?.(null);
-    onChange([...ids, pendingAgentId]);
+    onChange([...ids, ref]);
+    setSelectedRowIds((prev) => ({ ...prev, [ref]: pendingRowId }));
     setPendingRowId("");
   }
 
   function remove(id: string) {
     onAddBlocked?.(null);
     onChange(ids.filter((x) => x !== id));
+    setSelectedRowIds((prev) => {
+      const { [id]: _removed, ...rest } = prev;
+      return rest;
+    });
   }
 
-  const nameOf = (id: string) => agents.find((a) => a.agentId === id)?.name ?? id;
+  const nameOf = (id: string) => optionForId(id)?.name ?? id;
 
   return (
     <FieldSet>
@@ -274,7 +351,12 @@ export function WorkflowSection({
   const savedWhenAgents = agents.filter((a) => a.isCustomized);
   const builtInWhenAgents = agents.filter((a) => !a.isCustomized);
 
-  const savedDepsError = getWorkflowValidationError(currentAgentId, deps, depGraph);
+  const savedDepsError = getWorkflowValidationError(
+    currentAgentId,
+    deps,
+    depGraph,
+    (dep) => optionForRef(dep, agents)?.agentId ?? dep,
+  );
   const workflowError = pendingAddError ?? savedDepsError;
 
   useEffect(() => {
@@ -339,6 +421,16 @@ export function WorkflowSection({
         }
       }
 
+      // Prerequisite Steps persists row refs (see refFor), but depGraph/cycle
+      // detection is keyed by agent_id — normalize every edge to the agent_id
+      // it logically points to, now that `options` is fully populated.
+      for (const [agentId, deps] of graph) {
+        graph.set(
+          agentId,
+          deps.map((dep) => optionForRef(dep, options)?.agentId ?? dep),
+        );
+      }
+
       setAgents(options);
       setDepGraph(graph);
     }
@@ -382,6 +474,7 @@ export function WorkflowSection({
           depGraph={depGraph}
           externalError={workflowError}
           onAddBlocked={setPendingAddError}
+          enableRowRefs
         />
         <AgentListEditor
           ids={handoffs}
@@ -505,6 +598,7 @@ export function WorkflowSection({
                 currentAgentId={currentAgentId}
                 depGraph={depGraph}
                 onAddBlocked={setPendingAddError}
+                enableRowRefs
               />
             </div>
           )}
