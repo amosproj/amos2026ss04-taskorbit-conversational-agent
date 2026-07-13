@@ -465,7 +465,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "sum by (level) (rate({job=\"cloud-run-logs\"} | json | level != \"\" [5m]))",
+          "expr": "sum by (level) (rate({job=\"cloud-run-logs\"} |~ \"^{\" | json | level != \"\" [5m]))",
           "legendFormat": "{{level}}",
           "refId": "A"
         }
@@ -501,7 +501,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "{job=\"cloud-run-logs\"} | json ${log_query}",
+          "expr": "{job=\"cloud-run-logs\"} |~ \"^{\" | json ${log_query}",
           "legendFormat": "",
           "refId": "A"
         }
@@ -1310,7 +1310,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "{service=~\"backend|worker\"} | json | level =~ \"error|warning\"",
+          "expr": "{job=\"cloud-run-logs\"} |~ \"^{\" | json | level =~ \"error|warning\"",
           "legendFormat": "",
           "refId": "A"
         }
@@ -1346,7 +1346,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "{service=~\"backend|worker\"} | json | trace_id != \"\"",
+          "expr": "{job=\"cloud-run-logs\"} |~ \"^{\" | json | trace_id != \"\"",
           "legendFormat": "",
           "refId": "A"
         }
