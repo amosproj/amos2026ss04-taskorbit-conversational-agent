@@ -48,7 +48,7 @@ _DEEPGRAM_FLUSH_DELAY_S: float = 0.3
 # Explicit allowlist of data-channel message types this worker handles.
 # Packets with any other `type` value are silently discarded.
 _RECOGNISED_MSG_TYPES: frozenset[str] = frozenset(
-    {"commit_turn", "interrupt_playback", "workflow_state"}
+    {"commit_turn", "interrupt_playback", "workflow_state", "manual_transfer"}
 )
 
 # Topic the FE subscribes to via useAgentHandoff to swap the active agent
@@ -177,8 +177,34 @@ async def entrypoint(ctx: JobContext) -> None:
                 audio_duration_ms=round(m.audio_duration * 1000, 1),
             )
 
+    # Timestamp (event-clock, from UserStateChangedEvent.created_at) of the
+    # last user_state_changed transition, so each new transition can log how
+    # long the PREVIOUS state actually held. Diagnostic for bug 2: VAD has
+    # been observed staying in "speaking" for 30-40s straight (no transition
+    # to "listening" at all) before force_commit ever fires, which this
+    # makes directly visible instead of inferring it from STT heartbeat gaps.
+    _last_user_state_change_at: float | None = None
+
     @session.on("user_state_changed")
     def _on_user_state(ev: AgentEvent) -> None:
+        nonlocal _last_user_state_change_at
+        old_state = getattr(ev, "old_state", None)
+        new_state = getattr(ev, "new_state", None)
+        created_at = getattr(ev, "created_at", None)
+        held_ms = (
+            round((created_at - _last_user_state_change_at) * 1000, 1)
+            if created_at is not None and _last_user_state_change_at is not None
+            else None
+        )
+        if created_at is not None:
+            _last_user_state_change_at = created_at
+        logger.info(
+            "user_state_changed",
+            old_state=old_state,
+            new_state=new_state,
+            held_ms=held_ms,
+        )
+
         # Server-side VAD end-of-speech backstop (#153). When Silero detects the
         # user has stopped (speaking -> listening), nudge the frontend to commit
         # the turn. The frontend's amplitude silence detection is the primary
@@ -186,7 +212,7 @@ async def entrypoint(ctx: JobContext) -> None:
         # analyser above its threshold so it never fires and the turn hangs. The
         # frontend ignores the nudge unless it is still recording, so a turn it
         # already committed is unaffected.
-        if getattr(ev, "new_state", None) != "listening":
+        if new_state != "listening":
             return
 
         async def _publish_force_commit() -> None:
@@ -204,12 +230,45 @@ async def entrypoint(ctx: JobContext) -> None:
     # Holds the most-recent pending reply task so it can be cancelled on
     # interruption before the orchestrator finishes processing.
     reply_task: asyncio.Task[None] | None = None
+    # Strong references for detached flush tasks: the event loop only keeps
+    # weak refs, so an unreferenced fire-and-forget task can be garbage
+    # collected before it runs (#212).
+    background_tasks: set[asyncio.Task[None]] = set()
+
+    async def _flush_pending_handoff() -> None:
+        """Publish the pending agent handoff exactly once (#212).
+
+        Reads AND clears the pending target before awaiting, so concurrent
+        callers (the normal post-playout path and the cancellation path) can
+        never double-publish, and a barge-in can never orphan a transfer that
+        the orchestrator already applied.
+        """
+        pending = agent._pending_handoff_target
+        if not pending:
+            return
+        agent._pending_handoff_target = None
+        try:
+            payload = json.dumps({"type": "agent_handoff", "target": pending})
+            await ctx.room.local_participant.publish_data(
+                payload, reliable=True, topic=_HANDOFF_TOPIC
+            )
+            logger.info("worker_handoff_published", target=pending, topic=_HANDOFF_TOPIC)
+        except Exception as exc:  # noqa: BLE001
+            # Restore so a later flush retries instead of losing the swap,
+            # unless a newer target has already been stashed meanwhile (#212).
+            if agent._pending_handoff_target is None:
+                agent._pending_handoff_target = pending
+            logger.warning("worker_handoff_publish_failed", error=str(exc))
 
     async def _commit_and_reply(turn_start: float) -> None:
         # Small delay so Deepgram can flush its final transcription segment
         # into the ChatContext before generate_reply() reads it. Without this,
         # the last word(s) of the utterance may be missing from the reply.
         try:
+            # Publish any swap left over from a cancelled or hung prior turn
+            # BEFORE this turn's request can overwrite it (#212). Determinism
+            # backstop for the detached cancel-path flush.
+            await _flush_pending_handoff()
             await asyncio.sleep(_DEEPGRAM_FLUSH_DELAY_S)
             # generate_reply() returns a SpeechHandle synchronously; the actual
             # llm_node + orchestrator work happens in the background. We must
@@ -261,23 +320,33 @@ async def entrypoint(ctx: JobContext) -> None:
                     agent._call_ended = False
 
             # AC7: now that the orchestrator has finished (wait_for_playout
-            # above), the pending target is set if an agent_transfer dispatched
-            # this turn. Publish on the FE-subscribed topic so the client
-            # swaps the active agent card without dropping the LiveKit room.
-            pending = agent._pending_handoff_target
-            if pending:
-                try:
-                    payload = json.dumps({"type": "agent_handoff", "target": pending})
-                    await ctx.room.local_participant.publish_data(
-                        payload, reliable=True, topic=_HANDOFF_TOPIC
-                    )
-                    logger.info("worker_handoff_published", target=pending, topic=_HANDOFF_TOPIC)
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("worker_handoff_publish_failed", error=str(exc))
-                finally:
-                    agent._pending_handoff_target = None
+            # above), the pending target is set if a transfer dispatched this
+            # turn. Publish on the FE-subscribed topic so the client swaps the
+            # active agent card without dropping the LiveKit room.
+            await _flush_pending_handoff()
+        except asyncio.CancelledError:
+            # Barge-in cancelled this reply mid-generation or mid-playout. The
+            # orchestrator may ALREADY have applied a transfer, so the card
+            # swap must not be lost (#212): flush it from a detached task,
+            # since awaiting inside a cancelled task would re-raise. Keep a
+            # strong reference or the task can be GC'd before it runs.
+            flush_task = asyncio.create_task(_flush_pending_handoff())
+            background_tasks.add(flush_task)
+            flush_task.add_done_callback(background_tasks.discard)
+            raise
         except Exception as exc:  # noqa: BLE001
             logger.warning("worker_generate_reply_failed", error=str(exc))
+
+    # Catch-all handoff flush (#212): some generations are driven by the
+    # framework's own end-of-turn (not _commit_and_reply), so their stashed
+    # handoff would otherwise wait for the next commit. Whenever the agent
+    # finishes speaking, drain any pending swap.
+    @session.on("agent_state_changed")
+    def _flush_on_state(ev: AgentEvent) -> None:
+        if getattr(ev, "new_state", None) in ("listening", "idle"):
+            flush_task = asyncio.create_task(_flush_pending_handoff())
+            background_tasks.add(flush_task)
+            flush_task.add_done_callback(background_tasks.discard)
 
     # When the frontend Send button is clicked, useMicRecorder.sendUtterance()
     # publishes {"type": "commit_turn"} over the data channel. Handling it here
@@ -312,6 +381,24 @@ async def entrypoint(ctx: JobContext) -> None:
                 logger.info("worker_interrupt_requested")
             except Exception as exc:  # noqa: BLE001
                 logger.warning("worker_interrupt_failed", error=str(exc))
+        elif msg_type == "manual_transfer":
+            # #212: @route menu pick during a voice call; stored on the agent
+            # and applied as a hard manual_transfer on the next voice turn.
+            if msg.get("clear"):
+                agent.set_manual_transfer(None, None)
+                logger.info("worker_manual_transfer_cleared")
+            else:
+                target_id = msg.get("target_agent_id")
+                target_name = msg.get("target_agent_name")
+                agent.set_manual_transfer(
+                    target_id if isinstance(target_id, str) else None,
+                    target_name if isinstance(target_name, str) else None,
+                )
+                logger.info(
+                    "worker_manual_transfer_received",
+                    target_id=target_id,
+                    target_name=target_name,
+                )
         elif msg_type == "workflow_state":
             selected = msg.get("selected_agent")
             completed = msg.get("completed_workflow_steps")

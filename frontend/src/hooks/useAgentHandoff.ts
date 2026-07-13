@@ -65,6 +65,10 @@ export function useAgentHandoff(onTransferred?: (agentName: string) => void): vo
         // Fuzzy match: the backend normalizes "sales-agent" to "sales" (removes -agent, replaces - with _).
         // We check for exact matches first, then normalized matches to bridge this gap.
         const match = entries.find((e) => {
+          // Customised agents publish their row UUID as the target (#212);
+          // template_id would mask it, so check the row id explicitly, the
+          // same way the text-path matcher does.
+          if (e.id === parsed.target) return true;
           const uaId = e.template_id ?? e.id;
           if (uaId === parsed.target) return true;
 

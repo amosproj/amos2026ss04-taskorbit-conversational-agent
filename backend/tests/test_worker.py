@@ -472,6 +472,58 @@ async def test_user_state_listening_publishes_force_commit(configured_settings: 
 
 
 @pytest.mark.asyncio
+async def test_user_state_changed_logs_every_transition_with_held_ms(
+    configured_settings: None,
+) -> None:
+    """Bug 2 diagnostic: every user_state_changed transition must be logged
+    (not just the "listening" one that triggers force_commit), with how long
+    the previous state held, computed from the event's own created_at clock.
+    Without this we can only infer a VAD stall indirectly from STT heartbeat
+    gaps; with it, a stuck "speaking" state is directly visible in the logs.
+    """
+    ctx, _ = _make_ctx()
+    ctx.room.local_participant.publish_data = AsyncMock()
+    mock_agent = MagicMock()
+    handler_ref: list = []
+
+    mock_session = AsyncMock()
+
+    def capture_on(event: str):
+        def decorator(fn):
+            if event == "user_state_changed":
+                handler_ref.append(fn)
+            return fn
+
+        return decorator
+
+    mock_session.on = MagicMock(side_effect=capture_on)
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+        patch("taskorbit.worker.logger") as mock_logger,
+    ):
+        await entrypoint(ctx)
+
+        assert handler_ref, "_on_user_state not registered"
+        handler = handler_ref[0]
+
+        handler(MagicMock(old_state=None, new_state="speaking", created_at=100.0))
+        handler(MagicMock(old_state="speaking", new_state="listening", created_at=134.5))
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+    events = [
+        call.kwargs
+        for call in mock_logger.info.call_args_list
+        if call.args and call.args[0] == "user_state_changed"
+    ]
+    assert len(events) == 2
+    assert events[0] == {"old_state": None, "new_state": "speaking", "held_ms": None}
+    assert events[1] == {"old_state": "speaking", "new_state": "listening", "held_ms": 34500.0}
+
+
+@pytest.mark.asyncio
 async def test_local_participant_packet_ignored(configured_settings: None) -> None:
     """A packet whose sender identity matches the local participant must be ignored."""
     ctx, registered = _make_ctx()

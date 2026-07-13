@@ -53,3 +53,63 @@ export function WorkflowVoiceSyncBridge({ onRegister }: Props): null {
 
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Manual transfer bridge (#212)
+// ---------------------------------------------------------------------------
+
+export const MANUAL_TRANSFER_TOPIC = "taskorbit.manual_transfer";
+
+/** Payload for a UI-picked agent transfer during a voice call; null clears. */
+export type ManualTransferVoiceMsg = {
+  target_agent_id: string;
+  target_agent_name: string;
+} | null;
+
+export type ManualTransferVoiceSyncFn = (msg: ManualTransferVoiceMsg) => Promise<void>;
+
+/**
+ * Publishes @route menu picks to the voice worker over the data channel.
+ * During a voice call there is no typed message to carry manual_transfer,
+ * so the worker stores the pick and applies it as a hard transfer on the
+ * next voice turn (#212). Mirrors WorkflowVoiceSyncBridge.
+ */
+export function ManualTransferVoiceBridge({
+  onRegister,
+}: {
+  onRegister: (sync: ManualTransferVoiceSyncFn | null) => void;
+}): null {
+  const room = useRoomContext();
+
+  useEffect(() => {
+    if (!room) {
+      onRegister(null);
+      return;
+    }
+
+    const sync: ManualTransferVoiceSyncFn = async (msg) => {
+      const payload = new TextEncoder().encode(
+        JSON.stringify(
+          msg === null
+            ? { type: "manual_transfer", clear: true }
+            : {
+                type: "manual_transfer",
+                target_agent_id: msg.target_agent_id,
+                target_agent_name: msg.target_agent_name,
+              },
+        ),
+      );
+      await room.localParticipant.publishData(payload, {
+        reliable: true,
+        topic: MANUAL_TRANSFER_TOPIC,
+      });
+    };
+
+    onRegister(sync);
+    return () => {
+      onRegister(null);
+    };
+  }, [room, onRegister]);
+
+  return null;
+}

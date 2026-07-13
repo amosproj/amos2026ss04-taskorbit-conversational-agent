@@ -42,7 +42,7 @@ python runner/aggregate.py --results-dir results --report
 
 GPC standardized run: `./scripts/run-gpc-benchmark.sh`
 
-See `Documentation/component-benchmarking.md` for full details.
+See `Documentation/wiki-component-benchmarking.md` for full details.
 
 ### View Results
 

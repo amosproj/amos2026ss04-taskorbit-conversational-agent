@@ -178,7 +178,6 @@ poetry run pytest tests/test_workflow_engine.py -q
 
 ## Related repository documentation
 
-- `Documentation/transitive-workflow-guide.md` — full guide
-- `Documentation/demo-2-transitive-chain.md` — minimal `agent-a/b/c` voice demo
-- `Documentation/demo-3-voice-ui-proceed-sync.md` — UI Proceed + LiveKit sync
-- `Documentation/demo-index.md` — demo index
+- `Documentation/transitive-workflow-guide.md` — full guide (voice walkthrough + troubleshooting)
+- `Documentation/wiki-component-benchmarking.md` — component benchmark harness and GPC run results
+- `benchmarks/README.md` — quick start for running benchmarks locally

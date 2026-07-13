@@ -60,25 +60,39 @@ After the target config is loaded the orchestrator clears
 re-enters the full pipeline (steps 1–6) under the new agent's persona
 with the full conversation history preserved (AC3).
 
-### Step 5 — Auto transfer via `agent_transfer` tool
+### Step 5 — Auto transfer via `agent_transfer` tool (reworked in #212)
 
-When the LLM includes an `agent_transfer` tool call in its reply,
-`_dispatch_tool` constructs `AgentTransferTool(db=db, user_id=user_id)` and
-calls `execute(context)`. The tool:
+**Selection.** `_select_active_tool` picks the transfer tool when intent
+routing points AWAY from the current agent and one of the tool's configured
+targets resolves to that destination. An explicit `active_tool_id` pin
+(confirmation round-trips) still wins, configs without a transfer tool keep
+the first-tool behaviour, and the current agent is normalised through the
+built-in resolver first so a completed handoff (reported back as a template
+slug by the voice worker) never re-fires the transfer. Without this rule,
+multi-tool custom agents could never reach their transfer tool, because
+neither the frontend nor the voice worker round-trips `next_active_tool_id`.
 
-1. Reads `targets[0]` from `context["parameters"]`.
-2. Calls `_is_valid_target(target_id)`:
-   - Checks built-in agent names first (no DB required).
-   - Falls back to `get_agent_configuration_by_id(db, target_id, user_id=user_id)`
-     when a DB session is available.
-3. Returns `{"selected_agent": target_id}` on success or
-   `{"error": "Unknown agent"}` on failure.
+**Target resolution.** `resolve_transfer_target()` in
+`tools/agent_transfer.py` resolves the configured target string in
+deterministic-first order:
 
-**UUID normalization:** target IDs that look like custom-agent UUIDs
-(matching `/^[0-9a-f]{8}-…-[0-9a-f]{12}$/i`) are passed through untouched.
-Only built-in slugs (e.g. `technical-support-agent`) are slug-normalized to
-their registry key (`technical_support`). This prevents hyphen corruption of
-custom agent UUIDs.
+1. Exact built-in registry name (`general_inquiry`), no DB required.
+2. Saved `AgentConfiguration` by primary key (UUID hex or slug), user-scoped.
+3. Built-in `DefaultAgentTemplate` by slug id (`general-inquiry-agent`).
+4. Saved `AgentConfiguration` by exact display name, user-scoped.
+5. Registry keyword mapping as the fuzzy last resort
+   (`inquiry-agent` resolves to `general_inquiry`).
+
+The orchestrator dispatch and `AgentTransferTool.execute()` share this
+resolver; on failure the tool returns the `Unknown agent '<target>'` error
+and the dispatch logs `agent_transfer_target_unresolved`. On success the
+tool returns `{"transferred_to": <canonical>, "requested_target": <raw>,
+"target_kind": builtin|config|template, ...}` and the response's
+`tool_invoked` carries a copy of the tool whose `parameters.targets` hold
+the CANONICAL id, so the voice worker publish and the frontend swap never
+see the raw config string. A sync subset,
+`resolve_builtin_transfer_target()`, backs tool selection (steps 1 and 5
+only, since intent destinations are always built-ins).
 
 ---
 
@@ -141,6 +155,17 @@ manual path.
 ---
 
 ## Frontend UX — agent handoff flow
+
+### Manual transfer (voice path, #212)
+
+During a voice call the @route pick is published to the worker over the
+LiveKit data channel (`taskorbit.manual_transfer`, handled in `worker.py`).
+The worker stores it on the agent bridge and attaches it as a one-shot
+`manual_transfer` to the NEXT voice turn's ConversationRequest, so the
+orchestrator's step-0a short-circuit performs the same hard transfer as the
+text path. After a successful transfer the worker publishes the standard
+`agent_handoff` swap so the frontend card and transcript marker update.
+Clearing the pick publishes a clear so a stale selection can never fire.
 
 ### Manual transfer (text path)
 
@@ -220,7 +245,7 @@ changes needed.
 | Orchestration pipeline + step 0a | `backend/src/taskorbit/orchestration/__init__.py` |
 | Manual transfer resolution | `orchestration/__init__.py` → `_handle_manual_transfer` |
 | Auto-tool dispatch wiring | `orchestration/__init__.py` → `_dispatch_tool` |
-| `AgentTransferTool` + `_is_valid_target` | `backend/src/taskorbit/tools/agent_transfer.py` |
+| `AgentTransferTool` + `resolve_transfer_target` | `backend/src/taskorbit/tools/agent_transfer.py` |
 | `AgentRegistry` + `CustomAgent` | `backend/src/taskorbit/agents/` |
 | DB lookups with user scoping | `backend/src/taskorbit/database/crud.py` |
 | Voice path agent + `user_id` threading | `backend/src/taskorbit/livekit_agent/llm.py` |
@@ -239,6 +264,6 @@ changes needed.
 |---|---|
 | `tests/test_orchestration.py` | End-to-end `process_message` with mock DB — auto-transfer to custom agent succeeds through `_dispatch_tool` wiring |
 | `tests/test_orchestration.py` | Cross-user `get_agent_configuration_by_id` regression — user A cannot load user B's config |
-| `tests/test_agent_transfer.py` | `AgentTransferTool._is_valid_target` with and without DB session |
+| `tests/test_agent_transfer.py` | `resolve_transfer_target` matrix + `AgentTransferTool.execute` with and without DB session |
 | `tests/test_custom_agent_routing.py` | Manual transfer short-circuit, recursion guard, name vs. ID precedence |
 | `tests/test_crud.py` | `get_agent_configuration_by_id` and `get_agent_configuration_by_name` user scoping |
