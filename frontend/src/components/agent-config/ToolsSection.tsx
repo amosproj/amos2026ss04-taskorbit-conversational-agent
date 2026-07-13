@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRightLeft, Globe, PhoneOff, Plus, Trash2, Wrench } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { toast } from "sonner";
 
 import {
   addMissingArgsToSchema,
@@ -30,6 +31,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 import {
   END_CALL_DEFAULT_DESCRIPTION,
@@ -76,17 +78,39 @@ const TOOL_TYPE_META: Record<ToolType, { label: string; icon: LucideIcon; blurb:
 
 export function ToolsSection({ value, onChange }: Props) {
   const [pendingType, setPendingType] = useState<ToolType>("data_extraction");
+  const [highlightIndex, setHighlightIndex] = useState<number | null>(null);
+  const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  useEffect(() => {
+    if (highlightIndex === null) return;
+    const id = window.setTimeout(() => setHighlightIndex(null), 2_000);
+    return () => window.clearTimeout(id);
+  }, [highlightIndex]);
 
   const updateTool = (index: number, next: ToolDefinition) => {
     onChange(value.map((t, i) => (i === index ? next : t)));
   };
 
   const removeTool = (index: number) => {
+    const removed = value[index];
     onChange(value.filter((_, i) => i !== index));
+    if (removed) {
+      const label = TOOL_TYPE_META[removed.type].label;
+      toast("Tool removed.", { description: `${label} was removed from this agent.` });
+    }
   };
 
   const addTool = () => {
+    const nextIndex = value.length;
+    const meta = TOOL_TYPE_META[pendingType];
     onChange([...value, emptyToolByType(pendingType)]);
+    toast.success(`${meta.label} tool added`, {
+      description: "Configure the fields below, then Save or Update.",
+    });
+    setHighlightIndex(nextIndex);
+    window.requestAnimationFrame(() => {
+      cardRefs.current[nextIndex]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
   };
 
   return (
@@ -97,6 +121,11 @@ export function ToolsSection({ value, onChange }: Props) {
             <CardTitle className="flex items-center gap-2">
               <Wrench className="size-4 text-muted-foreground" aria-hidden />
               Tools
+              {value.length > 0 ? (
+                <Badge variant="secondary" className="font-normal">
+                  {value.length}
+                </Badge>
+              ) : null}
             </CardTitle>
             <CardDescription>
               Functions the LLM can invoke during a call — capture data, end the call, or hand off
@@ -134,12 +163,22 @@ export function ToolsSection({ value, onChange }: Props) {
           />
         ) : (
           value.map((tool, ti) => (
-            <ToolCard
+            <div
               key={ti}
-              tool={tool}
-              onChange={(next) => updateTool(ti, next)}
-              onRemove={() => removeTool(ti)}
-            />
+              ref={(el) => {
+                cardRefs.current[ti] = el;
+              }}
+              className={cn(
+                "rounded-lg transition-shadow duration-500",
+                highlightIndex === ti && "ring-2 ring-primary/60 ring-offset-2 ring-offset-background",
+              )}
+            >
+              <ToolCard
+                tool={tool}
+                onChange={(next) => updateTool(ti, next)}
+                onRemove={() => removeTool(ti)}
+              />
+            </div>
           ))
         )}
       </CardContent>
