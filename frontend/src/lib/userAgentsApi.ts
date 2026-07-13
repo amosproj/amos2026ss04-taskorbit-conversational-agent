@@ -71,9 +71,11 @@ export function backendToFrontendAgent(entry: UserAgentEntry): AgentConfig {
   const frontendTools: ToolDefinition[] = (Array.isArray(c.tools) ? c.tools : []).map(
     (t: BackendToolWithParams) => {
       if (t.type === "agent_transfer") {
+        const resolved = t.parameters?.targets || t.targets || [];
         return {
           ...t,
-          targets: t.parameters?.targets || t.targets || [],
+          targets: resolved,
+          parameters: { targets: resolved },
         };
       }
       return t as ToolDefinition;
