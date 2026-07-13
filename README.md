@@ -64,7 +64,7 @@ The frontend ships a ChatGPT-style mic button: tap to record, **Stop** mutes wit
 
    ```bash
    docker compose up --build
-   # postgres → :5435  api → :8000  worker → (no host port)  frontend → :5173
+   # postgres → :5435  api → :8000  worker → :8001  frontend → :5173
    ```
 
    Or run each piece directly without Docker:
@@ -164,7 +164,3 @@ After this, ruff (backend) and ESLint + Prettier (frontend) auto-fix staged file
 - **Auto-reconnect** — `livekit-client` retries transient drops and the UI surfaces a `Reconnecting…` banner.
 - **Waveform** — the mic-button row draws live frequency bars from a `WebAudio AnalyserNode` attached to the published mic track.
 - **Mute AI voice** — an in-call toggle silences agent audio playback; transcription captions keep streaming.
-
----
-
-## Known Limitations / Out of Scope
