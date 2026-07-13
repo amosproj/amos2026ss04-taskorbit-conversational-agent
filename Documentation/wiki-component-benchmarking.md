@@ -67,11 +67,11 @@ Ollama runs on a team GCE VM at `http://35.231.129.211:11434/`. Before timed run
 
 | Config | Avg total text (ms) | Avg total voice (ms) | Reliability |
 |--------|---------------------|----------------------|-------------|
-| `oss-ollama-gemma4-deepgram` | **4,682** | **4,658** | **91.7%** ★ |
-| `oss-ollama-qwen3-deepgram` | 4,851 | 4,983 | 91.7% |
+| `oss-ollama-gemma4-deepgram` | **4,682** | **5,306** | **91.7%** ★ |
+| `oss-ollama-qwen3-deepgram` | 4,851 | 5,644 | 91.7% |
 
 **Recommended default:** `oss-ollama-gemma4-deepgram`  
-**Reason:** Lowest avg total latency (text: 4,682 ms, voice: 4,658 ms); reliability tied at 91.7%.
+**Reason:** Lowest avg total latency (text: 4,682 ms, voice: 5,306 ms); reliability tied at 91.7%.
 
 #### Per-stage averages (text)
 
@@ -84,8 +84,8 @@ Ollama runs on a team GCE VM at `http://35.231.129.211:11434/`. Before timed run
 
 | Config | STT (ms) | llm_call (ms) | tool_call (ms) | TTS (ms) | total (ms) |
 |--------|----------|---------------|----------------|----------|------------|
-| `oss-ollama-gemma4-deepgram` | N/A | 1,569 | 1.0 | N/A | 4,658 |
-| `oss-ollama-qwen3-deepgram` | N/A | 1,908 | 0.1 | N/A | 4,983 |
+| `oss-ollama-gemma4-deepgram` | 1,256 | 1,569 | 1.0 | 2,480 | 5,306 |
+| `oss-ollama-qwen3-deepgram` | 1,256 | 1,908 | 0.1 | 2,480 | 5,644 |
 
 #### Latency by category (text)
 
