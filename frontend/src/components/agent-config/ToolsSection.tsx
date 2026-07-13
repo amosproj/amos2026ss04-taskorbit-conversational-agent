@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ArrowRightLeft, Globe, PhoneOff, Plus, Trash2, Wrench } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -32,6 +32,8 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+
+import { fetchUserAgents, type UserAgentEntry } from "@/lib/userAgentsApi";
 
 import {
   END_CALL_DEFAULT_DESCRIPTION,
@@ -401,6 +403,27 @@ function EndCallEditor({
 /* agent_transfer                                                       */
 /* ──────────────────────────────────────────────────────────────────── */
 
+// NOTE (#203): confirmed against backend resolution (#212) — both the
+// auto-transfer regex normalization (orchestration/__init__.py) and the
+// manual-transfer PK lookup (get_agent_configuration_by_id /
+// get_default_agent_template) resolve targets by the row's top-level `id`
+// (the hyphenated template slug for built-ins, e.g. "sales-agent", or the
+// UUID for custom agents). config.agent_id/config.id are an unrelated field
+// used only by workflow_dependencies/allowed_handoffs matching — not this.
+// This is the STORAGE key (what goes into targets) — do not use it for dedup,
+// entry.id is unique per row so it won't collapse a template + its copies.
+function stableTargetId(entry: UserAgentEntry): string {
+  return entry.id;
+}
+
+// DEDUP key only — mirrors AgentSwitcher's idOf. A built-in template and the
+// user's customized copy of it are separate rows (separate entry.id values)
+// but share config.id (copied verbatim from the template on clone and never
+// rewritten), so this collapses them back into one dropdown entry.
+function logicalId(entry: UserAgentEntry): string {
+  return entry.config.agent_id ?? entry.config.id ?? entry.id;
+}
+
 function AgentTransferEditor({
   tool,
   onChange,
@@ -409,10 +432,50 @@ function AgentTransferEditor({
   onChange: (next: AgentTransferTool) => void;
 }) {
   const [draft, setDraft] = useState("");
+  const [agents, setAgents] = useState<UserAgentEntry[]>([]);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [pendingAgentId, setPendingAgentId] = useState("");
+  const selectId = useId();
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchUserAgents(controller.signal)
+      .then((data) => {
+        setAgents(data);
+        setLoadFailed(false);
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setLoadFailed(true);
+      });
+    return () => controller.abort();
+  }, []);
 
   // Safe fallback: Prevents the UI from crashing with a "Cannot read properties of undefined (reading 'length')"
   // error if the backend data is malformed or missing the targets array.
   const targets = Array.isArray(tool.targets) ? tool.targets : [];
+
+  // list_user_agents_merged (backend) always orders user-owned rows before
+  // templates, so the first row seen per logicalId is the customized copy
+  // when one exists — first-wins dedup below prefers it over the template
+  // automatically, without needing an "active row" tie-break like AgentSwitcher.
+  const byAgent = new Map<string, UserAgentEntry>();
+  for (const entry of agents) {
+    const key = logicalId(entry);
+    if (!byAgent.has(key)) byAgent.set(key, entry);
+  }
+  const uniqueAgents = [...byAgent.values()].sort((a, b) => a.name.localeCompare(b.name));
+
+  // Dropdown-driven flow is only usable once agents have actually loaded.
+  const useDropdown = !loadFailed && uniqueAgents.length > 0;
+
+  // Single write path for every add/remove below. The backend reads
+  // parameters.targets, not targets — writing both together here (instead
+  // of leaving parameters to whatever stale value it had at load) is what
+  // keeps them from drifting as the user edits.
+  const setTargets = (next: string[]) => {
+    onChange({ ...tool, targets: next, parameters: { targets: next } });
+  };
 
   const addTarget = () => {
     const t = draft.trim();
@@ -420,13 +483,22 @@ function AgentTransferEditor({
       setDraft("");
       return;
     }
-    onChange({ ...tool, targets: [...targets, t] });
+    setTargets([...targets, t]);
     setDraft("");
   };
 
-  const removeTarget = (target: string) => {
-    onChange({ ...tool, targets: targets.filter((t) => t !== target) });
+  const addTargetFromDropdown = (id: string) => {
+    if (!id || targets.includes(id)) return;
+    setTargets([...targets, id]);
+    setPendingAgentId("");
   };
+
+  const removeTarget = (target: string) => {
+    setTargets(targets.filter((t) => t !== target));
+  };
+
+  const nameForTarget = (target: string) =>
+    uniqueAgents.find((entry) => stableTargetId(entry) === target)?.name ?? target;
 
   return (
     <>
@@ -450,32 +522,56 @@ function AgentTransferEditor({
           />
         </Field>
         <Field>
-          <FieldLabel>Target agents</FieldLabel>
-          <div className="flex gap-2">
-            <Input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addTarget();
-                }
-              }}
-              placeholder="emergency-line-agent"
-              className="font-mono text-sm"
-              aria-label="Add target agent ID"
-            />
-            <Button variant="outline" size="sm" onClick={addTarget} type="button">
-              <Plus data-icon="inline-start" />
-              Add
-            </Button>
-          </div>
+          <FieldLabel htmlFor={useDropdown ? selectId : undefined}>Target agents</FieldLabel>
+          {useDropdown ? (
+            <div className="flex gap-2">
+              <Select value={pendingAgentId} onValueChange={addTargetFromDropdown}>
+                <SelectTrigger id={selectId} aria-label="Add target agent">
+                  <SelectValue placeholder="Select an agent…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {uniqueAgents.map((entry) => {
+                      const id = stableTargetId(entry);
+                      const alreadyAdded = targets.includes(id);
+                      return (
+                        <SelectItem key={id} value={id} disabled={alreadyAdded}>
+                          {entry.name}
+                          {alreadyAdded ? " (added)" : ""}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <Input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addTarget();
+                  }
+                }}
+                placeholder="emergency-line-agent"
+                className="font-mono text-sm"
+                aria-label="Add target agent ID"
+              />
+              <Button variant="outline" size="sm" onClick={addTarget} type="button">
+                <Plus data-icon="inline-start" />
+                Add
+              </Button>
+            </div>
+          )}
           {targets.length > 0 ? (
             <ul className="mt-2 flex flex-wrap gap-1.5">
               {targets.map((target) => (
                 <li key={target}>
                   <Badge variant="secondary" className="gap-1.5 font-mono">
-                    {target}
+                    {useDropdown ? nameForTarget(target) : target}
                     <button
                       type="button"
                       onClick={() => removeTarget(target)}
