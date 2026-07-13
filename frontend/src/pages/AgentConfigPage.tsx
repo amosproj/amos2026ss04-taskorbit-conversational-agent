@@ -91,23 +91,7 @@ export function AgentConfigPage() {
     error: null,
   });
 
-  // Two agents sharing an agent_id are indistinguishable to workflow
-  // dependencies/handoffs and intent routing — catch it here before Save
-  // instead of only finding out from the backend's 409 (#221 review).
-  //
-  // Excluded row must be derived from loadedConfigId, not activeUserAgentId:
-  // loadById() (the "Saved agents" legacy load path) updates loadedConfigId
-  // on every load but never touches activeUserAgentId, so relying on the
-  // latter here would flag a freshly-loaded agent as a duplicate of itself.
-  const currentRowId = loadedConfigId?.startsWith("ua:") ? loadedConfigId.slice(3) : loadedConfigId;
-  const trimmedAgentId = (agent.agent_id ?? "").trim();
-  const duplicateAgentId = trimmedAgentId
-    ? userAgents.find(
-        (entry) => entry.id !== currentRowId && entry.config.agent_id === trimmedAgentId,
-      )
-    : undefined;
-
-  const canPersist = isComplete(agent) && workflowValidation.valid && !duplicateAgentId;
+  const canPersist = isComplete(agent) && workflowValidation.valid;
 
   // Fetch the saved-config list once on mount + expose a refresh helper.
   // Used by the "Load preset" dropdown and re-called after a successful save
@@ -130,11 +114,23 @@ export function AgentConfigPage() {
     const controller = new AbortController();
     void refreshList(controller.signal);
     fetchUserAgents(controller.signal)
-      .then(setUserAgents)
+      .then((fetched) => {
+        setUserAgents(fetched);
+        // isLoadedBuiltIn always starts false (unlike activeUserAgentId, which
+        // parses synchronously from the persisted loadedConfigId) — correct it
+        // once we know whether the restored agent is actually a customized
+        // row or an untouched template, so Update doesn't wrongly show for a
+        // built-in agent restored from a previous session.
+        if (activeUserAgentId) {
+          const entry = fetched.find((a) => a.id === activeUserAgentId);
+          if (entry) setIsLoadedBuiltIn(!entry.is_customized);
+        }
+      })
       .catch(() => {
         /* backend unavailable — silently skip */
       });
     return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshList]);
 
   const loadUserAgent = (entry: UserAgentEntry) => {
@@ -334,7 +330,6 @@ export function AgentConfigPage() {
           value={{ agent_id: agent.agent_id, name: agent.name }}
           onChange={(next) => setAgent({ ...agent, ...next })}
           showErrors={showErrors}
-          duplicateAgentIdOwner={duplicateAgentId?.name}
         />
 
         <InstructionsSection

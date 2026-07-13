@@ -27,45 +27,6 @@ from .models import (
 logger = get_logger(__name__)
 
 
-class DuplicateAgentIdError(ValueError):
-    """Raised when a save/update would give two agents the same logical agent_id.
-
-    Two rows sharing an agent_id are indistinguishable to workflow_dependencies,
-    allowed_handoffs, and intent routing — whichever one you pick in the UI,
-    the other's name can end up displayed instead (#221 review finding).
-    """
-
-    def __init__(self, agent_id: str):
-        self.agent_id = agent_id
-        super().__init__(f"agent_id '{agent_id}' is already in use by another agent.")
-
-
-async def _assert_agent_id_available(
-    db: AsyncSession,
-    agent_id: str | None,
-    user_id: int,
-    exclude_row_id: str | None = None,
-) -> None:
-    """Raise DuplicateAgentIdError if agent_id is already taken.
-
-    Scoped like _find_agent_config_by_logical_id: the caller's own rows plus
-    global/admin rows (user_id IS NULL) — matching agent_id in either bucket
-    would make the two rows indistinguishable in the UI.
-    """
-    if not agent_id:
-        return
-    result = await db.execute(
-        select(AgentConfiguration.id).where(
-            _config_logical_id_matches(agent_id),
-            or_(AgentConfiguration.user_id == user_id, AgentConfiguration.user_id.is_(None)),
-        )
-    )
-    conflicting_ids = {row_id for (row_id,) in result.all()}
-    conflicting_ids.discard(exclude_row_id)
-    if conflicting_ids:
-        raise DuplicateAgentIdError(agent_id)
-
-
 def _config_logical_id_matches(logical_id: str):
     """Match workflow logical ids stored in the JSON config blob (agent_id or id)."""
     return or_(
@@ -738,9 +699,11 @@ async def create_user_agent(
     """Create a brand-new user agent row, independent of any template.
 
     Used by the "Save as new" path so a fresh INSERT always happens — the
-    caller's currently-loaded agent is never touched.
+    caller's currently-loaded agent is never touched. Agents are allowed to
+    share an agent_id (rows are disambiguated by their own DB id where it
+    matters — see refFor/optionForRef in WorkflowSection.tsx), so no
+    uniqueness check runs here.
     """
-    await _assert_agent_id_available(db, config.get("agent_id"), user_id)
     try:
         config = _ensure_persona_constraints(config)
         agent = AgentConfiguration(
@@ -896,10 +859,6 @@ async def update_user_agent(
     agent = await get_user_agent(db, agent_id, user_id)
     if not agent:
         return None
-    if config is not None:
-        await _assert_agent_id_available(
-            db, config.get("agent_id"), user_id, exclude_row_id=agent.id
-        )
     try:
         if name is not None:
             agent.name = name
@@ -954,9 +913,6 @@ async def copy_on_write_user_agent(
 
     if existing:
         merged_config = {**existing.config, **(config_updates or {})}
-        await _assert_agent_id_available(
-            db, merged_config.get("agent_id"), user_id, exclude_row_id=existing.id
-        )
         try:
             if name is not None:
                 existing.name = name
@@ -983,15 +939,14 @@ async def copy_on_write_user_agent(
         logger.warning("copy_on_write_template_not_found", template_id=template_id)
         return None
 
-    new_config = {**template.config, **(config_updates or {})}
-    await _assert_agent_id_available(db, new_config.get("agent_id"), user_id)
+    merged_config = {**template.config, **(config_updates or {})}
     try:
         agent = AgentConfiguration(
             id=uuid4().hex,
             user_id=user_id,
             template_id=template_id,
             name=name or template.name,
-            config=new_config,
+            config=merged_config,
             is_default=False,
             is_customized=True,
         )
