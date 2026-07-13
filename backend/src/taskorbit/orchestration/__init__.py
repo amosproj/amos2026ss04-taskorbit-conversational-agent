@@ -148,6 +148,24 @@ def _seconds_to_ms(seconds: float | None) -> float | None:
     return round(seconds * 1000, 1) if seconds is not None else None
 
 
+def _external_api_requires_args(tool: ToolDefinition) -> bool:
+    """Return True when an external_api tool's args_schema has required fields.
+
+    A "read" tool with no required inputs (e.g. GET current time) can dispatch
+    immediately without any slot-extraction round-trip. A tool that DOES take
+    args (e.g. POST create-user with required fields) still needs its inputs
+    collected, so it goes through the normal slots_ready path.
+    """
+    if tool.type != ToolType.EXTERNAL_API:
+        return False
+    params = tool.parameters or {}
+    args_schema = params.get("args_schema") if isinstance(params, dict) else None
+    if not isinstance(args_schema, dict):
+        return False
+    required = args_schema.get("required")
+    return isinstance(required, list) and len(required) > 0
+
+
 def _build_pipeline_latency_ms(
     *,
     llm_elapsed: float | None = None,
@@ -604,11 +622,6 @@ class ConversationOrchestrator:
                 conversation_id=request.conversation_id,
             )
 
-            # 4. Build system prompt using the routed agent's role
-            system_prompt = self._build_system_prompt(
-                active_config, active_tool, slot_result, routed_agent=agent
-            )
-
             # 4b. Truncate conversation history if context limit is configured
             truncated_messages = self._truncate_messages(
                 request.messages, active_config.context_limit
@@ -626,16 +639,11 @@ class ConversationOrchestrator:
             if refusal_response is not None:
                 return refusal_response
 
-            # 5. Call LLM with a timeout from settings — measure latency
-            _llm_start = time.perf_counter()
-            llm_text = await asyncio.wait_for(
-                self._call_llm(system_prompt, truncated_messages, active_config.llm),
-                timeout=self._settings.llm_timeout_seconds,
-            )
-            _llm_elapsed = time.perf_counter() - _llm_start
-            get_metrics().pipeline_latency_seconds.labels(stage="llm_call").observe(_llm_elapsed)
-
-            # 5b. Dispatch active tool when slots are complete.
+            # 4c. Dispatch the active tool BEFORE the LLM call so tool_data
+            # (e.g. an external_api read result) can be injected into the
+            # system prompt. The stream path already runs dispatch first;
+            # text path now matches so both paths behave identically and
+            # external_api tools can actually answer the user's question.
             dispatch = await self._run_dispatch_step(
                 request, active_tool, slot_result, intent, agent, db=db, user_id=user_id
             )
@@ -643,8 +651,27 @@ class ConversationOrchestrator:
                 return dispatch.early_response
             tool_data = dispatch.tool_data
             response_status = dispatch.response_status
+
+            # 5. Build system prompt WITH tool_data if a tool just fired.
+            system_prompt = self._build_system_prompt(
+                active_config,
+                active_tool,
+                slot_result,
+                routed_agent=agent,
+                tool_data=tool_data,
+            )
+
+            # 5b. Call LLM with a timeout from settings. Measure latency.
+            _llm_start = time.perf_counter()
             if dispatch.llm_text_override is not None:
                 llm_text = dispatch.llm_text_override
+            else:
+                llm_text = await asyncio.wait_for(
+                    self._call_llm(system_prompt, truncated_messages, active_config.llm),
+                    timeout=self._settings.llm_timeout_seconds,
+                )
+            _llm_elapsed = time.perf_counter() - _llm_start
+            get_metrics().pipeline_latency_seconds.labels(stage="llm_call").observe(_llm_elapsed)
 
             # Advance to the next tool when the current one was dispatched
             updated_completed_steps = list(request.completed_workflow_steps)
@@ -1204,24 +1231,30 @@ class ConversationOrchestrator:
                 conversation_id=request.conversation_id,
             )
 
-            # 4. Build system prompt.
-            system_prompt = self._build_system_prompt(
-                active_config, active_tool, slot_result, routed_agent=agent
-            )
-
             # 4b. Truncate messages.
             truncated_messages = self._truncate_messages(
                 request.messages, active_config.context_limit
             )
 
-            # 5b. Run dispatch logic before streaming so confirmation short-circuits
-            # before any tokens are sent to the client.
+            # 4c. Run dispatch logic before streaming so confirmation short-circuits
+            # before any tokens are sent to the client. Also fires BEFORE the
+            # system prompt is built so tool_data (e.g. external_api results)
+            # can be injected for the LLM.
             dispatch = await self._run_dispatch_step(
                 request, active_tool, slot_result, intent, agent, db=db, user_id=user_id
             )
             if dispatch.early_response is not None:
                 yield dispatch.early_response
                 return
+
+            # 4d. Build system prompt WITH tool_data if a tool just fired.
+            system_prompt = self._build_system_prompt(
+                active_config,
+                active_tool,
+                slot_result,
+                routed_agent=agent,
+                tool_data=dispatch.tool_data,
+            )
 
             # Pre-LLM scope short-circuit: final guard before streaming tokens (#168).
             refusal_response = self._scope_refusal(
@@ -1600,8 +1633,16 @@ class ConversationOrchestrator:
         active_tool: ToolDefinition | None,
         slot_result: Any | None = None,
         routed_agent: Any | None = None,
+        tool_data: dict[str, Any] | None = None,
     ) -> str:
-        """Construct a system prompt (LLM context) for the current task."""
+        """Construct a system prompt (LLM context) for the current task.
+
+        When ``tool_data`` is provided (from a pre-LLM tool dispatch, e.g. an
+        external_api read tool), it's injected as a "Tool result" block so the
+        LLM can reference the concrete value in its reply. Without this, an
+        external_api tool that fetches data (current time, weather, stock
+        price, ...) would fire but its result would never reach the user.
+        """
         from taskorbit.integrations.llm.prompts import with_persona_guardrails
 
         lines = [
@@ -1622,6 +1663,14 @@ class ConversationOrchestrator:
             lines.append(f"Current task: {active_tool.name} - {active_tool.description}")
             if active_tool.parameters:
                 lines.append(f"Available parameters: {active_tool.parameters}")
+        if tool_data and not tool_data.get("aborted"):
+            import json as _json
+
+            lines.append(
+                "Tool result (use this concrete data to answer the user's question, "
+                "do NOT answer from prior knowledge if the tool result is relevant): "
+                + _json.dumps(tool_data, default=str)
+            )
         if slot_result is not None:
             if slot_result.filled:
                 lines.append(
@@ -1829,8 +1878,20 @@ class ConversationOrchestrator:
         slots_ready = (
             active_tool is not None and slot_result.is_complete and bool(intent.required_inputs)
         )
+        # External API tools whose args_schema declares no required properties
+        # (e.g. a "get current time" endpoint that takes no user input) are
+        # ready to fire the moment they're active. Waiting for slot completion
+        # would deadlock, because the slot-extraction pipeline only considers
+        # data_extraction tools' params. Without this branch, no-arg
+        # external_api tools never dispatch and the LLM answers from its own
+        # training data instead of the API response.
+        external_api_no_args_ready = (
+            active_tool is not None
+            and active_tool.type == ToolType.EXTERNAL_API
+            and not _external_api_requires_args(active_tool)
+        )
 
-        if no_slots_tool_ready or slots_ready:
+        if no_slots_tool_ready or slots_ready or external_api_no_args_ready:
             is_decision_for_this_tool = request.confirmation_id == active_tool.id
             has_decision = is_decision_for_this_tool and request.decision is not None
 

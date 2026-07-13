@@ -547,6 +547,177 @@ async def test_external_api_dispatch_passes_full_config_plus_args() -> None:
     assert ctx["args"] == {"city": "Berlin"}
 
 
+def test_external_api_requires_args_helper() -> None:
+    """Helper returns True only for EXTERNAL_API tools whose args_schema
+    declares a non-empty ``required`` list. Everything else, including
+    other tool types and empty/missing required lists, returns False."""
+    from taskorbit.orchestration import _external_api_requires_args
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    def _mk(tool_type: ToolType, params: dict[str, Any] | None) -> ToolDefinition:
+        return ToolDefinition(
+            id="t",
+            name="t",
+            type=tool_type,
+            description="d",
+            confirmation=ConfirmationConfig(required=False, prompt=""),
+            parameters=params or {},
+        )
+
+    with_required = _mk(
+        ToolType.EXTERNAL_API,
+        {"args_schema": {"type": "object", "required": ["city"], "properties": {}}},
+    )
+    empty_required = _mk(
+        ToolType.EXTERNAL_API,
+        {"args_schema": {"type": "object", "required": [], "properties": {}}},
+    )
+    no_schema = _mk(ToolType.EXTERNAL_API, {})
+    non_api = _mk(
+        ToolType.DATA_EXTRACTION,
+        {"args_schema": {"type": "object", "required": ["x"], "properties": {}}},
+    )
+
+    assert _external_api_requires_args(with_required) is True
+    assert _external_api_requires_args(empty_required) is False
+    assert _external_api_requires_args(no_schema) is False
+    assert _external_api_requires_args(non_api) is False
+
+
+def test_build_system_prompt_injects_tool_data() -> None:
+    """When tool_data is passed, its JSON is injected into the system prompt
+    with an instruction telling the LLM to use it instead of prior knowledge.
+    This is what lets an external_api result (e.g. current time from
+    timeapi.io) actually reach the LLM."""
+    from taskorbit.types import (
+        AgentConfig as _AC,
+    )
+    from taskorbit.types import (
+        ConfirmationConfig,
+        ToolDefinition,
+        ToolType,
+    )
+
+    orch = ConversationOrchestrator()
+    config = _AC(id="a", name="a", persona="p", greeting="g")
+    tool = ToolDefinition(
+        id="t",
+        name="get_time",
+        type=ToolType.EXTERNAL_API,
+        description="Returns current time",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={},
+    )
+    tool_data = {"status": 200, "data": {"dateTime": "2026-07-08T14:30:00"}}
+
+    prompt = orch._build_system_prompt(config, tool, None, routed_agent=None, tool_data=tool_data)
+
+    assert "Tool result" in prompt
+    assert "dateTime" in prompt
+    assert "2026-07-08T14:30:00" in prompt
+    assert "do NOT answer from prior knowledge" in prompt
+
+
+def test_build_system_prompt_omits_tool_data_when_aborted() -> None:
+    """An aborted tool_data payload (e.g. user rejected a confirmation)
+    must NOT be injected: the LLM should not see partial or void tool
+    output as authoritative ground truth."""
+    from taskorbit.types import (
+        AgentConfig as _AC,
+    )
+    from taskorbit.types import (
+        ConfirmationConfig,
+        ToolDefinition,
+        ToolType,
+    )
+
+    orch = ConversationOrchestrator()
+    config = _AC(id="a", name="a", persona="p", greeting="g")
+    tool = ToolDefinition(
+        id="t",
+        name="t",
+        type=ToolType.EXTERNAL_API,
+        description="d",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={},
+    )
+
+    prompt = orch._build_system_prompt(
+        config, tool, None, routed_agent=None, tool_data={"aborted": True}
+    )
+
+    assert "Tool result" not in prompt
+    assert "aborted" not in prompt
+
+
+@pytest.mark.asyncio
+async def test_no_arg_external_api_dispatches_and_llm_sees_result() -> None:
+    """End-to-end for Carl's bug: an EXTERNAL_API tool with no required args
+    (e.g. Current_Date_and_Time_Tool) must dispatch BEFORE the LLM call,
+    and the resulting tool_data must land in the system prompt so the LLM
+    can quote a fresh value instead of answering from its training cutoff."""
+    from taskorbit.slots.models import SlotExtractionResult
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    orch = ConversationOrchestrator()
+    intent = _intent_result(required_inputs=[])
+    tool = ToolDefinition(
+        id="current-time",
+        name="Current_Date_and_Time_Tool",
+        type=ToolType.EXTERNAL_API,
+        description="Returns current time in Europe/Berlin",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={
+            "request": {
+                "method": "GET",
+                "url": "https://timeapi.io/api/Time/current/zone?timeZone=Europe/Berlin",
+            },
+            "response": {"extract": {"dateTime": "dateTime"}},
+            "args_schema": {"type": "object", "required": [], "properties": {}},
+        },
+    )
+    slot_result = SlotExtractionResult(filled={}, missing=[])
+
+    async def _fake_dispatch(
+        _self: ConversationOrchestrator,
+        _tool: ToolDefinition,
+        _ctx: dict[str, Any],
+        **_kwargs: Any,
+    ) -> tuple[dict[str, Any], float]:
+        return {"status": 200, "data": {"dateTime": "2026-07-08T14:30:00"}}, 0.0
+
+    seen_prompts: list[str] = []
+
+    async def _capture_llm(
+        _self: ConversationOrchestrator,
+        system_prompt: str,
+        *_a: Any,
+        **_kw: Any,
+    ) -> str:
+        seen_prompts.append(system_prompt)
+        return "It is 2026-07-08 14:30 in Berlin."
+
+    with (
+        patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
+        patch.object(ConversationOrchestrator, "_select_active_tool", return_value=tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_extract_slots",
+            new_callable=AsyncMock,
+            return_value=slot_result,
+        ),
+        patch.object(ConversationOrchestrator, "_dispatch_tool", new=_fake_dispatch),
+        patch.object(ConversationOrchestrator, "_call_llm", new=_capture_llm),
+    ):
+        response = await orch.process_message(_make_request("what time is it?"))
+
+    assert response.tool_invoked is not None
+    assert response.tool_invoked.type == ToolType.EXTERNAL_API
+    assert len(seen_prompts) == 1
+    assert "2026-07-08T14:30:00" in seen_prompts[0]
+    assert "Tool result" in seen_prompts[0]
+
+
 @pytest.mark.asyncio
 async def test_process_message_confirmation_flow(mock_good_intent: Any) -> None:
     """AC #49: End-to-end confirmation flow (pending -> approved -> rejected)."""
