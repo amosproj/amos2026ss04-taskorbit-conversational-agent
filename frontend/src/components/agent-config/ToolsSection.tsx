@@ -170,7 +170,8 @@ export function ToolsSection({ value, onChange }: Props) {
               }}
               className={cn(
                 "rounded-lg transition-shadow duration-500",
-                highlightIndex === ti && "ring-2 ring-primary/60 ring-offset-2 ring-offset-background",
+                highlightIndex === ti &&
+                  "ring-2 ring-primary/60 ring-offset-2 ring-offset-background",
               )}
             >
               <ToolCard
