@@ -114,11 +114,23 @@ export function AgentConfigPage() {
     const controller = new AbortController();
     void refreshList(controller.signal);
     fetchUserAgents(controller.signal)
-      .then(setUserAgents)
+      .then((fetched) => {
+        setUserAgents(fetched);
+        // isLoadedBuiltIn always starts false (unlike activeUserAgentId, which
+        // parses synchronously from the persisted loadedConfigId) — correct it
+        // once we know whether the restored agent is actually a customized
+        // row or an untouched template, so Update doesn't wrongly show for a
+        // built-in agent restored from a previous session.
+        if (activeUserAgentId) {
+          const entry = fetched.find((a) => a.id === activeUserAgentId);
+          if (entry) setIsLoadedBuiltIn(!entry.is_customized);
+        }
+      })
       .catch(() => {
         /* backend unavailable — silently skip */
       });
     return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshList]);
 
   const loadUserAgent = (entry: UserAgentEntry) => {
