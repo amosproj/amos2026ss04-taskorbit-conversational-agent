@@ -759,3 +759,56 @@ async def test_llm_node_preserves_workflow_state_on_error_response() -> None:
     assert agent._locked_intent_name == "book_appointment"
     assert agent._completed_workflow_steps == ["collect_email"]
     assert agent._current_routed_agent == "booking_agent"
+
+
+# ---------------------------------------------------------------------------
+# Manual voice transfer (#212) — @route menu picks over the data channel
+# ---------------------------------------------------------------------------
+
+
+def _manual_transfer_agent() -> OrchestratorAgent:
+    from unittest.mock import MagicMock
+
+    return OrchestratorAgent(
+        orchestrator=MagicMock(),
+        agent_config=AgentConfig(
+            id="agent-1",
+            name="TestBot",
+            persona="A test bot.",
+            greeting="Hi!",
+        ),
+        conversation_id="test-conv",
+    )
+
+
+def test_set_manual_transfer_stores_pending() -> None:
+    agent = _manual_transfer_agent()
+    agent.set_manual_transfer("sales-agent", "Sales Agent")
+    pending = agent._consume_pending_manual_transfer()
+    assert pending is not None
+    assert pending.target_agent_id == "sales-agent"
+    assert pending.target_agent_name == "Sales Agent"
+
+
+def test_consume_pending_manual_transfer_is_one_shot() -> None:
+    agent = _manual_transfer_agent()
+    agent.set_manual_transfer("sales-agent", "Sales Agent")
+    assert agent._consume_pending_manual_transfer() is not None
+    # Second turn must NOT re-apply the transfer.
+    assert agent._consume_pending_manual_transfer() is None
+
+
+def test_set_manual_transfer_none_clears_pending() -> None:
+    agent = _manual_transfer_agent()
+    agent.set_manual_transfer("sales-agent", "Sales Agent")
+    agent.set_manual_transfer(None, None)
+    assert agent._consume_pending_manual_transfer() is None
+
+
+def test_manual_transfer_last_pick_wins() -> None:
+    agent = _manual_transfer_agent()
+    agent.set_manual_transfer("sales-agent", "Sales Agent")
+    agent.set_manual_transfer("general-inquiry-agent", "General Inquiry Agent")
+    pending = agent._consume_pending_manual_transfer()
+    assert pending is not None
+    assert pending.target_agent_id == "general-inquiry-agent"

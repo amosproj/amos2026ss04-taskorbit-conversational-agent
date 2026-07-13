@@ -21,7 +21,6 @@ Flow per message:
 from __future__ import annotations
 
 import asyncio
-import re
 import time
 from dataclasses import dataclass
 from dataclasses import replace as dataclass_replace
@@ -172,6 +171,10 @@ class _DispatchResult:
     response_status: ConversationStatus
     llm_text_override: str | None
     tool_call_elapsed: float | None = None
+    # #212: on a successful agent_transfer, a copy of the tool whose targets
+    # hold the RESOLVED canonical id, so the voice publish and the FE swap
+    # never see the raw config string.
+    tool_invoked_override: ToolDefinition | None = None
 
 
 class ConversationOrchestrator:
@@ -554,7 +557,14 @@ class ConversationOrchestrator:
 
             # 3. Select active tool
             active_tool = self._select_active_tool(
-                request.messages, agent, active_tool_id=request.active_tool_id
+                request.messages,
+                agent,
+                # confirmation_id IS the pending tool's id: pinning on it keeps
+                # a decision turn on the tool being confirmed even when the
+                # client does not round-trip active_tool_id (#212).
+                active_tool_id=request.active_tool_id or request.confirmation_id,
+                intent=intent,
+                current_agent=request.selected_agent or request.agent_config.id,
             )
 
             # 3b. Extract slots from conversation history.
@@ -684,7 +694,7 @@ class ConversationOrchestrator:
                 status=response_status,
                 extracted_slots=slot_result.to_dict(),
                 missing_slots=slot_result.missing,
-                tool_invoked=active_tool if tool_data else None,
+                tool_invoked=(dispatch.tool_invoked_override or active_tool) if tool_data else None,
                 locked_intent_name=intent.name,
                 next_active_tool_id=next_active_tool_id,
                 completed_workflow_steps=updated_completed_steps,
@@ -1144,7 +1154,14 @@ class ConversationOrchestrator:
 
             # 3. Select active tool.
             active_tool = self._select_active_tool(
-                request.messages, agent, active_tool_id=request.active_tool_id
+                request.messages,
+                agent,
+                # confirmation_id IS the pending tool's id: pinning on it keeps
+                # a decision turn on the tool being confirmed even when the
+                # client does not round-trip active_tool_id (#212).
+                active_tool_id=request.active_tool_id or request.confirmation_id,
+                intent=intent,
+                current_agent=request.selected_agent or request.agent_config.id,
             )
 
             # Pre-extraction scope short-circuit (parity with the text path, #168):
@@ -1285,7 +1302,7 @@ class ConversationOrchestrator:
                 status=response_status,
                 extracted_slots=slot_result.to_dict(),
                 missing_slots=slot_result.missing,
-                tool_invoked=active_tool if tool_data else None,
+                tool_invoked=(dispatch.tool_invoked_override or active_tool) if tool_data else None,
                 locked_intent_name=intent.name,
                 next_active_tool_id=next_active_tool_id,
                 completed_workflow_steps=updated_completed_steps,
@@ -1692,8 +1709,18 @@ class ConversationOrchestrator:
         messages: list[Message],
         agent: BaseAgent,
         active_tool_id: str | None = None,
+        intent: IntentResult | None = None,
+        current_agent: str | None = None,
     ) -> ToolDefinition | None:
-        """Decide which tool should be in scope for this turn, if any."""
+        """Decide which tool should be in scope for this turn, if any.
+
+        Order: an explicit active_tool_id pin (confirmation round-trips) wins;
+        then, when intent routing points AWAY from the current agent and the
+        config carries an agent_transfer tool for that destination, the
+        transfer owns the turn (#212 — multi-tool configs otherwise never
+        reach tools[1:], because neither client round-trips
+        next_active_tool_id); otherwise the first configured tool.
+        """
         tools = agent.get_task_definitions()
         if not tools:
             return None
@@ -1701,6 +1728,35 @@ class ConversationOrchestrator:
             match = next((t for t in tools if t.id == active_tool_id), None)
             if match:
                 return match
+
+        if intent is not None and intent.agent_name:
+            from taskorbit.tools.agent_transfer import resolve_builtin_transfer_target
+
+            # current_agent can arrive as a template slug after a completed voice
+            # handoff ("technical-support-agent"), while intent.agent_name is a
+            # registry name ("technical_support"). Normalise before comparing so
+            # a finished handoff never re-fires the transfer (#212).
+            effective_current = (
+                resolve_builtin_transfer_target(current_agent) or current_agent
+                if current_agent
+                else current_agent
+            )
+            if intent.agent_name == effective_current:
+                return tools[0]
+            for tool in tools:
+                if tool.type != ToolType.AGENT_TRANSFER:
+                    continue
+                targets = tool.parameters.get("targets") or []
+                for raw in targets:
+                    if resolve_builtin_transfer_target(str(raw)) == intent.agent_name:
+                        logger.info(
+                            "agent_transfer_tool_selected",
+                            destination=intent.agent_name,
+                            requested_target=str(raw),
+                            tool_id=tool.id,
+                        )
+                        return tool
+
         return tools[0]
 
     async def _call_llm(
@@ -1764,6 +1820,7 @@ class ConversationOrchestrator:
         response_status = ConversationStatus.SUCCESS
         llm_text_override: str | None = None
         tool_call_elapsed: float | None = None
+        tool_invoked_override: ToolDefinition | None = None
 
         no_slots_tool_ready = active_tool is not None and active_tool.type in (
             ToolType.END_CALL,
@@ -1826,18 +1883,36 @@ class ConversationOrchestrator:
             else:
                 dispatch_context: dict[str, Any] = dict(slot_result.to_dict())
                 if active_tool.type == ToolType.AGENT_TRANSFER:
+                    from taskorbit.tools.agent_transfer import (
+                        resolve_builtin_transfer_target,
+                        resolve_transfer_target,
+                    )
+
                     targets = active_tool.parameters.get("targets") or []
                     if targets:
                         raw = str(targets[0])
-                        if re.match(
-                            r"^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$",
-                            raw,
-                            re.IGNORECASE,
-                        ):
-                            normalized = raw
+                        # Multi-target tools: prefer the target matching the
+                        # routed intent so selection and dispatch agree (#212).
+                        if intent is not None and len(targets) > 1:
+                            for candidate in targets:
+                                if (
+                                    resolve_builtin_transfer_target(str(candidate))
+                                    == intent.agent_name
+                                ):
+                                    raw = str(candidate)
+                                    break
+                        resolved_target = await resolve_transfer_target(raw, db=db, user_id=user_id)
+                        if resolved_target is not None:
+                            dispatch_context["target_agent_id"] = resolved_target.canonical_id
                         else:
-                            normalized = raw.removesuffix("-agent").replace("-", "_")
-                        dispatch_context["target_agent_id"] = normalized
+                            # Pass the raw value through; the tool re-resolves and
+                            # owns the user-facing "Unknown agent" error (#212).
+                            logger.warning(
+                                "agent_transfer_target_unresolved",
+                                raw_target=raw,
+                                conversation_id=request.conversation_id,
+                            )
+                            dispatch_context["target_agent_id"] = raw
                     dispatch_context["conversation_history"] = [
                         {"role": m.role.value, "content": m.content} for m in request.messages
                     ]
@@ -1858,6 +1933,20 @@ class ConversationOrchestrator:
                 if active_tool.type == ToolType.END_CALL:
                     response_status = ConversationStatus.ENDED
                 elif active_tool.type == ToolType.AGENT_TRANSFER:
+                    resolved_id = tool_data.get("transferred_to")
+                    if resolved_id:
+                        # Hand consumers the canonical target: the voice worker
+                        # publishes tool_invoked.parameters.targets[0] and the
+                        # FE swap matches on it, so the raw config string must
+                        # not leak past this point (#212).
+                        tool_invoked_override = active_tool.model_copy(
+                            update={
+                                "parameters": {
+                                    **active_tool.parameters,
+                                    "targets": [resolved_id],
+                                }
+                            }
+                        )
                     logger.info(
                         "agent_handoff",
                         from_agent=request.agent_config.name,
@@ -1871,6 +1960,7 @@ class ConversationOrchestrator:
             response_status=response_status,
             llm_text_override=llm_text_override,
             tool_call_elapsed=tool_call_elapsed,
+            tool_invoked_override=tool_invoked_override,
         )
 
     async def _dispatch_tool(
