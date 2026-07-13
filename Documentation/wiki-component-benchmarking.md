@@ -1,8 +1,7 @@
 # Component Benchmarking
 
 **Issue:** [#68 Component Benchmarking](https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/issues/68)  
-**Branch:** `Feature-Component-Benchmarking-68`  
-**PR:** [#184](https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/pull/184)  
+**Merged:** PR [#184](https://github.com/amosproj/amos2026ss04-taskorbit-conversational-agent/pull/184) → `main`  
 
 ---
 
@@ -35,7 +34,7 @@ Component benchmarking compares **STT / LLM / TTS** pipeline configurations on:
 | Aggregation + recommendation | ✅ Done |
 | **GPC standardized run** | **✅ Completed** |
 | **Wiki results table** | **✅ Filled below** |
-| Merge to `main` + PO sign-off | Pending |
+| Merge to `main` + PO sign-off | ✅ Merged (#184) |
 
 ---
 
