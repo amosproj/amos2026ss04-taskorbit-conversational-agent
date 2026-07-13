@@ -3,8 +3,12 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from taskorbit.config import get_settings
+from taskorbit.database.crud import create_conversation, get_slot_extractions
+from taskorbit.database.models import Base
 from taskorbit.intent import MockIntentDetector
 from taskorbit.orchestration import ConversationOrchestrator
 from taskorbit.slots.extractor import SlotExtractor
@@ -19,6 +23,8 @@ from taskorbit.types import (
     STTConfig,
     TTSConfig,
 )
+
+TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 # ============ MOCK LLM FUNCTION ============
 
@@ -550,4 +556,180 @@ class TestSlotExtractorEmailNormalization:
             [{"name": "email_address", "type": "email", "required": True}],
         )
         assert "email_address" not in result.filled
-        assert "email_address" in result.missing
+
+
+# ============ TESTS FOR CROSS-TURN SLOT ACCUMULATION (#226) ============
+
+
+@pytest_asyncio.fixture
+async def db_session():
+    """Create a fresh async database for each test (mirrors test_crud.py)."""
+    engine = create_async_engine(TEST_DATABASE_URL, echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with async_session() as session:
+        yield session
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
+
+
+REQUIRED_INPUTS = [
+    {"name": "full_name", "type": "string", "required": True},
+    {"name": "email", "type": "email", "required": True},
+]
+
+
+class TestSlotAccumulationAcrossTurns:
+    """`_extract_slots` must not let a slot filled on an earlier turn regress
+    to missing, or drift to a different value, on a later re-extraction pass (#226)."""
+
+    @pytest.mark.asyncio
+    async def test_restores_slot_dropped_by_this_turns_extraction(self, db_session):
+        conv = await create_conversation(db_session, agent_id="a", agent_name="Bot")
+        orch = ConversationOrchestrator()
+
+        with patch.object(
+            orch, "_call_llm_json", new_callable=AsyncMock, return_value='{"full_name": "Alice"}'
+        ):
+            first = await orch._extract_slots(
+                [Message(role=MessageRole.USER, content="I'm Alice")],
+                REQUIRED_INPUTS,
+                LLMConfig(),
+                db=db_session,
+                conversation_id=conv.id,
+                tool_id="collect_user_info",
+            )
+        assert first.filled["full_name"].value == "Alice"
+        assert first.missing == ["email"]
+
+        # This turn's extraction re-derives from the whole history and drops
+        # full_name entirely (the exact failure mode reported in #226).
+        with patch.object(
+            orch,
+            "_call_llm_json",
+            new_callable=AsyncMock,
+            return_value='{"full_name": null, "email": "alice@example.com"}',
+        ):
+            second = await orch._extract_slots(
+                [
+                    Message(role=MessageRole.USER, content="I'm Alice"),
+                    Message(role=MessageRole.ASSISTANT, content="What's your email?"),
+                    Message(role=MessageRole.USER, content="alice@example.com"),
+                ],
+                REQUIRED_INPUTS,
+                LLMConfig(),
+                db=db_session,
+                conversation_id=conv.id,
+                tool_id="collect_user_info",
+            )
+
+        assert second.filled["full_name"].value == "Alice"
+        assert second.filled["email"].value == "alice@example.com"
+        assert second.is_complete
+
+    @pytest.mark.asyncio
+    async def test_persisted_value_wins_over_a_conflicting_re_extraction(self, db_session):
+        """A previously-pinned value is authoritative even if a later pass
+        hallucinates a different value for the same slot."""
+        conv = await create_conversation(db_session, agent_id="a", agent_name="Bot")
+        orch = ConversationOrchestrator()
+
+        with patch.object(
+            orch, "_call_llm_json", new_callable=AsyncMock, return_value='{"full_name": "Alice"}'
+        ):
+            await orch._extract_slots(
+                [Message(role=MessageRole.USER, content="I'm Alice")],
+                REQUIRED_INPUTS,
+                LLMConfig(),
+                db=db_session,
+                conversation_id=conv.id,
+                tool_id="collect_user_info",
+            )
+
+        with patch.object(
+            orch,
+            "_call_llm_json",
+            new_callable=AsyncMock,
+            return_value='{"full_name": "Alicia", "email": "alice@example.com"}',
+        ):
+            result = await orch._extract_slots(
+                [Message(role=MessageRole.USER, content="alice@example.com")],
+                REQUIRED_INPUTS,
+                LLMConfig(),
+                db=db_session,
+                conversation_id=conv.id,
+                tool_id="collect_user_info",
+            )
+
+        assert result.filled["full_name"].value == "Alice"
+
+    @pytest.mark.asyncio
+    async def test_newly_filled_slot_is_persisted_for_later_turns(self, db_session):
+        conv = await create_conversation(db_session, agent_id="a", agent_name="Bot")
+        orch = ConversationOrchestrator()
+
+        with patch.object(
+            orch, "_call_llm_json", new_callable=AsyncMock, return_value='{"full_name": "Alice"}'
+        ):
+            await orch._extract_slots(
+                [Message(role=MessageRole.USER, content="I'm Alice")],
+                REQUIRED_INPUTS,
+                LLMConfig(),
+                db=db_session,
+                conversation_id=conv.id,
+                tool_id="collect_user_info",
+            )
+
+        rows = await get_slot_extractions(db_session, conv.id)
+        assert {r.field_name: r.field_value for r in rows} == {"full_name": "Alice"}
+
+    @pytest.mark.asyncio
+    async def test_different_tool_ids_do_not_share_persisted_slots(self, db_session):
+        """Merging is scoped per tool_id, not just per conversation."""
+        conv = await create_conversation(db_session, agent_id="a", agent_name="Bot")
+        orch = ConversationOrchestrator()
+
+        with patch.object(
+            orch, "_call_llm_json", new_callable=AsyncMock, return_value='{"full_name": "Alice"}'
+        ):
+            await orch._extract_slots(
+                [Message(role=MessageRole.USER, content="I'm Alice")],
+                REQUIRED_INPUTS,
+                LLMConfig(),
+                db=db_session,
+                conversation_id=conv.id,
+                tool_id="tool_a",
+            )
+
+        with patch.object(orch, "_call_llm_json", new_callable=AsyncMock, return_value="{}"):
+            result = await orch._extract_slots(
+                [Message(role=MessageRole.USER, content="I'm Alice")],
+                REQUIRED_INPUTS,
+                LLMConfig(),
+                db=db_session,
+                conversation_id=conv.id,
+                tool_id="tool_b",
+            )
+
+        assert "full_name" not in result.filled
+        assert "full_name" in result.missing
+
+    @pytest.mark.asyncio
+    async def test_without_db_context_behaves_as_before(self):
+        """Omitting db/conversation_id/tool_id must not merge or persist —
+        keeps callers that don't pass them (existing tests) unaffected."""
+        orch = ConversationOrchestrator()
+
+        with patch.object(
+            orch, "_call_llm_json", new_callable=AsyncMock, return_value='{"full_name": "Alice"}'
+        ):
+            result = await orch._extract_slots(
+                [Message(role=MessageRole.USER, content="I'm Alice")],
+                REQUIRED_INPUTS,
+                LLMConfig(),
+            )
+
+        assert result.filled["full_name"].value == "Alice"
+        assert result.missing == ["email"]

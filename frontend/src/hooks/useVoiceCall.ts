@@ -49,6 +49,14 @@ export type VoiceCallApi = {
   triggerConfirmation: (prompt: ConfirmationPromptState) => void;
   approveConfirmation: () => void;
   denyConfirmation: () => void;
+  /**
+   * Voice-only variant: shows/clears the card WITHOUT touching `status`.
+   * Unlike `triggerConfirmation`, this must never set `awaiting_confirmation`
+   * -- that status disables the mic button and freezes phase updates, which
+   * is correct for text mode (you click Approve/Deny) but deadlocks voice
+   * mode, where the caller resolves the prompt by continuing to speak.
+   */
+  setVoiceConfirmationCard: (prompt: ConfirmationPromptState | null) => void;
 
   /** Called from inside LiveKitRoom to push phase changes upward. */
   setPhase: (phase: CallStatus) => void;
@@ -393,6 +401,10 @@ export function useVoiceCall(): VoiceCallApi {
     [clearTimer],
   );
 
+  const setVoiceConfirmationCard = useCallback((prompt: ConfirmationPromptState | null) => {
+    setConfirmation(prompt);
+  }, []);
+
   const approveConfirmation = useCallback(() => {
     setConfirmation(null);
     setStatus("thinking");
@@ -419,6 +431,7 @@ export function useVoiceCall(): VoiceCallApi {
     triggerConfirmation,
     approveConfirmation,
     denyConfirmation,
+    setVoiceConfirmationCard,
     setPhase,
     setMicError,
     updateConversationId,

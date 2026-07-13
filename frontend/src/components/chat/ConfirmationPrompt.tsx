@@ -11,6 +11,13 @@ type Props = {
   onDeny: () => void;
 };
 
+const TOOL_TYPE_LABELS: Record<string, string> = {
+  data_extraction: "Saving information",
+  agent_transfer: "Transferring to another agent",
+  end_call: "Ending the call",
+  external_api: "Calling an external service",
+};
+
 /**
  * Inline mid-call confirmation. Architecture §4.1 mandates explicit user
  * approval for sensitive actions; this is the surface that captures the
@@ -19,6 +26,7 @@ type Props = {
  */
 export function ConfirmationPrompt({ prompt, onApprove, onDeny }: Props) {
   const isWorkflow = prompt.type === "workflow";
+  const toolTypeLabel = !isWorkflow && prompt.toolType ? TOOL_TYPE_LABELS[prompt.toolType] : null;
 
   return (
     <Card className={cn("border-l-4", isWorkflow ? "border-l-primary" : "border-l-amber-500")}>
@@ -37,6 +45,7 @@ export function ConfirmationPrompt({ prompt, onApprove, onDeny }: Props) {
             <p className="text-sm font-medium">
               {isWorkflow ? "Prerequisite step required" : "The agent is asking before it acts"}
             </p>
+            {toolTypeLabel && <p className="text-sm font-medium text-amber-600">{toolTypeLabel}</p>}
             <p className="text-sm text-muted-foreground">{prompt.description}</p>
             {!isWorkflow && (
               <p className="font-mono text-[10px] text-muted-foreground uppercase opacity-70">

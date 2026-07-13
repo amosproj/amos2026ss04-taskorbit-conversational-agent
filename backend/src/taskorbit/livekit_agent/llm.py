@@ -245,6 +245,11 @@ class OrchestratorAgent(Agent):
         # #71: Workflow state for voice path
         self._completed_workflow_steps: list[str] = []
         self._pending_confirmation_id: str | None = None
+        # Full confirmation payload (#212 follow-up): the voice path resolves
+        # yes/no via speech, but the worker publishes this over the data
+        # channel so the frontend can render the same Approve/Deny card used
+        # in text mode, including which kind of tool is about to run.
+        self._pending_confirmation: dict[str, Any] | None = None
 
     def set_manual_transfer(
         self, target_agent_id: str | None, target_agent_name: str | None
@@ -289,6 +294,7 @@ class OrchestratorAgent(Agent):
             self._completed_workflow_steps = list(completed_workflow_steps)
         if clear_pending_confirmation:
             self._pending_confirmation_id = None
+            self._pending_confirmation = None
         return WorkflowSyncResult(
             routed_agent=self._current_routed_agent,
             completed_steps=list(self._completed_workflow_steps),
@@ -492,8 +498,22 @@ class OrchestratorAgent(Agent):
                 and response.confirmation
             ):
                 self._pending_confirmation_id = response.confirmation.confirmation_id
+                self._pending_confirmation = {
+                    "confirmation_id": response.confirmation.confirmation_id,
+                    "action": response.confirmation.action,
+                    "description": response.confirmation.description,
+                    "tool_type": (
+                        response.tool_invoked.type.value if response.tool_invoked else None
+                    ),
+                    "confirmation_type": (
+                        "workflow"
+                        if response.status == "workflow_confirmation_required"
+                        else "tool"
+                    ),
+                }
             else:
                 self._pending_confirmation_id = None
+                self._pending_confirmation = None
 
             if response.selected_agent:
                 self._current_routed_agent = response.selected_agent
