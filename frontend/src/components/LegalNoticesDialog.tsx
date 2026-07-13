@@ -47,6 +47,20 @@ export function LegalNoticesDialog() {
     );
   }, [search]);
 
+  const formattedDate = useMemo(() => {
+    try {
+      return new Date(data.generatedAt).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return data.generatedAt;
+    }
+  }, []);
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -65,6 +79,17 @@ export function LegalNoticesDialog() {
             {import.meta.env.VITE_APP_NAME ?? "TaskOrbit"}.
           </DialogDescription>
         </DialogHeader>
+
+        <div className="space-y-2 text-xs text-muted-foreground border-b pb-3">
+          <p>
+            TaskOrbit is an open-source project developed by Team 4 of the AMOS project during the
+            Summer Semester 2026.
+          </p>
+          <p className="font-medium">
+            This is an AI-powered conversational agent. Outputs are generated automatically and may
+            contain inaccuracies. Use with discretion.
+          </p>
+        </div>
 
         <div className="flex items-center gap-2">
           {/* Accessible search input: aria-label provides a readable name for screen readers */}
@@ -135,7 +160,7 @@ export function LegalNoticesDialog() {
         </ScrollArea>
 
         <p className="text-[10px] text-muted-foreground">
-          Generated {data.generatedAt} · {data.componentCount} components across{" "}
+          Generated {formattedDate} · {data.componentCount} components across{" "}
           {data.scope.join(", ")}
         </p>
       </DialogContent>

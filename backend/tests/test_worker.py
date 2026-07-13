@@ -9,6 +9,8 @@ Covers:
   6. "interrupt_playback" arriving while a reply task is pending cancels the task
      so generate_reply() is never called for that stale turn.
   7. A completed reply task is not double-cancelled on a subsequent interrupt.
+  8. A pending end_call (agent._call_ended) still publishes session_ended when
+     the reply task carrying it is cancelled mid-playout by a later commit_turn.
 """
 
 from __future__ import annotations
@@ -557,6 +559,70 @@ async def test_interrupt_after_completed_task_does_not_raise(configured_settings
         handler(_data_packet(json.dumps({"type": "interrupt_playback"}).encode()))
 
     mock_session.interrupt.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_call_ended_flushed_when_reply_cancelled_mid_playout(
+    configured_settings: None,
+) -> None:
+    """Bug 3: end_call dispatches and sets agent._call_ended, but the farewell
+    is still playing when the caller says something else (e.g. "bye bye"
+    again), which commits a new turn and cancels the in-flight reply task
+    before it reaches the inline session_ended publish. The signal must
+    still go out from the cancellation path instead of being dropped,
+    otherwise the room never tears down even though end_call already ran.
+    """
+    ctx, registered = _make_ctx()
+    ctx.room.local_participant.publish_data = AsyncMock()
+    mock_session = _make_session_mock()
+
+    playout_started = asyncio.Event()
+    handle = MagicMock()
+
+    async def _wait_for_playout() -> None:
+        playout_started.set()
+        await asyncio.sleep(10)  # only ends via cancellation
+
+    handle.wait_for_playout = _wait_for_playout
+    mock_session.generate_reply = MagicMock(return_value=handle)
+
+    mock_agent = MagicMock()
+    mock_agent._call_ended = True
+    mock_agent._pending_handoff_target = None  # isolate from the #212 flush
+
+    with (
+        patch("taskorbit.worker.build_agent_session", return_value=mock_session),
+        patch("taskorbit.worker.build_default_agent", return_value=mock_agent),
+        patch("taskorbit.worker._DEEPGRAM_FLUSH_DELAY_S", 0),
+    ):
+        await entrypoint(ctx)
+        handler = registered["data_received"]
+
+        # First commit_turn starts the end_call reply; it blocks in
+        # wait_for_playout() while the farewell plays.
+        handler(_data_packet(json.dumps({"type": "commit_turn"}).encode()))
+        await asyncio.wait_for(playout_started.wait(), timeout=1)
+
+        # The caller talks again before the farewell finishes -- this commits
+        # a new turn, cancelling the still-in-flight one from _on_data.
+        handler(_data_packet(json.dumps({"type": "commit_turn"}).encode()))
+        await asyncio.sleep(0.01)
+        await asyncio.sleep(0.01)
+
+        # The second commit_turn's own reply task is still parked in the same
+        # (mocked) wait_for_playout() -- clean it up so it doesn't linger past
+        # the test as a destroyed pending task.
+        lingering = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        for t in lingering:
+            t.cancel()
+        if lingering:
+            await asyncio.gather(*lingering, return_exceptions=True)
+
+    published_types = [
+        json.loads(c.args[0]).get("type")
+        for c in ctx.room.local_participant.publish_data.await_args_list
+    ]
+    assert "session_ended" in published_types
 
 
 # ---------------------------------------------------------------------------
