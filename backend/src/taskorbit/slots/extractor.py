@@ -77,6 +77,7 @@ class SlotExtractor:
         self,
         messages: list[Message],
         required_inputs: list[dict[str, Any]],
+        guidance: str = "",
     ) -> SlotExtractionResult:
         """Run a single extraction pass over *messages* for *required_inputs*.
 
@@ -84,8 +85,14 @@ class SlotExtractor:
         filled and which are still missing.  On any JSON parse failure the
         result marks all required slots as missing so the caller can ask the
         user to repeat the information.
+
+        *guidance* is optional per-tool text (e.g. an external_api tool's
+        description) telling the extractor how to convert what the user said
+        into the exact value a field needs, such as mapping a country to a
+        timezone identifier. It is empty for data-extraction tools, whose
+        extraction stays strictly literal.
         """
-        system_prompt = self._build_extraction_prompt(required_inputs)
+        system_prompt = self._build_extraction_prompt(required_inputs, guidance)
         # Append a trigger message so the last thing the LLM sees is an
         # explicit instruction to output JSON — prevents it from responding
         # conversationally when the last user turn is a question rather than
@@ -103,7 +110,9 @@ class SlotExtractor:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _build_extraction_prompt(self, required_inputs: list[dict[str, Any]]) -> str:
+    def _build_extraction_prompt(
+        self, required_inputs: list[dict[str, Any]], guidance: str = ""
+    ) -> str:
         field_lines = "\n".join(
             f'  - {f["name"]} ({f["type"]}, required={f.get("required", True)})'
             for f in required_inputs
@@ -117,6 +126,22 @@ class SlotExtractor:
             if has_email
             else ""
         )
+        # Optional per-tool guidance lets the extractor convert what the user
+        # said into the exact value a field needs (e.g. a country -> a timezone
+        # identifier). Framed as an explicit exception so the strict "do not
+        # infer" rule below is unchanged for data-extraction tools, which pass
+        # no guidance. Converting information the user actually gave is not the
+        # same as inventing a value, so a field whose underlying detail the
+        # user never provided still stays null.
+        guidance_hint = (
+            "\n- Conversion guidance for these fields: apply the guidance below to "
+            "convert what the user actually said into each field's value. Convert "
+            "only; do NOT choose among multiple valid conversions, and if the user "
+            "has not stated the underlying detail or the correct conversion is "
+            f"ambiguous, keep the field null. Guidance: {guidance.strip()}"
+            if guidance and guidance.strip()
+            else ""
+        )
         return (
             "You are a JSON data extraction function. "
             "Your ONLY output must be a valid JSON object — no prose, no markdown, no conversation.\n\n"
@@ -127,7 +152,7 @@ class SlotExtractor:
             "- Use null for any field not yet provided by the user.\n"
             "- Do NOT infer, guess, or assume values.\n"
             "- Do NOT respond to questions or continue the conversation.\n"
-            f"- Output ONLY the JSON object, nothing else.{email_hint}"
+            f"- Output ONLY the JSON object, nothing else.{email_hint}{guidance_hint}"
         )
 
     def _parse_response(
