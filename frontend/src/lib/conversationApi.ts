@@ -81,6 +81,7 @@ type ConversationRequest = {
   messages: BackendMessage[];
   current_intent_name?: string | null;
   selected_agent?: string | null;
+  active_tool_id?: string | null;
   confirmation_id?: string | null;
   decision?: "confirm" | "reject" | null;
   completed_workflow_steps: string[];
@@ -219,6 +220,26 @@ function adaptTool(
   return { ...base, parameters: {} };
 }
 
+// `adaptTool` derives id as `tool.name || tool.type`. `data_extraction`
+// tools default to an empty name, so two unnamed tools of the same type
+// (or two tools sharing a name) collide on the same id — the backend then
+// can't distinguish them for active-tool selection or slot-extraction
+// grouping, and only the first is ever effectively reachable. Suffix later
+// occurrences to keep ids unique while leaving the first occurrence (the
+// common single-tool-per-type case) unchanged.
+function adaptTools(
+  tools: FrontendTool[],
+  confirmations: ConfirmationsConfig | undefined,
+): BackendTool[] {
+  const seen = new Map<string, number>();
+  return tools.map((tool) => {
+    const adapted = adaptTool(tool, confirmations);
+    const count = seen.get(adapted.id) ?? 0;
+    seen.set(adapted.id, count + 1);
+    return count === 0 ? adapted : { ...adapted, id: `${adapted.id}-${count + 1}` };
+  });
+}
+
 function adaptAgentConfig(agent: AgentConfig): BackendAgentConfig {
   // Map FE provider id to backend LLMProvider enum value.
   // "gemini" → "google", "openrouter" → "openrouter", "ollama" → "ollama", "openai" → "openai".
@@ -238,7 +259,7 @@ function adaptAgentConfig(agent: AgentConfig): BackendAgentConfig {
     stt: { provider: agent.stt.provider, language: "multi", model: agent.stt.model },
     llm: { provider: llmProvider, model: agent.llm.model },
     tts: { provider: agent.tts.provider, voice_id: agent.tts.voice_id, model: agent.tts.model },
-    tools: agent.tools.map((t) => adaptTool(t, agent.confirmations)),
+    tools: adaptTools(agent.tools, agent.confirmations),
     workflow_dependencies: agent.workflow_dependencies,
     allowed_handoffs: agent.allowed_handoffs,
   };
@@ -277,6 +298,7 @@ export async function sendMessage(
   completedWorkflowSteps: string[] = [],
   selectedAgent?: string | null,
   manualTransfer?: ManualTransfer | null,
+  activeToolId?: string | null,
 ): Promise<ConversationResponse> {
   // STEP A: Map transcript -> backend Message[]
   const messages: BackendMessage[] = transcript.map((turn) => ({
@@ -291,6 +313,7 @@ export async function sendMessage(
     messages,
     current_intent_name: lockedIntentName ?? null,
     selected_agent: selectedAgent ?? null,
+    active_tool_id: activeToolId ?? null,
     confirmation_id: confirmationId ?? null,
     decision: decision ?? null,
     completed_workflow_steps: completedWorkflowSteps,
@@ -345,6 +368,7 @@ export async function* sendMessageStream(
   completedWorkflowSteps?: string[],
   selectedAgent?: string | null,
   manualTransfer?: ManualTransfer | null,
+  activeToolId?: string | null,
 ): AsyncGenerator<StreamEvent> {
   const messages: BackendMessage[] = transcript.map((turn) => ({
     role: turn.role === "user" ? "user" : "assistant",
@@ -360,6 +384,7 @@ export async function* sendMessageStream(
     decision: decision ?? null,
     completed_workflow_steps: completedWorkflowSteps ?? [],
     selected_agent: selectedAgent ?? null,
+    active_tool_id: activeToolId ?? null,
     manual_transfer: manualTransfer ?? null,
   };
 

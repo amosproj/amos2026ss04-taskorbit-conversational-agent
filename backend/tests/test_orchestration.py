@@ -1996,6 +1996,96 @@ def test_select_no_tools_returns_none_still() -> None:
     )
 
 
+def _end_call_first_tools():
+    """Tools saved in the order a user would add them in the config UI:
+    end_call added first, then two data_extraction tools (reported bug)."""
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    confirm = ConfirmationConfig(required=False, prompt="")
+    return [
+        ToolDefinition(
+            id="end_call",
+            name="end_call",
+            type=ToolType.END_CALL,
+            description="end",
+            confirmation=confirm,
+            parameters={},
+        ),
+        ToolDefinition(
+            id="collect_contact_info",
+            name="collect_contact_info",
+            type=ToolType.DATA_EXTRACTION,
+            description="collect contact info",
+            confirmation=confirm,
+            parameters={"params": []},
+        ),
+        ToolDefinition(
+            id="collect_order_info",
+            name="collect_order_info",
+            type=ToolType.DATA_EXTRACTION,
+            description="collect order info",
+            confirmation=confirm,
+            parameters={"params": []},
+        ),
+    ]
+
+
+def test_select_skips_end_call_default_when_saved_first() -> None:
+    """An end_call tool saved before data_extraction tools must never win the
+    no-pin default — it would otherwise fire on the very first turn regardless
+    of user intent, and the data_extraction tools would never be reached."""
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool(
+        [],
+        _FakeAgent(_end_call_first_tools()),
+        intent=_intent_for("general_inquiry"),
+        current_agent="general_inquiry",
+    )
+    assert tool is not None
+    assert tool.id == "collect_contact_info"
+
+
+def test_select_skips_end_call_default_without_intent_argument() -> None:
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool([], _FakeAgent(_end_call_first_tools()))
+    assert tool is not None
+    assert tool.id == "collect_contact_info"
+
+
+def test_select_pin_still_reaches_end_call_when_explicitly_targeted() -> None:
+    """The default skips end_call, but an explicit pin (e.g. after the
+    end-call short-circuit or a confirmation round-trip) must still resolve
+    it — the skip only applies to the no-signal fallback."""
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool(
+        [], _FakeAgent(_end_call_first_tools()), active_tool_id="end_call"
+    )
+    assert tool is not None
+    assert tool.id == "end_call"
+
+
+def test_select_falls_back_to_end_call_when_no_workflow_tool_exists() -> None:
+    """An agent with only end_call/agent_transfer tools (no data_extraction or
+    external_api) must still get a tool back, not None."""
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    confirm = ConfirmationConfig(required=False, prompt="")
+    tools = [
+        ToolDefinition(
+            id="end_call",
+            name="end_call",
+            type=ToolType.END_CALL,
+            description="end",
+            confirmation=confirm,
+            parameters={},
+        ),
+    ]
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool([], _FakeAgent(tools))
+    assert tool is not None
+    assert tool.id == "end_call"
+
+
 # ---------------------------------------------------------------------------
 # tool_invoked carries the RESOLVED transfer target (#212)
 # ---------------------------------------------------------------------------
