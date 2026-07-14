@@ -1768,7 +1768,17 @@ class ConversationOrchestrator:
         config carries an agent_transfer tool for that destination, the
         transfer owns the turn (#212 — multi-tool configs otherwise never
         reach tools[1:], because neither client round-trips
-        next_active_tool_id); otherwise the first configured tool.
+        next_active_tool_id); otherwise the first configured *workflow* tool
+        (data_extraction / external_api).
+
+        end_call and agent_transfer are deliberately excluded from that last
+        default: _run_dispatch_step treats either type as "ready to fire the
+        moment it's active" with no slot-filling gate, so defaulting to one
+        of them (e.g. an end_call tool saved before the data_extraction
+        tools) would hang up or transfer the call on the very first turn
+        regardless of what the user said. Those types only become active
+        via an explicit signal — the end-call short-circuit earlier in the
+        pipeline, or the intent-routed agent_transfer match below.
         """
         tools = agent.get_task_definitions()
         if not tools:
@@ -1777,6 +1787,13 @@ class ConversationOrchestrator:
             match = next((t for t in tools if t.id == active_tool_id), None)
             if match:
                 return match
+
+        def default_tool() -> ToolDefinition:
+            workflow_tool = next(
+                (t for t in tools if t.type not in (ToolType.END_CALL, ToolType.AGENT_TRANSFER)),
+                None,
+            )
+            return workflow_tool or tools[0]
 
         if intent is not None and intent.agent_name:
             from taskorbit.tools.agent_transfer import resolve_builtin_transfer_target
@@ -1791,7 +1808,7 @@ class ConversationOrchestrator:
                 else current_agent
             )
             if intent.agent_name == effective_current:
-                return tools[0]
+                return default_tool()
             for tool in tools:
                 if tool.type != ToolType.AGENT_TRANSFER:
                     continue
@@ -1806,7 +1823,7 @@ class ConversationOrchestrator:
                         )
                         return tool
 
-        return tools[0]
+        return default_tool()
 
     async def _call_llm(
         self,
