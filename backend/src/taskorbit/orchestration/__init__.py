@@ -166,6 +166,30 @@ def _external_api_requires_args(tool: ToolDefinition) -> bool:
     return isinstance(required, list) and len(required) > 0
 
 
+def _default_active_tool(tools: list[ToolDefinition]) -> ToolDefinition | None:
+    """Pick the safe default active tool when nothing else selected one.
+
+    Used by _select_active_tool's fallback paths (no active_tool_id pin, and
+    either no intent signal at all or intent explicitly says "stay with the
+    current agent"). END_CALL and AGENT_TRANSFER tools are excluded: both are
+    "ready" without any slot data (no_slots_tool_ready in
+    _run_dispatch_step), so picking one just because it happens to be listed
+    first can trigger a confirmation prompt for an action the caller never
+    asked for, before they've said anything relevant (#143 gap 2 — reported
+    2026-07-05, unfixed until now). Both types already have their own
+    deliberate selection path instead: end_call via the
+    _user_requested_end_call keyword shortcut (checked before intent
+    detection even runs), agent_transfer via the intent-target-match loop in
+    _select_active_tool itself. Falls back to None (no active tool this
+    turn) if the config has no data_extraction/external_api tool to default
+    to safely.
+    """
+    for tool in tools:
+        if tool.type not in (ToolType.END_CALL, ToolType.AGENT_TRANSFER):
+            return tool
+    return None
+
+
 def _build_pipeline_latency_ms(
     *,
     llm_elapsed: float | None = None,
@@ -2001,7 +2025,8 @@ class ConversationOrchestrator:
         config carries an agent_transfer tool for that destination, the
         transfer owns the turn (#212 — multi-tool configs otherwise never
         reach tools[1:], because neither client round-trips
-        next_active_tool_id); otherwise the first configured tool.
+        next_active_tool_id); otherwise the first configured tool that isn't
+        END_CALL/AGENT_TRANSFER (#143 gap 2 — see _default_active_tool).
         """
         tools = agent.get_task_definitions()
         if not tools:
@@ -2024,7 +2049,7 @@ class ConversationOrchestrator:
                 else current_agent
             )
             if intent.agent_name == effective_current:
-                return tools[0]
+                return _default_active_tool(tools)
             for tool in tools:
                 if tool.type != ToolType.AGENT_TRANSFER:
                     continue
@@ -2039,7 +2064,7 @@ class ConversationOrchestrator:
                         )
                         return tool
 
-        return tools[0]
+        return _default_active_tool(tools)
 
     async def _call_llm(
         self,

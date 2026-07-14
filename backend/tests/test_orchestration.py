@@ -2012,6 +2012,124 @@ def test_select_no_tools_returns_none_still() -> None:
 
 
 # ---------------------------------------------------------------------------
+# _select_active_tool — skip END_CALL/AGENT_TRANSFER in the default fallback
+# (#143 gap 2, reported 2026-07-05): both are "ready" without any slot data
+# (no_slots_tool_ready in _run_dispatch_step), so picking one just because it
+# happens to be listed first can trigger a confirmation prompt for an action
+# the caller never asked for, before they've said anything relevant.
+# ---------------------------------------------------------------------------
+
+
+def _tools_led_by(*, first: str, confirm_first: bool = True):
+    """Same three tools as _john_max_tools(), reordered so `first` (either
+    "end_call" or "transfer") is listed before collect_user_info."""
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    confirm_yes = ConfirmationConfig(required=True, prompt="")
+    confirm_no = ConfirmationConfig(required=False, prompt="")
+    data_extraction = ToolDefinition(
+        id="collect_user_info",
+        name="collect_user_info",
+        type=ToolType.DATA_EXTRACTION,
+        description="collect",
+        confirmation=confirm_no,
+        parameters={"params": []},
+    )
+    end_call = ToolDefinition(
+        id="end_call",
+        name="end_call",
+        type=ToolType.END_CALL,
+        description="end",
+        confirmation=confirm_yes if confirm_first else confirm_no,
+        parameters={},
+    )
+    transfer = ToolDefinition(
+        id="transfer_to_inquiry_agent",
+        name="transfer_to_inquiry_agent",
+        type=ToolType.AGENT_TRANSFER,
+        description="hand off",
+        confirmation=confirm_yes if confirm_first else confirm_no,
+        parameters={"targets": ["inquiry-agent"]},
+    )
+    lead = {"end_call": end_call, "transfer": transfer}[first]
+    return [lead, data_extraction]
+
+
+def test_select_skips_end_call_listed_first_without_intent() -> None:
+    """The bug scenario: no active_tool_id pin, no intent -- the final
+    catch-all fallback must not hand back a confirmation-required end_call
+    just because it's tools[0]; it should skip to collect_user_info."""
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool([], _FakeAgent(_tools_led_by(first="end_call")))
+    assert tool is not None
+    assert tool.id == "collect_user_info"
+
+
+def test_select_skips_agent_transfer_listed_first_without_intent() -> None:
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool([], _FakeAgent(_tools_led_by(first="transfer")))
+    assert tool is not None
+    assert tool.id == "collect_user_info"
+
+
+def test_select_skips_end_call_listed_first_when_intent_matches_current_agent() -> None:
+    """Same bug, via the OTHER tools[0] fallback branch (intent explicitly
+    says "stay with the current agent" -- not the pure no-intent case)."""
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool(
+        [],
+        _FakeAgent(_tools_led_by(first="end_call")),
+        intent=_intent_for("general_inquiry"),
+        current_agent="general_inquiry",
+    )
+    assert tool is not None
+    assert tool.id == "collect_user_info"
+
+
+def test_select_returns_none_when_only_end_call_and_transfer_configured() -> None:
+    """No safe default exists (no data_extraction/external_api tool at all)
+    -- must return None rather than positionally pick a dangerous tool."""
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    confirm = ConfirmationConfig(required=True, prompt="")
+    tools = [
+        ToolDefinition(
+            id="end_call",
+            name="end_call",
+            type=ToolType.END_CALL,
+            description="end",
+            confirmation=confirm,
+            parameters={},
+        ),
+        ToolDefinition(
+            id="transfer",
+            name="transfer",
+            type=ToolType.AGENT_TRANSFER,
+            description="hand off",
+            confirmation=confirm,
+            parameters={"targets": ["inquiry-agent"]},
+        ),
+    ]
+    orch = ConversationOrchestrator()
+    assert orch._select_active_tool([], _FakeAgent(tools)) is None
+
+
+def test_select_transfer_tool_still_selected_via_explicit_intent_match() -> None:
+    """The fix must not break the legitimate path: an agent_transfer tool
+    IS still selected when intent explicitly routes to its target, even
+    though it's listed first and requires confirmation."""
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool(
+        [],
+        _FakeAgent(_tools_led_by(first="transfer")),
+        intent=_intent_for("general_inquiry"),
+        current_agent="demoday",
+    )
+    assert tool is not None
+    assert tool.id == "transfer_to_inquiry_agent"
+
+
+# ---------------------------------------------------------------------------
 # tool_invoked carries the RESOLVED transfer target (#212)
 # ---------------------------------------------------------------------------
 
