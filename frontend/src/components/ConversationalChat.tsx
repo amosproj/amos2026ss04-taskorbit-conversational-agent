@@ -146,6 +146,11 @@ export function ConversationalChat() {
   const lastUserTurnIdRef = useRef<string | null>(null);
   const lockedIntentRef = useRef<string | null>(null);
   const pendingConfirmationIdRef = useRef<string | null>(null);
+  // Pins the multi-tool config to the tool the backend wants next
+  // (ConversationResponse.next_active_tool_id). Without round-tripping this,
+  // _select_active_tool always falls back to tools[0] and tools[1:] are
+  // never reached once tools[0] has fired (#212).
+  const activeToolIdRef = useRef<string | null>(null);
   const [completedWorkflowSteps, setCompletedWorkflowSteps] = useState<string[]>([]);
   const routedAgentRef = useRef<string | null>(null);
   const completedWorkflowStepsRef = useRef<string[]>([]);
@@ -388,6 +393,7 @@ export function ConversationalChat() {
         setRoutedAgent(null);
         setCompletedWorkflowSteps([]);
         pendingConfirmationIdRef.current = null;
+        activeToolIdRef.current = null;
         convId = call.start({
           tokenMetadata: buildLiveKitWorkerMetadata(agent),
           greeting: agent.first_message.message || undefined,
@@ -417,6 +423,7 @@ export function ConversationalChat() {
             completedWorkflowStepsRef.current,
             routedAgentRef.current,
             manualTransfer ?? null,
+            activeToolIdRef.current,
           );
 
           for await (const event of stream) {
@@ -434,6 +441,7 @@ export function ConversationalChat() {
               if (event.locked_intent_name) {
                 lockedIntentRef.current = event.locked_intent_name;
               }
+              activeToolIdRef.current = event.next_active_tool_id ?? null;
               setCompletedWorkflowSteps(event.completed_workflow_steps ?? []);
 
               if (!manualTransfer && event.selected_agent) {
@@ -485,6 +493,9 @@ export function ConversationalChat() {
                   if (match) {
                     const next = backendToFrontendAgent(match);
                     setActiveAgent(next, `ua:${match.template_id ?? match.id}`);
+                    // Tool ids are scoped per agent config; a pin from the
+                    // previous agent must not leak into the new one's tool list.
+                    activeToolIdRef.current = null;
                   } else {
                     call.appendAssistantTurn(
                       `[Could not transfer to ${manualTransfer.target_agent_name}]`,
@@ -686,11 +697,14 @@ export function ConversationalChat() {
             decision,
             completedWorkflowStepsRef.current,
             routedAgentRef.current,
+            undefined,
+            activeToolIdRef.current,
           );
           call.updateConversationId(response.conversation_id);
           if (response.locked_intent_name) {
             lockedIntentRef.current = response.locked_intent_name;
           }
+          activeToolIdRef.current = response.next_active_tool_id ?? null;
           setCompletedWorkflowSteps(response.completed_workflow_steps ?? []);
 
           if (response.selected_agent) {
