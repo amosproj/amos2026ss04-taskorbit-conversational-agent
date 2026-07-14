@@ -32,7 +32,7 @@ Component benchmarking compares **STT / LLM / TTS** pipeline configurations on:
 | Voice-path STT/TTS timing | ✅ Done |
 | Tool reliability layer | ✅ Done |
 | Aggregation + recommendation | ✅ Done |
-| **GPC standardized run** | **✅ Completed** |
+| **GPC standardized run** | **✅ Completed (2026-07-14)** |
 | **Wiki results table** | **✅ Filled below** |
 | Merge to `main` + PO sign-off | ✅ Merged (#184) |
 
@@ -55,8 +55,8 @@ Ollama runs on a team GCE VM at `http://35.231.129.211:11434/`. Before timed run
 
 | | |
 |---|---|
-| **Date** | 2026-07-01 |
-| **Environment** | Local backend (`localhost:8000`) + Ollama GCE VM |
+| **Date** | 2026-07-14 |
+| **Environment** | Cloud Run Backend API + Ollama GCE VM |
 | **Repetitions** | 1 per config/path |
 | **Path** | text + voice |
 | **Row accounting** | 2 configs × 2 paths × 12 turn-level rows = 48 |
@@ -67,43 +67,43 @@ Ollama runs on a team GCE VM at `http://35.231.129.211:11434/`. Before timed run
 
 | Config | Avg total text (ms) | Avg total voice (ms) | Reliability |
 |--------|---------------------|----------------------|-------------|
-| `oss-ollama-gemma4-deepgram` | **4,682** | **4,658** | **91.7%** ★ |
-| `oss-ollama-qwen3-deepgram` | 4,851 | 4,983 | 91.7% |
+| `oss-ollama-gemma4-deepgram` | **4,508** | **5,477** | **91.7%** ★ |
+| `oss-ollama-qwen3-deepgram` | 4,596 | 7,694 | 91.7% |
 
 **Recommended default:** `oss-ollama-gemma4-deepgram`  
-**Reason:** Lowest avg total latency (text: 4,682 ms, voice: 4,658 ms); reliability tied at 91.7%.
+**Reason:** Lowest avg total latency (text: 4,508 ms, voice: 5,477 ms); reliability tied at 91.7%.
 
 #### Per-stage averages (text)
 
 | Config | llm_call (ms) | tool_call (ms) | total (ms) |
 |--------|---------------|----------------|------------|
-| `oss-ollama-gemma4-deepgram` | 1,607 | 0.1 | 4,682 |
-| `oss-ollama-qwen3-deepgram` | 1,761 | 0.2 | 4,851 |
+| `oss-ollama-gemma4-deepgram` | 1,555 | 0.0 | 4,508 |
+| `oss-ollama-qwen3-deepgram` | 1,691 | 0.0 | 4,596 |
 
 #### Per-stage averages (voice)
 
 | Config | STT (ms) | llm_call (ms) | tool_call (ms) | TTS (ms) | total (ms) |
 |--------|----------|---------------|----------------|----------|------------|
-| `oss-ollama-gemma4-deepgram` | N/A | 1,569 | 1.0 | N/A | 4,658 |
-| `oss-ollama-qwen3-deepgram` | N/A | 1,908 | 0.1 | N/A | 4,983 |
+| `oss-ollama-gemma4-deepgram` | 1,445 | 1,512 | 0.0 | 2,646 | 5,477 |
+| `oss-ollama-qwen3-deepgram` | 1,898 | 1,899 | 0.0 | 4,054 | 7,694 |
 
 #### Latency by category (text)
 
 | Category | gemma4 (ms) | qwen3.5 (ms) |
 |----------|-------------|--------------|
-| `short_no_tool` | 3,275 | 3,358 |
-| `short_with_tool` | 4,480 | 4,676 |
-| `long_no_tool` | 4,864 | 5,045 |
-| `long_with_tool` | 5,175 | 5,366 |
+| `short_no_tool` | 3,086 | 3,286 |
+| `short_with_tool` | 4,597 | 4,628 |
+| `long_no_tool` | 4,666 | 4,650 |
+| `long_with_tool` | 4,965 | 5,082 |
 
 #### Latency by category (voice)
 
 | Category | gemma4 (ms) | qwen3.5 (ms) |
 |----------|-------------|--------------|
-| `short_no_tool` | 3,185 | 3,377 |
-| `short_with_tool` | 4,473 | 4,170 |
-| `long_no_tool` | 4,741 | 5,402 |
-| `long_with_tool` | 5,235 | 5,537 |
+| `short_no_tool` | 7,284 | 7,208 |
+| `short_with_tool` | 4,380 | 6,217 |
+| `long_no_tool` | 5,942 | 8,864 |
+| `long_with_tool` | 4,915 | 7,778 |
 
 #### Reliability by category
 
@@ -121,9 +121,9 @@ Both models show the same reliability pattern: 100% on all categories except `lo
 ## Results file
 
 ```
-benchmarks/results/gpc-run-20260702T004141/
+benchmarks/results/gpc-20260714T192935/
 ├── component/
-│   └── 2026-07-01T22-41-41_component_benchmark.jsonl    # raw 48 rows
+│   └── 2026-07-14T19-29-36_component_benchmark.jsonl    # raw 48 rows
 ├── component-benchmark-report.txt    # full text report
 ├── index.csv                         # per-config/path summary
 ├── benchmark-summary.csv             # Excel-friendly export
@@ -154,7 +154,7 @@ benchmarks/results/gpc-run-20260702T004141/
 
 | Date | Change |
 |------|--------|
-| 2026-07-01 | GPC standardized run completed — 48/48 success (gemma4:26b vs qwen3.5:9b, text+voice) |
+| 2026-07-14 | GPC standardized run completed on Production API — 48/48 success (gemma4:26b vs qwen3.5:9b, text+voice) |
 | 2026-07-01 | Ollama VRAM warmup + 30s buffer before timed benchmark runs |
 | 2026-07-01 | Voice path restored in standard config |
 | 2026-06-30 | Initial implementation; text smoke run (failed — OpenAI 429/Ollama timeouts) |

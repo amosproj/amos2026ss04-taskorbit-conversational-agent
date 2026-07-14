@@ -65,6 +65,23 @@ function adaptTool(
   return { ...base, parameters: {} };
 }
 
+// Mirrors the same fix in conversationApi.ts: `data_extraction` tools
+// default to an empty name, so unnamed tools of the same type collide on
+// `id: tool.name || tool.type`. Suffix later occurrences so the voice
+// worker can tell tools apart too.
+function adaptTools(
+  tools: FrontendTool[],
+  confirmations: ConfirmationsConfig | undefined,
+): BackendTool[] {
+  const seen = new Map<string, number>();
+  return tools.map((tool) => {
+    const adapted = adaptTool(tool, confirmations);
+    const count = seen.get(adapted.id) ?? 0;
+    seen.set(adapted.id, count + 1);
+    return count === 0 ? adapted : { ...adapted, id: `${adapted.id}-${count + 1}` };
+  });
+}
+
 export function buildLiveKitWorkerMetadata(agent: AgentConfig): Record<string, unknown> {
   const llmProvider =
     agent.llm.provider === "gemini"
@@ -96,7 +113,7 @@ export function buildLiveKitWorkerMetadata(agent: AgentConfig): Record<string, u
       voice_id: agent.tts.voice_id,
       model: agent.tts.model,
     },
-    tools: agent.tools.map((t) => adaptTool(t, agent.confirmations)),
+    tools: adaptTools(agent.tools, agent.confirmations),
     persona_constraints: agent.persona_constraints ?? null,
     workflow_dependencies: agent.workflow_dependencies ?? [],
     allowed_handoffs: agent.allowed_handoffs ?? [],

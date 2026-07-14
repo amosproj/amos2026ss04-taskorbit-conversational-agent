@@ -337,6 +337,57 @@ def substitute_tree(value: Any, args: dict[str, Any], allowed_env: frozenset[str
     return value
 
 
+def _iter_template_strings(value: Any) -> Any:
+    """Yield every string that substitution would touch inside ``value``.
+
+    Mirrors ``substitute_tree``: strings are yielded; dicts/lists are walked
+    over their values/items; other scalars are ignored. Dict KEYS are not
+    yielded because substitution never touches them.
+    """
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for v in value.values():
+            yield from _iter_template_strings(v)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _iter_template_strings(item)
+
+
+def extract_arg_names(parameters: dict[str, Any]) -> list[str]:
+    """Return the top-level ``{{args.X}}`` names referenced by a tool's request.
+
+    Scans the substitutable surface (URL, header values, query values, body)
+    for ``args`` template references and returns each distinct top-level name
+    in first-seen order. ``{{args.user.id}}`` contributes ``user``. ``env``
+    references are ignored. This is the ground-truth list of inputs a tool
+    needs, independent of whatever ``args_schema`` may or may not declare, so
+    the orchestrator can collect exactly those inputs before dispatch.
+    """
+    request = parameters.get("request") if isinstance(parameters, dict) else None
+    if not isinstance(request, dict):
+        return []
+
+    texts: list[str] = []
+    url = request.get("url")
+    if isinstance(url, str):
+        texts.append(url)
+    for section in ("headers", "query"):
+        values = request.get(section)
+        if isinstance(values, dict):
+            texts.extend(v for v in _iter_template_strings(values))
+    texts.extend(v for v in _iter_template_strings(request.get("body")))
+
+    names: list[str] = []
+    for text in texts:
+        for match in _TEMPLATE_PATTERN.finditer(text):
+            if match.group(1) == "args":
+                top = match.group(2).split(".")[0]
+                if top not in names:
+                    names.append(top)
+    return names
+
+
 # ---------------------------------------------------------------------------
 # Response extraction (dot-path)
 # ---------------------------------------------------------------------------

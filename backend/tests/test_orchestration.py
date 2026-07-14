@@ -552,10 +552,12 @@ async def test_external_api_dispatch_passes_full_config_plus_args() -> None:
 
 
 def test_external_api_requires_args_helper() -> None:
-    """Helper returns True only for EXTERNAL_API tools whose args_schema
-    declares a non-empty ``required`` list. Everything else, including
-    other tool types and empty/missing required lists, returns False."""
-    from taskorbit.orchestration import _external_api_requires_args
+    """The helper keys off the actual {{args.X}} template refs in the request,
+    not args_schema. A tool that templates an arg into its request needs that
+    input collected first; a tool with no refs (or a non-external tool) can
+    dispatch immediately. args_schema is intentionally irrelevant so tools work
+    even when it was never filled in."""
+    from taskorbit.orchestration import _external_api_arg_names, _external_api_requires_args
     from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
 
     def _mk(tool_type: ToolType, params: dict[str, Any] | None) -> ToolDefinition:
@@ -568,24 +570,284 @@ def test_external_api_requires_args_helper() -> None:
             parameters=params or {},
         )
 
-    with_required = _mk(
+    with_ref = _mk(
         ToolType.EXTERNAL_API,
-        {"args_schema": {"type": "object", "required": ["city"], "properties": {}}},
+        {"request": {"method": "GET", "url": "https://x", "query": {"tz": "{{args.timeZone}}"}}},
     )
-    empty_required = _mk(
+    no_ref = _mk(
         ToolType.EXTERNAL_API,
-        {"args_schema": {"type": "object", "required": [], "properties": {}}},
+        {"request": {"method": "GET", "url": "https://x?tz=Europe/Berlin"}},
     )
-    no_schema = _mk(ToolType.EXTERNAL_API, {})
-    non_api = _mk(
-        ToolType.DATA_EXTRACTION,
-        {"args_schema": {"type": "object", "required": ["x"], "properties": {}}},
+    # A populated args_schema with no matching template ref still needs nothing.
+    schema_only = _mk(
+        ToolType.EXTERNAL_API,
+        {"request": {"method": "GET", "url": "https://x"}, "args_schema": {"required": ["city"]}},
+    )
+    non_api = _mk(ToolType.DATA_EXTRACTION, {"request": {"url": "{{args.x}}"}})
+
+    assert _external_api_requires_args(with_ref) is True
+    assert _external_api_requires_args(no_ref) is False
+    assert _external_api_requires_args(schema_only) is False
+    assert _external_api_requires_args(non_api) is False
+    assert _external_api_arg_names(with_ref) == ["timeZone"]
+    assert _external_api_arg_names(no_ref) == []
+
+
+@pytest.mark.asyncio
+async def test_external_api_arg_extracted_and_dispatched() -> None:
+    """An external_api tool that templates {{args.X}} gets X collected via slot
+    extraction (with the tool description passed as guidance) and dispatched
+    with the extracted value, even when the intent router produced no inputs."""
+    from taskorbit.slots.models import SlotExtractionResult, SlotValue
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    orch = ConversationOrchestrator()
+    intent = _intent_result(required_inputs=[])
+    tool = ToolDefinition(
+        id="get_time",
+        name="get_current_time",
+        type=ToolType.EXTERNAL_API,
+        description="Convert the location the user gives into an IANA timezone.",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={
+            "request": {"method": "GET", "url": "https://x", "query": {"tz": "{{args.timeZone}}"}},
+            "args_schema": {"type": "object", "properties": {}},
+        },
+    )
+    slot_result = SlotExtractionResult(
+        filled={"timeZone": SlotValue(name="timeZone", value="Europe/Berlin", slot_type="string")},
+        missing=[],
     )
 
-    assert _external_api_requires_args(with_required) is True
-    assert _external_api_requires_args(empty_required) is False
-    assert _external_api_requires_args(no_schema) is False
-    assert _external_api_requires_args(non_api) is False
+    captured: list[tuple[list[dict[str, Any]], str]] = []
+
+    async def _fake_extract(
+        _self: ConversationOrchestrator,
+        _messages: Any,
+        required_inputs: list[dict[str, Any]],
+        _llm_config: Any,
+        guidance: str = "",
+        **kwargs: Any,
+    ) -> SlotExtractionResult:
+        captured.append((required_inputs, guidance))
+        return slot_result
+
+    dispatch_calls: list[dict[str, Any]] = []
+
+    async def _fake_dispatch(
+        _self: ConversationOrchestrator,
+        _tool: ToolDefinition,
+        ctx: dict[str, Any],
+        **_kwargs: Any,
+    ) -> tuple[dict[str, Any], float]:
+        dispatch_calls.append(ctx)
+        return {"status": 200, "data": {"dateTime": "2026-07-14"}}, 0.0
+
+    with (
+        patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
+        patch.object(ConversationOrchestrator, "_select_active_tool", return_value=tool),
+        patch.object(ConversationOrchestrator, "_extract_slots", new=_fake_extract),
+        patch.object(ConversationOrchestrator, "_dispatch_tool", new=_fake_dispatch),
+        patch.object(
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+        ),
+    ):
+        response = await orch.process_message(_make_request("I'm in Germany"))
+
+    # The tool's {{args.timeZone}} ref was wired into the extraction inputs...
+    assert captured[0][0] == [{"name": "timeZone", "type": "string", "required": True}]
+    # ...and the tool description was passed as conversion guidance.
+    assert "IANA timezone" in captured[0][1]
+    # ...and dispatch received the extracted arg value.
+    assert response.tool_invoked is not None
+    assert response.tool_invoked.type == ToolType.EXTERNAL_API
+    assert dispatch_calls[0]["args"] == {"timeZone": "Europe/Berlin"}
+
+
+@pytest.mark.asyncio
+async def test_no_arg_external_api_active_does_not_leak_guidance() -> None:
+    """A no-arg external_api tool that merely happens to be the active tool must
+    NOT pass its description as conversion guidance: unrelated intent-driven
+    fields (booking name/email/...) stay strictly literal, as before."""
+    from taskorbit.slots.models import SlotExtractionResult
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    orch = ConversationOrchestrator()
+    intent = _intent_result(
+        required_inputs=[{"name": "caller_name", "type": "string", "required": True}]
+    )
+    tool = ToolDefinition(
+        id="get_time",
+        name="get_current_time",
+        type=ToolType.EXTERNAL_API,
+        description="Returns the current time in Europe/Berlin.",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={"request": {"method": "GET", "url": "https://x?tz=Europe/Berlin"}},
+    )
+
+    captured_guidance: list[str] = []
+
+    async def _fake_extract(
+        _self: ConversationOrchestrator,
+        _messages: Any,
+        _required_inputs: list[dict[str, Any]],
+        _llm_config: Any,
+        guidance: str = "",
+        **kwargs: Any,
+    ) -> SlotExtractionResult:
+        captured_guidance.append(guidance)
+        return SlotExtractionResult(filled={}, missing=["caller_name"])
+
+    async def _fake_dispatch(
+        _self: ConversationOrchestrator,
+        _tool: ToolDefinition,
+        _ctx: dict[str, Any],
+        **_kwargs: Any,
+    ) -> tuple[dict[str, Any], float]:
+        return {"status": 200, "data": {}}, 0.0
+
+    with (
+        patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
+        patch.object(ConversationOrchestrator, "_select_active_tool", return_value=tool),
+        patch.object(ConversationOrchestrator, "_extract_slots", new=_fake_extract),
+        patch.object(ConversationOrchestrator, "_dispatch_tool", new=_fake_dispatch),
+        patch.object(
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+        ),
+    ):
+        await orch.process_message(_make_request("My name is John"))
+
+    # No {{args}} refs on the tool => no guidance leaked into the booking fields.
+    assert captured_guidance == [""]
+
+
+def test_build_system_prompt_tool_failure_instructs_honesty() -> None:
+    """When a tool failed, the prompt must tell the model to report the failure
+    and NOT fabricate, and must NOT include the 'use this concrete data' block."""
+    from taskorbit.types import AgentConfig as _AC
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    orch = ConversationOrchestrator()
+    config = _AC(id="a", name="a", persona="p", greeting="g")
+    tool = ToolDefinition(
+        id="t",
+        name="get_time",
+        type=ToolType.EXTERNAL_API,
+        description="d",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={},
+    )
+    prompt = orch._build_system_prompt(
+        config,
+        tool,
+        None,
+        routed_agent=None,
+        tool_data={"tool_failed": True, "tool_failed_message": "Invalid Timezone"},
+    )
+    assert "FAILED" in prompt
+    assert "Invalid Timezone" in prompt
+    assert "Do NOT invent" in prompt
+    assert "use this concrete data" not in prompt
+
+
+@pytest.mark.asyncio
+async def test_dispatch_tool_marks_failure_instead_of_empty() -> None:
+    """A failed tool result is now a marked dict (so the LLM is told it failed),
+    not the old silent {} that led the model to fabricate an answer."""
+    from taskorbit.tools import ToolResult
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    orch = ConversationOrchestrator()
+    tool = ToolDefinition(
+        id="t",
+        name="get",
+        type=ToolType.EXTERNAL_API,
+        description="d",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={},
+    )
+    with patch(
+        "taskorbit.tools.generic_api.GenericApiTool.execute",
+        new_callable=AsyncMock,
+        return_value=ToolResult(
+            success=False,
+            data={"error_code": "HTTP_4XX", "error_message": "The external service rejected it."},
+            error="HTTP_4XX: rejected",
+        ),
+    ):
+        data, _elapsed = await orch._dispatch_tool(tool, {})
+
+    assert data.get("tool_failed") is True
+    assert "rejected" in data.get("tool_failed_message", "")
+
+
+@pytest.mark.asyncio
+async def test_failed_external_api_tool_makes_agent_report_not_fabricate() -> None:
+    """End to end: when the external_api dispatch fails, the LLM prompt carries
+    the failure instruction (not a success data block) and the failed tool is
+    not reported as invoked."""
+    from taskorbit.slots.models import SlotExtractionResult, SlotValue
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    orch = ConversationOrchestrator()
+    intent = _intent_result(required_inputs=[])
+    tool = ToolDefinition(
+        id="get_time",
+        name="get_current_time",
+        type=ToolType.EXTERNAL_API,
+        description="Convert the location to an IANA timezone.",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={
+            "request": {"method": "GET", "url": "https://x", "query": {"tz": "{{args.timeZone}}"}},
+            "args_schema": {"type": "object", "properties": {}},
+        },
+    )
+    slot_result = SlotExtractionResult(
+        filled={"timeZone": SlotValue(name="timeZone", value="Germany", slot_type="string")},
+        missing=[],
+    )
+
+    async def _fake_extract(
+        _self: ConversationOrchestrator,
+        _messages: Any,
+        _required_inputs: list[dict[str, Any]],
+        _llm_config: Any,
+        guidance: str = "",
+        **kwargs: Any,
+    ) -> SlotExtractionResult:
+        return slot_result
+
+    async def _fake_dispatch(
+        _self: ConversationOrchestrator,
+        _tool: ToolDefinition,
+        _ctx: dict[str, Any],
+        **_kwargs: Any,
+    ) -> tuple[dict[str, Any], float]:
+        return {"tool_failed": True, "tool_failed_message": "Invalid Timezone"}, 0.0
+
+    seen_prompts: list[str] = []
+
+    async def _capture_llm(
+        _self: ConversationOrchestrator, system_prompt: str, *_a: Any, **_kw: Any
+    ) -> str:
+        seen_prompts.append(system_prompt)
+        return "Sorry, I couldn't get the time just now."
+
+    with (
+        patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
+        patch.object(ConversationOrchestrator, "_select_active_tool", return_value=tool),
+        patch.object(ConversationOrchestrator, "_extract_slots", new=_fake_extract),
+        patch.object(ConversationOrchestrator, "_dispatch_tool", new=_fake_dispatch),
+        patch.object(ConversationOrchestrator, "_call_llm", new=_capture_llm),
+    ):
+        response = await orch.process_message(_make_request("I'm in Germany"))
+
+    assert len(seen_prompts) == 1
+    assert "FAILED" in seen_prompts[0]
+    assert "Do NOT invent" in seen_prompts[0]
+    assert "use this concrete data" not in seen_prompts[0]
+    # A failed tool is not reported as invoked (behaviour unchanged).
+    assert response.tool_invoked is None
 
 
 def test_build_system_prompt_injects_tool_data() -> None:
@@ -2009,6 +2271,95 @@ def test_select_no_tools_returns_none_still() -> None:
         )
         is None
     )
+
+
+def _end_call_first_tools():
+    """Tools saved in the order a user would add them in the config UI:
+    end_call added first, then two data_extraction tools (reported bug)."""
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    confirm = ConfirmationConfig(required=False, prompt="")
+    return [
+        ToolDefinition(
+            id="end_call",
+            name="end_call",
+            type=ToolType.END_CALL,
+            description="end",
+            confirmation=confirm,
+            parameters={},
+        ),
+        ToolDefinition(
+            id="collect_contact_info",
+            name="collect_contact_info",
+            type=ToolType.DATA_EXTRACTION,
+            description="collect contact info",
+            confirmation=confirm,
+            parameters={"params": []},
+        ),
+        ToolDefinition(
+            id="collect_order_info",
+            name="collect_order_info",
+            type=ToolType.DATA_EXTRACTION,
+            description="collect order info",
+            confirmation=confirm,
+            parameters={"params": []},
+        ),
+    ]
+
+
+def test_select_skips_end_call_default_when_saved_first() -> None:
+    """An end_call tool saved before data_extraction tools must never win the
+    no-pin default — it would otherwise fire on the very first turn regardless
+    of user intent, and the data_extraction tools would never be reached."""
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool(
+        [],
+        _FakeAgent(_end_call_first_tools()),
+        intent=_intent_for("general_inquiry"),
+        current_agent="general_inquiry",
+    )
+    assert tool is not None
+    assert tool.id == "collect_contact_info"
+
+
+def test_select_skips_end_call_default_without_intent_argument() -> None:
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool([], _FakeAgent(_end_call_first_tools()))
+    assert tool is not None
+    assert tool.id == "collect_contact_info"
+
+
+def test_select_pin_still_reaches_end_call_when_explicitly_targeted() -> None:
+    """The default skips end_call, but an explicit pin (e.g. after the
+    end-call short-circuit or a confirmation round-trip) must still resolve
+    it — the skip only applies to the no-signal fallback."""
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool(
+        [], _FakeAgent(_end_call_first_tools()), active_tool_id="end_call"
+    )
+    assert tool is not None
+    assert tool.id == "end_call"
+
+
+def test_select_returns_none_when_no_workflow_tool_exists() -> None:
+    """An agent with only end_call/agent_transfer tools (no data_extraction or
+    external_api) must return None, not an unsafe default."""
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    confirm = ConfirmationConfig(required=False, prompt="")
+    tools = [
+        ToolDefinition(
+            id="end_call",
+            name="end_call",
+            type=ToolType.END_CALL,
+            description="end",
+            confirmation=confirm,
+            parameters={},
+        ),
+    ]
+    orch = ConversationOrchestrator()
+    tool = orch._select_active_tool([], _FakeAgent(tools))
+    assert tool is None
 
 
 # ---------------------------------------------------------------------------

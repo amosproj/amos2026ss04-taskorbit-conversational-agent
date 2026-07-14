@@ -556,6 +556,7 @@ class TestSlotExtractorEmailNormalization:
             [{"name": "email_address", "type": "email", "required": True}],
         )
         assert "email_address" not in result.filled
+        assert "email_address" in result.missing
 
 
 # ============ TESTS FOR CROSS-TURN SLOT ACCUMULATION (#226) ============
@@ -733,3 +734,27 @@ class TestSlotAccumulationAcrossTurns:
 
         assert result.filled["full_name"].value == "Alice"
         assert result.missing == ["email"]
+
+
+@pytest.mark.asyncio
+async def test_guidance_scoped_to_when_present():
+    """Guidance adds an explicit conversion exception to the prompt; without it
+    (data-extraction tools) the prompt keeps its strict no-infer rule unchanged."""
+    captured: dict[str, str] = {}
+
+    async def capture_llm(system_prompt: str, messages, llm_config) -> str:
+        captured["prompt"] = system_prompt
+        return '{"timeZone": "Europe/Berlin"}'
+
+    cfg = LLMConfig(provider="openai", model="gpt-4o-mini")
+    ext = SlotExtractor(llm_fn=capture_llm, llm_config=cfg)
+    msgs = [Message(role=MessageRole.USER, content="I'm in Germany")]
+    inputs = [{"name": "timeZone", "type": "string", "required": True}]
+
+    await ext.extract(msgs, inputs, guidance="Convert the country to an IANA timezone.")
+    assert "Convert the country to an IANA timezone." in captured["prompt"]
+    assert "Conversion guidance for these fields" in captured["prompt"]
+
+    await ext.extract(msgs, inputs)
+    assert "Conversion guidance for these fields" not in captured["prompt"]
+    assert "Do NOT infer, guess, or assume values." in captured["prompt"]

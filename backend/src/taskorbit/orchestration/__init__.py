@@ -148,22 +148,32 @@ def _seconds_to_ms(seconds: float | None) -> float | None:
     return round(seconds * 1000, 1) if seconds is not None else None
 
 
-def _external_api_requires_args(tool: ToolDefinition) -> bool:
-    """Return True when an external_api tool's args_schema has required fields.
+def _external_api_arg_names(tool: ToolDefinition) -> list[str]:
+    """Top-level ``{{args.X}}`` names an external_api tool references.
 
-    A "read" tool with no required inputs (e.g. GET current time) can dispatch
-    immediately without any slot-extraction round-trip. A tool that DOES take
-    args (e.g. POST create-user with required fields) still needs its inputs
-    collected, so it goes through the normal slots_ready path.
+    Read from the actual template refs in the request config (URL, headers,
+    query, body), so it is correct even when ``args_schema`` was never filled
+    in (the common case for tools built before the config UI auto-derived it).
     """
     if tool.type != ToolType.EXTERNAL_API:
-        return False
-    params = tool.parameters or {}
-    args_schema = params.get("args_schema") if isinstance(params, dict) else None
-    if not isinstance(args_schema, dict):
-        return False
-    required = args_schema.get("required")
-    return isinstance(required, list) and len(required) > 0
+        return []
+    from taskorbit.tools.generic_api import extract_arg_names
+
+    return extract_arg_names(tool.parameters or {})
+
+
+def _external_api_requires_args(tool: ToolDefinition) -> bool:
+    """Return True when an external_api tool needs args collected before it runs.
+
+    A "read" tool with no ``{{args.X}}`` references (e.g. GET current time for a
+    fixed zone) can dispatch immediately without any slot-extraction round-trip.
+    A tool that references args (e.g. a lookup templating ``{{args.timeZone}}``
+    into the request) must have those inputs collected first, otherwise
+    substitution fails with TEMPLATE_INVALID. We key off the real template refs
+    rather than ``args_schema.required`` so tools work even when the schema was
+    left empty.
+    """
+    return bool(_external_api_arg_names(tool))
 
 
 def _default_active_tool(tools: list[ToolDefinition]) -> ToolDefinition | None:
@@ -691,6 +701,12 @@ class ConversationOrchestrator:
             # the intent's hardcoded required_inputs so custom fields (email, phone,
             # etc.) are actually extracted.
             extraction_inputs = intent.required_inputs
+            # Conversion guidance passed to the extractor. Only set when an
+            # external_api tool's OWN {{args.X}} inputs drive extraction, so an
+            # unrelated (no-arg) external_api tool that merely happens to be
+            # active never colours the extraction of other fields (e.g. booking
+            # name/email/phone stay strictly literal).
+            extraction_guidance = ""
             if (
                 active_tool is not None
                 and active_tool.type == ToolType.DATA_EXTRACTION
@@ -699,6 +715,20 @@ class ConversationOrchestrator:
             ):
                 extraction_inputs = _normalize_field_key(active_tool.parameters["params"])
                 intent = dataclass_replace(intent, required_inputs=extraction_inputs)
+            elif active_tool is not None and active_tool.type == ToolType.EXTERNAL_API:
+                # An external_api tool templates {{args.X}} into its request; those
+                # inputs must be collected from the conversation before dispatch,
+                # exactly like data_extraction params. Without this, args is empty
+                # at dispatch and substitution fails with TEMPLATE_INVALID (or, if
+                # the tool declares no required args, it dispatches with a blank
+                # value). Derive the inputs from the real template refs.
+                _arg_names = _external_api_arg_names(active_tool)
+                if _arg_names:
+                    extraction_inputs = [
+                        {"name": name, "type": "string", "required": True} for name in _arg_names
+                    ]
+                    intent = dataclass_replace(intent, required_inputs=extraction_inputs)
+                    extraction_guidance = active_tool.description
 
             # Pre-slot-extraction scope short-circuit: refuse a clearly off-topic
             # message before any slot-extraction LLM call runs (#168).
@@ -721,6 +751,7 @@ class ConversationOrchestrator:
                 conversation_id=request.conversation_id,
                 tool_id=active_tool.id if active_tool is not None else None,
                 user_id=user_id,
+                guidance=extraction_guidance,
             )
             logger.info(
                 "slots_extracted",
@@ -789,7 +820,12 @@ class ConversationOrchestrator:
                     step=executing_prereq_id,
                     conversation_id=request.conversation_id,
                 )
-            if tool_data and active_tool and not tool_data.get("aborted"):
+            if (
+                tool_data
+                and active_tool
+                and not tool_data.get("aborted")
+                and not tool_data.get("tool_failed")
+            ):
                 if request.agent_config.id not in updated_completed_steps:
                     updated_completed_steps.append(request.agent_config.id)
                     logger.info(
@@ -828,7 +864,9 @@ class ConversationOrchestrator:
                 status=response_status,
                 extracted_slots=slot_result.to_dict(),
                 missing_slots=slot_result.missing,
-                tool_invoked=(dispatch.tool_invoked_override or active_tool) if tool_data else None,
+                tool_invoked=(dispatch.tool_invoked_override or active_tool)
+                if (tool_data and not tool_data.get("tool_failed"))
+                else None,
                 locked_intent_name=intent.name,
                 next_active_tool_id=next_active_tool_id,
                 completed_workflow_steps=updated_completed_steps,
@@ -1393,6 +1431,12 @@ class ConversationOrchestrator:
             # the intent's hardcoded required_inputs so custom fields (email, phone,
             # etc.) are actually extracted.
             extraction_inputs = intent.required_inputs
+            # Conversion guidance passed to the extractor. Only set when an
+            # external_api tool's OWN {{args.X}} inputs drive extraction, so an
+            # unrelated (no-arg) external_api tool that merely happens to be
+            # active never colours the extraction of other fields (e.g. booking
+            # name/email/phone stay strictly literal).
+            extraction_guidance = ""
             if (
                 active_tool is not None
                 and active_tool.type == ToolType.DATA_EXTRACTION
@@ -1401,6 +1445,20 @@ class ConversationOrchestrator:
             ):
                 extraction_inputs = _normalize_field_key(active_tool.parameters["params"])
                 intent = dataclass_replace(intent, required_inputs=extraction_inputs)
+            elif active_tool is not None and active_tool.type == ToolType.EXTERNAL_API:
+                # An external_api tool templates {{args.X}} into its request; those
+                # inputs must be collected from the conversation before dispatch,
+                # exactly like data_extraction params. Without this, args is empty
+                # at dispatch and substitution fails with TEMPLATE_INVALID (or, if
+                # the tool declares no required args, it dispatches with a blank
+                # value). Derive the inputs from the real template refs.
+                _arg_names = _external_api_arg_names(active_tool)
+                if _arg_names:
+                    extraction_inputs = [
+                        {"name": name, "type": "string", "required": True} for name in _arg_names
+                    ]
+                    intent = dataclass_replace(intent, required_inputs=extraction_inputs)
+                    extraction_guidance = active_tool.description
 
             slot_result = await self._extract_slots(
                 request.messages,
@@ -1410,6 +1468,7 @@ class ConversationOrchestrator:
                 conversation_id=request.conversation_id,
                 tool_id=active_tool.id if active_tool is not None else None,
                 user_id=user_id,
+                guidance=extraction_guidance,
             )
             logger.info(
                 "slots_extracted",
@@ -1483,7 +1542,12 @@ class ConversationOrchestrator:
                     step=executing_prereq_id,
                     conversation_id=request.conversation_id,
                 )
-            if tool_data and active_tool and not tool_data.get("aborted"):
+            if (
+                tool_data
+                and active_tool
+                and not tool_data.get("aborted")
+                and not tool_data.get("tool_failed")
+            ):
                 if request.agent_config.id not in updated_completed_steps:
                     updated_completed_steps.append(request.agent_config.id)
                     logger.info(
@@ -1522,7 +1586,9 @@ class ConversationOrchestrator:
                 status=response_status,
                 extracted_slots=slot_result.to_dict(),
                 missing_slots=slot_result.missing,
-                tool_invoked=(dispatch.tool_invoked_override or active_tool) if tool_data else None,
+                tool_invoked=(dispatch.tool_invoked_override or active_tool)
+                if (tool_data and not tool_data.get("tool_failed"))
+                else None,
                 locked_intent_name=intent.name,
                 next_active_tool_id=next_active_tool_id,
                 completed_workflow_steps=updated_completed_steps,
@@ -1850,7 +1916,22 @@ class ConversationOrchestrator:
             lines.append(f"Current task: {active_tool.name} - {active_tool.description}")
             if active_tool.parameters:
                 lines.append(f"Available parameters: {active_tool.parameters}")
-        if tool_data and not tool_data.get("aborted"):
+        if tool_data and tool_data.get("tool_failed"):
+            # The tool ran but failed. Make the model own the failure instead of
+            # inventing a plausible answer (which it will happily do for a
+            # "what time is it" style task if it is handed no data).
+            reason = str(
+                tool_data.get("tool_failed_message") or "the request could not be completed"
+            )
+            lines.append(
+                "IMPORTANT: the tool call FAILED and returned no usable data (reason: "
+                + reason
+                + "). Briefly tell the user you could not get that information right now; "
+                "they may try again. Do NOT invent, guess, estimate, or recall an answer "
+                "from prior knowledge. You have no real data for this request, so do not "
+                "state any specific value (time, date, price, status, etc.)."
+            )
+        elif tool_data and not tool_data.get("aborted"):
             import json as _json
 
             lines.append(
@@ -1919,6 +2000,7 @@ class ConversationOrchestrator:
         conversation_id: str | None = None,
         tool_id: str | None = None,
         user_id: int | None = None,
+        guidance: str = "",
     ) -> Any:
         """Run slot extraction over the conversation history.
 
@@ -1926,6 +2008,10 @@ class ConversationOrchestrator:
         folded together with slots already persisted for this tool (#226) so a
         slot filled on an earlier turn cannot regress to missing just because
         this pass's full-history re-derivation missed it.
+
+        ``guidance`` is optional per-tool text (an external_api tool's
+        description) that tells the extractor how to convert what the user
+        said into the value a field needs; empty for other tools.
         """
         from taskorbit.slots import SlotExtractionResult, SlotExtractor
 
@@ -1933,7 +2019,7 @@ class ConversationOrchestrator:
             return SlotExtractionResult()
         try:
             extractor = SlotExtractor(llm_fn=self._call_llm_json, llm_config=llm_config)
-            result = await extractor.extract(messages, required_inputs)
+            result = await extractor.extract(messages, required_inputs, guidance=guidance)
         except LLMError:
             # Provider failures must surface (#197) — treating them as "all slots
             # missing" would make the agent re-ask for data the user already gave.
@@ -2387,7 +2473,20 @@ class ConversationOrchestrator:
                 error=result.error,
                 tool_call_latency_ms=_seconds_to_ms(_tool_elapsed),
             )
-            return {}, _tool_elapsed
+            # Surface the failure to the LLM as a marked result so it reports the
+            # problem honestly instead of fabricating an answer from prior
+            # knowledge (previously this returned {} and the model, seeing the
+            # task but no data, made one up). Downstream consumers (workflow
+            # advance, tool_invoked, persistence) treat a tool_failed result as
+            # "no successful tool", so behaviour for a failed tool is otherwise
+            # unchanged.
+            envelope = result.data if isinstance(result.data, dict) else {}
+            message = str(
+                envelope.get("error_message")
+                or result.error
+                or "the request could not be completed"
+            )
+            return {"tool_failed": True, "tool_failed_message": message}, _tool_elapsed
 
         logger.info(
             "tool_executed",
