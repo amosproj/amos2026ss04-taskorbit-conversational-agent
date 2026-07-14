@@ -18,12 +18,35 @@ from taskorbit.tools.generic_api import (
     GenericApiConfigError,
     GenericApiTool,
     TemplateSubstitutionError,
+    extract_arg_names,
     extract_path,
     extract_response,
     parse_config,
     substitute_string,
     substitute_tree,
 )
+
+
+def test_extract_arg_names_scans_all_request_sections() -> None:
+    params = {
+        "request": {
+            "method": "POST",
+            "url": "https://x/{{args.id}}",
+            "headers": {"X-Trace": "{{args.trace}}", "X-Key": "{{env.SECRET}}"},
+            "query": {"tz": "{{args.timeZone}}"},
+            "body": {"nested": {"who": "{{args.user.name}}"}, "list": ["{{args.item}}", 5]},
+        }
+    }
+    # First-seen order, top-level segment only, env refs excluded, deduped.
+    assert extract_arg_names(params) == ["id", "trace", "timeZone", "user", "item"]
+
+
+def test_extract_arg_names_empty_when_no_refs() -> None:
+    assert (
+        extract_arg_names({"request": {"method": "GET", "url": "https://x?tz=Europe/Berlin"}}) == []
+    )
+    assert extract_arg_names({}) == []
+    assert extract_arg_names({"request": "nope"}) == []
 
 
 @pytest.fixture
