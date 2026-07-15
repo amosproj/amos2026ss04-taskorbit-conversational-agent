@@ -18,6 +18,15 @@ def _get_known_agent_names() -> frozenset[str]:
     return AgentRegistry.known_agent_names()
 
 
+def _logical_agent_id(config: Any) -> str | None:
+    """Logical routing id from a stored config blob (config.agent_id / config.id)."""
+    if isinstance(config, dict):
+        aid = config.get("agent_id") or config.get("id")
+        if aid:
+            return str(aid)
+    return None
+
+
 @dataclass(frozen=True)
 class ResolvedTransferTarget:
     """Outcome of resolving a configured transfer target to a real agent.
@@ -31,6 +40,11 @@ class ResolvedTransferTarget:
     canonical_id: str
     kind: str  # "builtin" | "config" | "template"
     display_name: str | None = None
+    # Logical routing id (config.agent_id, e.g. "chris") for saved configs.
+    # intent.agent_name is this logical id, NOT the DB-row canonical_id, so tool
+    # selection must compare against agent_id to fire a transfer to a custom
+    # agent (#4). Falls back to canonical_id for built-ins/templates.
+    agent_id: str | None = None
 
 
 def resolve_builtin_transfer_target(target: str) -> str | None:
@@ -90,7 +104,12 @@ async def resolve_transfer_target(
         #    A PK hit means record.id == raw, so raw IS the canonical id.
         record = await get_agent_configuration_by_id(db, raw, user_id=user_id)
         if record is not None:
-            return ResolvedTransferTarget(canonical_id=raw, kind="config", display_name=record.name)
+            return ResolvedTransferTarget(
+                canonical_id=raw,
+                kind="config",
+                display_name=record.name,
+                agent_id=_logical_agent_id(record.config),
+            )
 
         # 3. Un-customized built-in template by slug id ("general-inquiry-agent").
         #    The manual-transfer path checks this table too; the tool must match it.
@@ -105,7 +124,10 @@ async def resolve_transfer_target(
         record = await get_agent_configuration_by_name(db, raw, user_id=user_id)
         if record is not None:
             return ResolvedTransferTarget(
-                canonical_id=record.id, kind="config", display_name=record.name
+                canonical_id=record.id,
+                kind="config",
+                display_name=record.name,
+                agent_id=_logical_agent_id(record.config),
             )
 
     # 5. Registry keyword mapping, fuzzy last resort ("inquiry-agent" ->

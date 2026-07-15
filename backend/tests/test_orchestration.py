@@ -5,6 +5,8 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from taskorbit.orchestration import ConversationOrchestrator
 from taskorbit.types import (
@@ -16,6 +18,8 @@ from taskorbit.types import (
     MessageRole,
     PersonaConstraints,
 )
+
+_TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 
 def _make_request(content: str = "Hello") -> ConversationRequest:
@@ -423,7 +427,12 @@ async def test_agent_transfer_dispatch_sets_tool_invoked() -> None:
 
     with (
         patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
-        patch.object(ConversationOrchestrator, "_select_active_tool", return_value=transfer_tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_select_active_tool",
+            new_callable=AsyncMock,
+            return_value=transfer_tool,
+        ),
         patch.object(
             ConversationOrchestrator,
             "_extract_slots",
@@ -548,10 +557,12 @@ async def test_external_api_dispatch_passes_full_config_plus_args() -> None:
 
 
 def test_external_api_requires_args_helper() -> None:
-    """Helper returns True only for EXTERNAL_API tools whose args_schema
-    declares a non-empty ``required`` list. Everything else, including
-    other tool types and empty/missing required lists, returns False."""
-    from taskorbit.orchestration import _external_api_requires_args
+    """The helper keys off the actual {{args.X}} template refs in the request,
+    not args_schema. A tool that templates an arg into its request needs that
+    input collected first; a tool with no refs (or a non-external tool) can
+    dispatch immediately. args_schema is intentionally irrelevant so tools work
+    even when it was never filled in."""
+    from taskorbit.orchestration import _external_api_arg_names, _external_api_requires_args
     from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
 
     def _mk(tool_type: ToolType, params: dict[str, Any] | None) -> ToolDefinition:
@@ -564,24 +575,299 @@ def test_external_api_requires_args_helper() -> None:
             parameters=params or {},
         )
 
-    with_required = _mk(
+    with_ref = _mk(
         ToolType.EXTERNAL_API,
-        {"args_schema": {"type": "object", "required": ["city"], "properties": {}}},
+        {"request": {"method": "GET", "url": "https://x", "query": {"tz": "{{args.timeZone}}"}}},
     )
-    empty_required = _mk(
+    no_ref = _mk(
         ToolType.EXTERNAL_API,
-        {"args_schema": {"type": "object", "required": [], "properties": {}}},
+        {"request": {"method": "GET", "url": "https://x?tz=Europe/Berlin"}},
     )
-    no_schema = _mk(ToolType.EXTERNAL_API, {})
-    non_api = _mk(
-        ToolType.DATA_EXTRACTION,
-        {"args_schema": {"type": "object", "required": ["x"], "properties": {}}},
+    # A populated args_schema with no matching template ref still needs nothing.
+    schema_only = _mk(
+        ToolType.EXTERNAL_API,
+        {"request": {"method": "GET", "url": "https://x"}, "args_schema": {"required": ["city"]}},
+    )
+    non_api = _mk(ToolType.DATA_EXTRACTION, {"request": {"url": "{{args.x}}"}})
+
+    assert _external_api_requires_args(with_ref) is True
+    assert _external_api_requires_args(no_ref) is False
+    assert _external_api_requires_args(schema_only) is False
+    assert _external_api_requires_args(non_api) is False
+    assert _external_api_arg_names(with_ref) == ["timeZone"]
+    assert _external_api_arg_names(no_ref) == []
+
+
+@pytest.mark.asyncio
+async def test_external_api_arg_extracted_and_dispatched() -> None:
+    """An external_api tool that templates {{args.X}} gets X collected via slot
+    extraction (with the tool description passed as guidance) and dispatched
+    with the extracted value, even when the intent router produced no inputs."""
+    from taskorbit.slots.models import SlotExtractionResult, SlotValue
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    orch = ConversationOrchestrator()
+    intent = _intent_result(required_inputs=[])
+    tool = ToolDefinition(
+        id="get_time",
+        name="get_current_time",
+        type=ToolType.EXTERNAL_API,
+        description="Convert the location the user gives into an IANA timezone.",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={
+            "request": {"method": "GET", "url": "https://x", "query": {"tz": "{{args.timeZone}}"}},
+            "args_schema": {"type": "object", "properties": {}},
+        },
+    )
+    slot_result = SlotExtractionResult(
+        filled={"timeZone": SlotValue(name="timeZone", value="Europe/Berlin", slot_type="string")},
+        missing=[],
     )
 
-    assert _external_api_requires_args(with_required) is True
-    assert _external_api_requires_args(empty_required) is False
-    assert _external_api_requires_args(no_schema) is False
-    assert _external_api_requires_args(non_api) is False
+    captured: list[tuple[list[dict[str, Any]], str]] = []
+
+    async def _fake_extract(
+        _self: ConversationOrchestrator,
+        _messages: Any,
+        required_inputs: list[dict[str, Any]],
+        _llm_config: Any,
+        guidance: str = "",
+        **kwargs: Any,
+    ) -> SlotExtractionResult:
+        captured.append((required_inputs, guidance))
+        return slot_result
+
+    dispatch_calls: list[dict[str, Any]] = []
+
+    async def _fake_dispatch(
+        _self: ConversationOrchestrator,
+        _tool: ToolDefinition,
+        ctx: dict[str, Any],
+        **_kwargs: Any,
+    ) -> tuple[dict[str, Any], float]:
+        dispatch_calls.append(ctx)
+        return {"status": 200, "data": {"dateTime": "2026-07-14"}}, 0.0
+
+    with (
+        patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
+        patch.object(
+            ConversationOrchestrator,
+            "_select_active_tool",
+            new_callable=AsyncMock,
+            return_value=tool,
+        ),
+        patch.object(ConversationOrchestrator, "_extract_slots", new=_fake_extract),
+        patch.object(ConversationOrchestrator, "_dispatch_tool", new=_fake_dispatch),
+        patch.object(
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+        ),
+    ):
+        response = await orch.process_message(_make_request("I'm in Germany"))
+
+    # The tool's {{args.timeZone}} ref was wired into the extraction inputs...
+    assert captured[0][0] == [{"name": "timeZone", "type": "string", "required": True}]
+    # ...and the tool description was passed as conversion guidance.
+    assert "IANA timezone" in captured[0][1]
+    # ...and dispatch received the extracted arg value.
+    assert response.tool_invoked is not None
+    assert response.tool_invoked.type == ToolType.EXTERNAL_API
+    assert dispatch_calls[0]["args"] == {"timeZone": "Europe/Berlin"}
+
+
+@pytest.mark.asyncio
+async def test_no_arg_external_api_active_does_not_leak_guidance() -> None:
+    """A no-arg external_api tool that merely happens to be the active tool must
+    NOT pass its description as conversion guidance: unrelated intent-driven
+    fields (booking name/email/...) stay strictly literal, as before."""
+    from taskorbit.slots.models import SlotExtractionResult
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    orch = ConversationOrchestrator()
+    intent = _intent_result(
+        required_inputs=[{"name": "caller_name", "type": "string", "required": True}]
+    )
+    tool = ToolDefinition(
+        id="get_time",
+        name="get_current_time",
+        type=ToolType.EXTERNAL_API,
+        description="Returns the current time in Europe/Berlin.",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={"request": {"method": "GET", "url": "https://x?tz=Europe/Berlin"}},
+    )
+
+    captured_guidance: list[str] = []
+
+    async def _fake_extract(
+        _self: ConversationOrchestrator,
+        _messages: Any,
+        _required_inputs: list[dict[str, Any]],
+        _llm_config: Any,
+        guidance: str = "",
+        **kwargs: Any,
+    ) -> SlotExtractionResult:
+        captured_guidance.append(guidance)
+        return SlotExtractionResult(filled={}, missing=["caller_name"])
+
+    async def _fake_dispatch(
+        _self: ConversationOrchestrator,
+        _tool: ToolDefinition,
+        _ctx: dict[str, Any],
+        **_kwargs: Any,
+    ) -> tuple[dict[str, Any], float]:
+        return {"status": 200, "data": {}}, 0.0
+
+    with (
+        patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
+        patch.object(
+            ConversationOrchestrator,
+            "_select_active_tool",
+            new_callable=AsyncMock,
+            return_value=tool,
+        ),
+        patch.object(ConversationOrchestrator, "_extract_slots", new=_fake_extract),
+        patch.object(ConversationOrchestrator, "_dispatch_tool", new=_fake_dispatch),
+        patch.object(
+            ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+        ),
+    ):
+        await orch.process_message(_make_request("My name is John"))
+
+    # No {{args}} refs on the tool => no guidance leaked into the booking fields.
+    assert captured_guidance == [""]
+
+
+def test_build_system_prompt_tool_failure_instructs_honesty() -> None:
+    """When a tool failed, the prompt must tell the model to report the failure
+    and NOT fabricate, and must NOT include the 'use this concrete data' block."""
+    from taskorbit.types import AgentConfig as _AC
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    orch = ConversationOrchestrator()
+    config = _AC(id="a", name="a", persona="p", greeting="g")
+    tool = ToolDefinition(
+        id="t",
+        name="get_time",
+        type=ToolType.EXTERNAL_API,
+        description="d",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={},
+    )
+    prompt = orch._build_system_prompt(
+        config,
+        tool,
+        None,
+        routed_agent=None,
+        tool_data={"tool_failed": True, "tool_failed_message": "Invalid Timezone"},
+    )
+    assert "FAILED" in prompt
+    assert "Invalid Timezone" in prompt
+    assert "Do NOT invent" in prompt
+    assert "use this concrete data" not in prompt
+
+
+@pytest.mark.asyncio
+async def test_dispatch_tool_marks_failure_instead_of_empty() -> None:
+    """A failed tool result is now a marked dict (so the LLM is told it failed),
+    not the old silent {} that led the model to fabricate an answer."""
+    from taskorbit.tools import ToolResult
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    orch = ConversationOrchestrator()
+    tool = ToolDefinition(
+        id="t",
+        name="get",
+        type=ToolType.EXTERNAL_API,
+        description="d",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={},
+    )
+    with patch(
+        "taskorbit.tools.generic_api.GenericApiTool.execute",
+        new_callable=AsyncMock,
+        return_value=ToolResult(
+            success=False,
+            data={"error_code": "HTTP_4XX", "error_message": "The external service rejected it."},
+            error="HTTP_4XX: rejected",
+        ),
+    ):
+        data, _elapsed = await orch._dispatch_tool(tool, {})
+
+    assert data.get("tool_failed") is True
+    assert "rejected" in data.get("tool_failed_message", "")
+
+
+@pytest.mark.asyncio
+async def test_failed_external_api_tool_makes_agent_report_not_fabricate() -> None:
+    """End to end: when the external_api dispatch fails, the LLM prompt carries
+    the failure instruction (not a success data block) and the failed tool is
+    not reported as invoked."""
+    from taskorbit.slots.models import SlotExtractionResult, SlotValue
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    orch = ConversationOrchestrator()
+    intent = _intent_result(required_inputs=[])
+    tool = ToolDefinition(
+        id="get_time",
+        name="get_current_time",
+        type=ToolType.EXTERNAL_API,
+        description="Convert the location to an IANA timezone.",
+        confirmation=ConfirmationConfig(required=False, prompt=""),
+        parameters={
+            "request": {"method": "GET", "url": "https://x", "query": {"tz": "{{args.timeZone}}"}},
+            "args_schema": {"type": "object", "properties": {}},
+        },
+    )
+    slot_result = SlotExtractionResult(
+        filled={"timeZone": SlotValue(name="timeZone", value="Germany", slot_type="string")},
+        missing=[],
+    )
+
+    async def _fake_extract(
+        _self: ConversationOrchestrator,
+        _messages: Any,
+        _required_inputs: list[dict[str, Any]],
+        _llm_config: Any,
+        guidance: str = "",
+        **kwargs: Any,
+    ) -> SlotExtractionResult:
+        return slot_result
+
+    async def _fake_dispatch(
+        _self: ConversationOrchestrator,
+        _tool: ToolDefinition,
+        _ctx: dict[str, Any],
+        **_kwargs: Any,
+    ) -> tuple[dict[str, Any], float]:
+        return {"tool_failed": True, "tool_failed_message": "Invalid Timezone"}, 0.0
+
+    seen_prompts: list[str] = []
+
+    async def _capture_llm(
+        _self: ConversationOrchestrator, system_prompt: str, *_a: Any, **_kw: Any
+    ) -> str:
+        seen_prompts.append(system_prompt)
+        return "Sorry, I couldn't get the time just now."
+
+    with (
+        patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
+        patch.object(
+            ConversationOrchestrator,
+            "_select_active_tool",
+            new_callable=AsyncMock,
+            return_value=tool,
+        ),
+        patch.object(ConversationOrchestrator, "_extract_slots", new=_fake_extract),
+        patch.object(ConversationOrchestrator, "_dispatch_tool", new=_fake_dispatch),
+        patch.object(ConversationOrchestrator, "_call_llm", new=_capture_llm),
+    ):
+        response = await orch.process_message(_make_request("I'm in Germany"))
+
+    assert len(seen_prompts) == 1
+    assert "FAILED" in seen_prompts[0]
+    assert "Do NOT invent" in seen_prompts[0]
+    assert "use this concrete data" not in seen_prompts[0]
+    # A failed tool is not reported as invoked (behaviour unchanged).
+    assert response.tool_invoked is None
 
 
 def test_build_system_prompt_injects_tool_data() -> None:
@@ -699,7 +985,12 @@ async def test_no_arg_external_api_dispatches_and_llm_sees_result() -> None:
 
     with (
         patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
-        patch.object(ConversationOrchestrator, "_select_active_tool", return_value=tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_select_active_tool",
+            new_callable=AsyncMock,
+            return_value=tool,
+        ),
         patch.object(
             ConversationOrchestrator,
             "_extract_slots",
@@ -1599,7 +1890,12 @@ async def test_auto_transfer_to_custom_agent_via_process_message() -> None:
 
     with (
         patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
-        patch.object(ConversationOrchestrator, "_select_active_tool", return_value=transfer_tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_select_active_tool",
+            new_callable=AsyncMock,
+            return_value=transfer_tool,
+        ),
         patch.object(
             ConversationOrchestrator,
             "_extract_slots",
@@ -1616,6 +1912,17 @@ async def test_auto_transfer_to_custom_agent_via_process_message() -> None:
             "taskorbit.database.crud.get_agent_configuration_by_id",
             new_callable=AsyncMock,
             return_value=fake_record,
+        ),
+        # #224 dispatch-tracking hits db.execute() for real; an unconfigured
+        # AsyncMock's .first() returns a truthy Mock, so without this the
+        # transfer looks "already dispatched" and gets skipped. Not what this
+        # test is exercising, so stub it out like the other orchestrator
+        # internals patched above.
+        patch.object(
+            ConversationOrchestrator,
+            "_tool_already_dispatched",
+            new_callable=AsyncMock,
+            return_value=False,
         ),
     ):
         mock_db = AsyncMock()
@@ -1914,11 +2221,11 @@ def _intent_for(agent_name: str):
     return IntentResult(name=agent_name or "unknown", description="", agent_name=agent_name)
 
 
-def test_select_transfer_when_intent_routes_away() -> None:
+async def test_select_transfer_when_intent_routes_away() -> None:
     """#212: intent routing away + matching transfer tool selects the transfer,
     not tools[0], even though the target is the sloppy prod value."""
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool(
+    tool = await orch._select_active_tool(
         [],
         _FakeAgent(_john_max_tools()),
         intent=_intent_for("general_inquiry"),
@@ -1928,10 +2235,10 @@ def test_select_transfer_when_intent_routes_away() -> None:
     assert tool.id == "transfer_to_inquiry_agent"
 
 
-def test_select_pin_wins_over_transfer_rule() -> None:
+async def test_select_pin_wins_over_transfer_rule() -> None:
     """A confirmation round-trip pin must still take precedence."""
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool(
+    tool = await orch._select_active_tool(
         [],
         _FakeAgent(_john_max_tools()),
         active_tool_id="collect_user_info",
@@ -1942,9 +2249,9 @@ def test_select_pin_wins_over_transfer_rule() -> None:
     assert tool.id == "collect_user_info"
 
 
-def test_select_stays_on_first_tool_when_intent_matches_current_agent() -> None:
+async def test_select_stays_on_first_tool_when_intent_matches_current_agent() -> None:
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool(
+    tool = await orch._select_active_tool(
         [],
         _FakeAgent(_john_max_tools()),
         intent=_intent_for("general_inquiry"),
@@ -1954,9 +2261,9 @@ def test_select_stays_on_first_tool_when_intent_matches_current_agent() -> None:
     assert tool.id == "collect_user_info"
 
 
-def test_select_stays_on_first_tool_when_no_target_matches_destination() -> None:
+async def test_select_stays_on_first_tool_when_no_target_matches_destination() -> None:
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool(
+    tool = await orch._select_active_tool(
         [],
         _FakeAgent(_john_max_tools()),
         intent=_intent_for("sales"),
@@ -1966,9 +2273,9 @@ def test_select_stays_on_first_tool_when_no_target_matches_destination() -> None
     assert tool.id == "collect_user_info"
 
 
-def test_select_stays_on_first_tool_for_unknown_intent() -> None:
+async def test_select_stays_on_first_tool_for_unknown_intent() -> None:
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool(
+    tool = await orch._select_active_tool(
         [],
         _FakeAgent(_john_max_tools()),
         intent=_intent_for(""),
@@ -1978,18 +2285,18 @@ def test_select_stays_on_first_tool_for_unknown_intent() -> None:
     assert tool.id == "collect_user_info"
 
 
-def test_select_unchanged_without_intent_argument() -> None:
+async def test_select_unchanged_without_intent_argument() -> None:
     """Callers that never pass intent keep the legacy tools[0] behaviour."""
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool([], _FakeAgent(_john_max_tools()))
+    tool = await orch._select_active_tool([], _FakeAgent(_john_max_tools()))
     assert tool is not None
     assert tool.id == "collect_user_info"
 
 
-def test_select_no_tools_returns_none_still() -> None:
+async def test_select_no_tools_returns_none_still() -> None:
     orch = ConversationOrchestrator()
     assert (
-        orch._select_active_tool(
+        await orch._select_active_tool(
             [], _FakeAgent([]), intent=_intent_for("general_inquiry"), current_agent="x"
         )
         is None
@@ -2030,12 +2337,12 @@ def _end_call_first_tools():
     ]
 
 
-def test_select_skips_end_call_default_when_saved_first() -> None:
+async def test_select_skips_end_call_default_when_saved_first() -> None:
     """An end_call tool saved before data_extraction tools must never win the
     no-pin default — it would otherwise fire on the very first turn regardless
     of user intent, and the data_extraction tools would never be reached."""
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool(
+    tool = await orch._select_active_tool(
         [],
         _FakeAgent(_end_call_first_tools()),
         intent=_intent_for("general_inquiry"),
@@ -2045,28 +2352,28 @@ def test_select_skips_end_call_default_when_saved_first() -> None:
     assert tool.id == "collect_contact_info"
 
 
-def test_select_skips_end_call_default_without_intent_argument() -> None:
+async def test_select_skips_end_call_default_without_intent_argument() -> None:
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool([], _FakeAgent(_end_call_first_tools()))
+    tool = await orch._select_active_tool([], _FakeAgent(_end_call_first_tools()))
     assert tool is not None
     assert tool.id == "collect_contact_info"
 
 
-def test_select_pin_still_reaches_end_call_when_explicitly_targeted() -> None:
+async def test_select_pin_still_reaches_end_call_when_explicitly_targeted() -> None:
     """The default skips end_call, but an explicit pin (e.g. after the
     end-call short-circuit or a confirmation round-trip) must still resolve
     it — the skip only applies to the no-signal fallback."""
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool(
+    tool = await orch._select_active_tool(
         [], _FakeAgent(_end_call_first_tools()), active_tool_id="end_call"
     )
     assert tool is not None
     assert tool.id == "end_call"
 
 
-def test_select_falls_back_to_end_call_when_no_workflow_tool_exists() -> None:
+async def test_select_returns_none_when_no_workflow_tool_exists() -> None:
     """An agent with only end_call/agent_transfer tools (no data_extraction or
-    external_api) must still get a tool back, not None."""
+    external_api) must return None, not an unsafe default."""
     from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
 
     confirm = ConfirmationConfig(required=False, prompt="")
@@ -2081,9 +2388,126 @@ def test_select_falls_back_to_end_call_when_no_workflow_tool_exists() -> None:
         ),
     ]
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool([], _FakeAgent(tools))
+    tool = await orch._select_active_tool([], _FakeAgent(tools))
+    assert tool is None
+
+
+# ---------------------------------------------------------------------------
+# _select_active_tool — skip END_CALL/AGENT_TRANSFER in the default fallback
+# (#143 gap 2, reported 2026-07-05): both are "ready" without any slot data
+# (no_slots_tool_ready in _run_dispatch_step), so picking one just because it
+# happens to be listed first can trigger a confirmation prompt for an action
+# the caller never asked for, before they've said anything relevant.
+# ---------------------------------------------------------------------------
+
+
+def _tools_led_by(*, first: str, confirm_first: bool = True):
+    """Same three tools as _john_max_tools(), reordered so `first` (either
+    "end_call" or "transfer") is listed before collect_user_info."""
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    confirm_yes = ConfirmationConfig(required=True, prompt="")
+    confirm_no = ConfirmationConfig(required=False, prompt="")
+    data_extraction = ToolDefinition(
+        id="collect_user_info",
+        name="collect_user_info",
+        type=ToolType.DATA_EXTRACTION,
+        description="collect",
+        confirmation=confirm_no,
+        parameters={"params": []},
+    )
+    end_call = ToolDefinition(
+        id="end_call",
+        name="end_call",
+        type=ToolType.END_CALL,
+        description="end",
+        confirmation=confirm_yes if confirm_first else confirm_no,
+        parameters={},
+    )
+    transfer = ToolDefinition(
+        id="transfer_to_inquiry_agent",
+        name="transfer_to_inquiry_agent",
+        type=ToolType.AGENT_TRANSFER,
+        description="hand off",
+        confirmation=confirm_yes if confirm_first else confirm_no,
+        parameters={"targets": ["inquiry-agent"]},
+    )
+    lead = {"end_call": end_call, "transfer": transfer}[first]
+    return [lead, data_extraction]
+
+
+async def test_select_skips_end_call_listed_first_without_intent() -> None:
+    """The bug scenario: no active_tool_id pin, no intent -- the final
+    catch-all fallback must not hand back a confirmation-required end_call
+    just because it's tools[0]; it should skip to collect_user_info."""
+    orch = ConversationOrchestrator()
+    tool = await orch._select_active_tool([], _FakeAgent(_tools_led_by(first="end_call")))
     assert tool is not None
-    assert tool.id == "end_call"
+    assert tool.id == "collect_user_info"
+
+
+async def test_select_skips_agent_transfer_listed_first_without_intent() -> None:
+    orch = ConversationOrchestrator()
+    tool = await orch._select_active_tool([], _FakeAgent(_tools_led_by(first="transfer")))
+    assert tool is not None
+    assert tool.id == "collect_user_info"
+
+
+async def test_select_skips_end_call_listed_first_when_intent_matches_current_agent() -> None:
+    """Same bug, via the OTHER tools[0] fallback branch (intent explicitly
+    says "stay with the current agent" -- not the pure no-intent case)."""
+    orch = ConversationOrchestrator()
+    tool = await orch._select_active_tool(
+        [],
+        _FakeAgent(_tools_led_by(first="end_call")),
+        intent=_intent_for("general_inquiry"),
+        current_agent="general_inquiry",
+    )
+    assert tool is not None
+    assert tool.id == "collect_user_info"
+
+
+async def test_select_returns_none_when_only_end_call_and_transfer_configured() -> None:
+    """No safe default exists (no data_extraction/external_api tool at all)
+    -- must return None rather than positionally pick a dangerous tool."""
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    confirm = ConfirmationConfig(required=True, prompt="")
+    tools = [
+        ToolDefinition(
+            id="end_call",
+            name="end_call",
+            type=ToolType.END_CALL,
+            description="end",
+            confirmation=confirm,
+            parameters={},
+        ),
+        ToolDefinition(
+            id="transfer",
+            name="transfer",
+            type=ToolType.AGENT_TRANSFER,
+            description="hand off",
+            confirmation=confirm,
+            parameters={"targets": ["inquiry-agent"]},
+        ),
+    ]
+    orch = ConversationOrchestrator()
+    assert await orch._select_active_tool([], _FakeAgent(tools)) is None
+
+
+async def test_select_transfer_tool_still_selected_via_explicit_intent_match() -> None:
+    """The fix must not break the legitimate path: an agent_transfer tool
+    IS still selected when intent explicitly routes to its target, even
+    though it's listed first and requires confirmation."""
+    orch = ConversationOrchestrator()
+    tool = await orch._select_active_tool(
+        [],
+        _FakeAgent(_tools_led_by(first="transfer")),
+        intent=_intent_for("general_inquiry"),
+        current_agent="demoday",
+    )
+    assert tool is not None
+    assert tool.id == "transfer_to_inquiry_agent"
 
 
 # ---------------------------------------------------------------------------
@@ -2120,7 +2544,12 @@ async def test_transfer_tool_invoked_carries_canonical_target() -> None:
 
     with (
         patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
-        patch.object(ConversationOrchestrator, "_select_active_tool", return_value=transfer_tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_select_active_tool",
+            new_callable=AsyncMock,
+            return_value=transfer_tool,
+        ),
         patch.object(
             ConversationOrchestrator,
             "_extract_slots",
@@ -2151,11 +2580,11 @@ async def test_transfer_tool_invoked_carries_canonical_target() -> None:
     assert response.tool_invoked.parameters["targets"] == ["general_inquiry"]
 
 
-def test_select_no_refire_when_current_agent_is_template_slug() -> None:
+async def test_select_no_refire_when_current_agent_is_template_slug() -> None:
     """After a completed voice handoff the worker reports the canonical
     template slug as the current agent; the transfer must NOT re-fire (#212)."""
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool(
+    tool = await orch._select_active_tool(
         [],
         _FakeAgent(_john_max_tools()),
         intent=_intent_for("general_inquiry"),
@@ -2163,3 +2592,287 @@ def test_select_no_refire_when_current_agent_is_template_slug() -> None:
     )
     assert tool is not None
     assert tool.id == "collect_user_info"
+
+
+# ---------------------------------------------------------------------------
+# #224 — a tool already dispatched must not be re-confirmed/re-dispatched
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def db_session():
+    """Fresh in-memory async database per test (mirrors test_crud.py)."""
+    from taskorbit.database.models import Base
+
+    engine = create_async_engine(_TEST_DATABASE_URL, echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with async_session() as session:
+        yield session
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
+
+
+def _dedup_test_request(decision: str | None = None, confirmation_id: str | None = None):
+    from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
+
+    req = _make_request("save my info")
+    req.agent_config.tools = [
+        ToolDefinition(
+            id="collect_user_info",
+            name="collect_user_info",
+            type=ToolType.DATA_EXTRACTION,
+            description="Save",
+            confirmation=ConfirmationConfig(required=True, prompt="Save it?"),
+        )
+    ]
+    req.decision = decision
+    req.confirmation_id = confirmation_id
+    return req
+
+
+class TestToolDispatchDeduplication:
+    """#224: once a tool has actually dispatched in a conversation, later
+    turns (e.g. after an intent flip re-selects the same tool, #227) must not
+    re-ask for confirmation or re-dispatch it."""
+
+    @pytest.mark.asyncio
+    async def test_second_turn_does_not_redispatch_or_reconfirm(
+        self, db_session: AsyncSession, mock_good_intent: Any
+    ) -> None:
+        from taskorbit.slots import SlotExtractionResult
+        from taskorbit.types import ConversationStatus
+
+        orch = ConversationOrchestrator()
+        complete_slots = SlotExtractionResult(filled={"name": MagicMock(value="Alice")}, missing=[])
+        mock_good_intent.required_inputs = [{"name": "name", "type": "string", "required": True}]
+
+        with (
+            patch.object(ConversationOrchestrator, "_call_llm", new_callable=AsyncMock) as mock_llm,
+            patch.object(
+                ConversationOrchestrator,
+                "_extract_slots",
+                new_callable=AsyncMock,
+                return_value=complete_slots,
+            ),
+            patch.object(
+                ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock
+            ) as mock_dispatch,
+        ):
+            mock_dispatch.return_value = ({"saved": True}, 0.0)
+            mock_llm.return_value = "Saved!"
+
+            # Turn 1: confirm and dispatch.
+            turn1 = await orch.process_message(
+                _dedup_test_request(decision="confirm", confirmation_id="collect_user_info"),
+                db=db_session,
+            )
+            assert turn1.status == ConversationStatus.SUCCESS
+            assert turn1.tool_invoked is not None
+            mock_dispatch.assert_called_once()
+
+            # Turn 2: same conversation, same complete slots, no decision this
+            # time (mirrors an intent-flip re-selecting the same tool, #227) —
+            # must NOT re-ask for confirmation or dispatch a second time.
+            mock_llm.return_value = "Anything else?"
+            turn2 = await orch.process_message(
+                _dedup_test_request(decision=None, confirmation_id=None),
+                db=db_session,
+            )
+
+        assert turn2.status != ConversationStatus.CONFIRMATION_REQUIRED
+        assert turn2.tool_invoked is None
+        mock_dispatch.assert_called_once()  # still just the one call from turn 1
+
+    @pytest.mark.asyncio
+    async def test_rejected_tool_can_still_be_asked_and_dispatched_later(
+        self, db_session: AsyncSession, mock_good_intent: Any
+    ) -> None:
+        """A rejected confirmation must not be treated as 'already dispatched' —
+        the user should be able to say yes on a later turn."""
+        from taskorbit.slots import SlotExtractionResult
+        from taskorbit.types import ConversationStatus
+
+        orch = ConversationOrchestrator()
+        complete_slots = SlotExtractionResult(filled={"name": MagicMock(value="Alice")}, missing=[])
+        mock_good_intent.required_inputs = [{"name": "name", "type": "string", "required": True}]
+
+        with (
+            patch.object(
+                ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+            ),
+            patch.object(
+                ConversationOrchestrator,
+                "_extract_slots",
+                new_callable=AsyncMock,
+                return_value=complete_slots,
+            ),
+            patch.object(
+                ConversationOrchestrator, "_dispatch_tool", new_callable=AsyncMock
+            ) as mock_dispatch,
+        ):
+            mock_dispatch.return_value = ({"saved": True}, 0.0)
+
+            # Turn 1: user rejects.
+            turn1 = await orch.process_message(
+                _dedup_test_request(decision="reject", confirmation_id="collect_user_info"),
+                db=db_session,
+            )
+            assert turn1.status == ConversationStatus.REJECTED
+            mock_dispatch.assert_not_called()
+
+            # Turn 2: asked again (fresh turn, no decision) — must still ask,
+            # since nothing has actually dispatched yet.
+            turn2 = await orch.process_message(
+                _dedup_test_request(decision=None, confirmation_id=None),
+                db=db_session,
+            )
+            assert turn2.status == ConversationStatus.CONFIRMATION_REQUIRED
+
+            # Turn 3: user confirms — dispatches for the first time.
+            turn3 = await orch.process_message(
+                _dedup_test_request(decision="confirm", confirmation_id="collect_user_info"),
+                db=db_session,
+            )
+
+        assert turn3.status == ConversationStatus.SUCCESS
+        assert turn3.tool_invoked is not None
+        mock_dispatch.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_dispatch_recorded_as_confirmed_in_tool_executions(
+        self, db_session: AsyncSession, mock_good_intent: Any
+    ) -> None:
+        from taskorbit.database.crud import tool_already_dispatched
+        from taskorbit.slots import SlotExtractionResult
+
+        orch = ConversationOrchestrator()
+        complete_slots = SlotExtractionResult(filled={"name": MagicMock(value="Alice")}, missing=[])
+        mock_good_intent.required_inputs = [{"name": "name", "type": "string", "required": True}]
+
+        with (
+            patch.object(
+                ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+            ),
+            patch.object(
+                ConversationOrchestrator,
+                "_extract_slots",
+                new_callable=AsyncMock,
+                return_value=complete_slots,
+            ),
+            patch.object(
+                ConversationOrchestrator,
+                "_dispatch_tool",
+                new_callable=AsyncMock,
+                return_value=({"saved": True}, 0.0),
+            ),
+        ):
+            await orch.process_message(
+                _dedup_test_request(decision="confirm", confirmation_id="collect_user_info"),
+                db=db_session,
+            )
+
+        assert await tool_already_dispatched(db_session, "conv-test", "collect_user_info") is True
+        assert await tool_already_dispatched(db_session, "conv-test", "some-other-tool") is False
+
+    @pytest.mark.asyncio
+    async def test_without_db_behaves_as_before(self, mock_good_intent: Any) -> None:
+        """Omitting db must not change behaviour — dedup tracking is opt-in."""
+        from taskorbit.slots import SlotExtractionResult
+
+        orch = ConversationOrchestrator()
+        complete_slots = SlotExtractionResult(filled={"name": MagicMock(value="Alice")}, missing=[])
+        mock_good_intent.required_inputs = [{"name": "name", "type": "string", "required": True}]
+
+        with (
+            patch.object(
+                ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="ok"
+            ),
+            patch.object(
+                ConversationOrchestrator,
+                "_extract_slots",
+                new_callable=AsyncMock,
+                return_value=complete_slots,
+            ),
+            patch.object(
+                ConversationOrchestrator,
+                "_dispatch_tool",
+                new_callable=AsyncMock,
+                return_value=({"saved": True}, 0.0),
+            ) as mock_dispatch,
+        ):
+            turn1 = await orch.process_message(
+                _dedup_test_request(decision="confirm", confirmation_id="collect_user_info")
+            )
+            turn2 = await orch.process_message(
+                _dedup_test_request(decision="confirm", confirmation_id="collect_user_info")
+            )
+
+        assert turn1.tool_invoked is not None
+        assert turn2.tool_invoked is not None
+        assert mock_dispatch.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_end_call_shortcut_does_not_reask_after_dispatch(
+        self, db_session: AsyncSession
+    ) -> None:
+        """The user-initiated end-call shortcut bypasses _run_dispatch_step
+        entirely, so it needs its own dedup guard (#224) — a stray re-entry
+        into the shortcut (e.g. the user saying goodbye again, or a decision
+        round-trip glitch) must not re-ask/re-dispatch end_call."""
+        from taskorbit.types import ConfirmationConfig, ConversationStatus, ToolDefinition, ToolType
+
+        orch = ConversationOrchestrator()
+        end_call_tool = ToolDefinition(
+            id="end-1",
+            name="end_call",
+            type=ToolType.END_CALL,
+            description="End the call",
+            confirmation=ConfirmationConfig(required=True, prompt=""),
+        )
+
+        def _req(content: str, decision: str | None = None, confirmation_id: str | None = None):
+            req = ConversationRequest(
+                conversation_id="conv-end-dedup",
+                agent_config=AgentConfig(
+                    id="agent-1",
+                    name="Bot",
+                    persona="Helpful bot",
+                    greeting="Hi!",
+                    tools=[end_call_tool],
+                ),
+                messages=[Message(role=MessageRole.USER, content=content)],
+            )
+            req.decision = decision
+            req.confirmation_id = confirmation_id
+            return req
+
+        with (
+            patch.object(
+                ConversationOrchestrator, "_call_llm", new_callable=AsyncMock, return_value="Bye!"
+            ),
+            patch.object(
+                ConversationOrchestrator,
+                "_dispatch_tool",
+                new_callable=AsyncMock,
+                return_value=({}, 0.0),
+            ) as mock_dispatch,
+        ):
+            turn1 = await orch.process_message(_req("goodbye"), db=db_session)
+            assert turn1.status == ConversationStatus.CONFIRMATION_REQUIRED
+
+            turn2 = await orch.process_message(
+                _req("yes", decision="confirm", confirmation_id="end-1"), db=db_session
+            )
+            assert turn2.status == ConversationStatus.ENDED
+            mock_dispatch.assert_called_once()
+
+            # Stray re-entry: user says goodbye again (or the shortcut is
+            # re-entered some other way) after end_call already dispatched.
+            turn3 = await orch.process_message(_req("goodbye"), db=db_session)
+
+        assert turn3.status != ConversationStatus.CONFIRMATION_REQUIRED
+        assert turn3.tool_invoked is None
+        mock_dispatch.assert_called_once()  # still just the one call from turn 2

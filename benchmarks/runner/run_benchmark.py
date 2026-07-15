@@ -13,12 +13,14 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
 
 from config import ExperimentConfig
 from runner import BenchmarkRunner
+from upload_loki import push_to_loki
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,6 +57,11 @@ async def main() -> int:
         "--upload-metrics",
         action="store_true",
         help="Push metrics to OpenTelemetry endpoint after run",
+    )
+    parser.add_argument(
+        "--upload-loki",
+        action="store_true",
+        help="Push results to Loki after run",
     )
     parser.add_argument(
         "--verbose",
@@ -95,6 +102,10 @@ async def main() -> int:
         logger.info(f"Experiment completed: run_id={run_id}")
         logger.info(f"Results: {results_file}")
         logger.info(f"Summary: {summary}")
+
+        if args.upload_loki and not args.dry_run:
+            loki_url = os.getenv("LOKI_URL", "http://localhost:3100")
+            push_to_loki(Path(results_file), config.name, loki_url)
 
         if args.upload_metrics:
             from metrics import export_to_otel

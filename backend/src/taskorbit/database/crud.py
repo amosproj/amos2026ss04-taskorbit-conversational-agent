@@ -385,8 +385,15 @@ async def create_tool_execution(
     tool_type: str,
     result: dict | None = None,
     duration_ms: float | None = None,
+    confirmed: bool = False,
 ) -> ToolExecution | None:
-    """Record a tool invocation for the conversation history."""
+    """Record a tool invocation for the conversation history.
+
+    *confirmed* marks a row as an actual, successful dispatch (set by the
+    orchestrator at the point of dispatch, #224) as opposed to the
+    provenance rows written by the API/worker layer for every
+    ``tool_invoked`` response, which also fire on rejected/aborted turns.
+    """
     try:
         execution = ToolExecution(
             conversation_id=conversation_id,
@@ -394,6 +401,7 @@ async def create_tool_execution(
             tool_type=tool_type,
             result=result,
             duration_ms=duration_ms,
+            confirmed=confirmed,
         )
         db.add(execution)
         await db.commit()
@@ -409,6 +417,57 @@ async def create_tool_execution(
         logger.error("create_tool_execution_failed", error=str(e))
         await db.rollback()
         return None
+
+
+async def get_recent_external_api_results(
+    db: AsyncSession, conversation_id: str, limit: int = 5
+) -> list[dict]:
+    """Result payloads of recent external_api tool runs for a conversation.
+
+    The raw external_api result is otherwise only injected into the turn that ran
+    the tool, so after a handoff (e.g. Maya -> Rachel -> Chris) the downstream
+    agent never sees data an earlier agent retrieved. This reloads those results
+    so they can be re-injected into any later agent's prompt. Ordered oldest
+    first; only rows carrying the raw result shape (a ``data`` payload) count.
+    """
+    try:
+        result = await db.execute(
+            select(ToolExecution)
+            .where(
+                ToolExecution.conversation_id == conversation_id,
+                ToolExecution.tool_type == "external_api",
+            )
+            .order_by(ToolExecution.executed_at.asc())
+            .limit(limit)
+        )
+        rows = list(result.scalars().all())
+        return [r.result for r in rows if isinstance(r.result, dict) and r.result.get("data")]
+    except Exception as e:  # noqa: BLE001 - never let a reload failure break the turn
+        logger.warning(
+            "get_external_api_results_failed", conversation_id=conversation_id, error=str(e)
+        )
+        return []
+
+
+async def tool_already_dispatched(db: AsyncSession, conversation_id: str, tool_id: str) -> bool:
+    """True if *tool_id* has a confirmed successful dispatch in this conversation (#224).
+
+    Only rows the orchestrator marks ``confirmed=True`` at the point of an
+    actual dispatch count — rejected/aborted turns never set it, so a tool
+    the user declined can still be offered again.
+    """
+    try:
+        result = await db.execute(
+            select(ToolExecution.id).where(
+                ToolExecution.conversation_id == conversation_id,
+                ToolExecution.tool_id == tool_id,
+                ToolExecution.confirmed.is_(True),
+            )
+        )
+        return result.first() is not None
+    except SQLAlchemyError as e:
+        logger.error("tool_already_dispatched_check_failed", error=str(e))
+        return False
 
 
 # ============ CONVERSATION MESSAGE CRUD ============
@@ -763,7 +822,14 @@ async def resolve_dependency_agent_config(
     Workflow dependencies store logical ids (e.g. ``technical-support-agent-demo``),
     but saved rows in ``agent_configurations`` use a DB uuid primary key. Search
     user copies first, then admin/shared saves (``user_id IS NULL``).
+
+    The config UI persists workflow-rule dependencies as row references
+    ("row:<db_id>"); strip that prefix here, at the DB-lookup boundary only, so
+    get_user_agent matches the bare primary key. The prefix is deliberately kept
+    on the dependency ids everywhere else (missing-step calc + dependency_configs
+    keys stay in sync on the raw string), so do NOT normalise it upstream.
     """
+    logical_id = logical_id.removeprefix("row:")
     row = await get_user_agent(db, logical_id, user_id)
     if row:
         return agent_config_from_stored_blob(row.config)

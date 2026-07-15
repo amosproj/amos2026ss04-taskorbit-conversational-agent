@@ -105,6 +105,19 @@ class LLMConfig(BaseModel):
     provider: LLMProvider = LLMProvider.OPENAI
     model: str = "gpt-4o-mini"
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_provider(cls, data: Any) -> Any:
+        # The frontend labels Google's provider "gemini" (pipelineOptions.ts),
+        # while the backend enum uses "google" (which maps to the GeminiClient).
+        # Accept "gemini" as an alias for "google" so a config saved via the UI
+        # validates, e.g. on the voice path where raw metadata is model_validate()'d.
+        # This is a naming reconciliation only — a genuine provider/model MISMATCH
+        # (e.g. openai + a gemini model) is left for the factory guard to reject.
+        if isinstance(data, dict) and str(data.get("provider", "")).lower() == "gemini":
+            data = {**data, "provider": "google"}
+        return data
+
 
 class TTSConfig(BaseModel):
     provider: TTSProvider = TTSProvider.ELEVENLABS

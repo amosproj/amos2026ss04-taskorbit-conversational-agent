@@ -68,6 +68,11 @@ class WorkflowSyncResult(NamedTuple):
 
 _CONFIRM_PATTERNS = (
     r"\byes\b",
+    r"\byeah\b",
+    r"\byep\b",
+    r"\byup\b",
+    r"\byeap\b",
+    r"\bokay\b",
     r"\bproceed\b",
     r"\bcontinue\b",
     r"\bcontinua\b",
@@ -75,6 +80,13 @@ _CONFIRM_PATTERNS = (
     r"\bsure\b",
     r"\bok\b",
     r"\bgo ahead\b",
+    r"\bgo for it\b",
+    r"\bplease do\b",
+    r"\bdo it\b",
+    r"\bsounds good\b",
+    r"\bsounds great\b",
+    r"\babsolutely\b",
+    r"\bof course\b",
 )
 _REJECT_PATTERNS = (
     r"\bno\b",
@@ -255,6 +267,11 @@ class OrchestratorAgent(Agent):
         # #71: Workflow state for voice path
         self._completed_workflow_steps: list[str] = []
         self._pending_confirmation_id: str | None = None
+        # Full confirmation payload (#212 follow-up): the voice path resolves
+        # yes/no via speech, but the worker publishes this over the data
+        # channel so the frontend can render the same Approve/Deny card used
+        # in text mode, including which kind of tool is about to run.
+        self._pending_confirmation: dict[str, Any] | None = None
 
     def set_manual_transfer(
         self, target_agent_id: str | None, target_agent_name: str | None
@@ -299,6 +316,7 @@ class OrchestratorAgent(Agent):
             self._completed_workflow_steps = list(completed_workflow_steps)
         if clear_pending_confirmation:
             self._pending_confirmation_id = None
+            self._pending_confirmation = None
         return WorkflowSyncResult(
             routed_agent=self._current_routed_agent,
             completed_steps=list(self._completed_workflow_steps),
@@ -502,8 +520,22 @@ class OrchestratorAgent(Agent):
                 and response.confirmation
             ):
                 self._pending_confirmation_id = response.confirmation.confirmation_id
+                self._pending_confirmation = {
+                    "confirmation_id": response.confirmation.confirmation_id,
+                    "action": response.confirmation.action,
+                    "description": response.confirmation.description,
+                    "tool_type": (
+                        response.tool_invoked.type.value if response.tool_invoked else None
+                    ),
+                    "confirmation_type": (
+                        "workflow"
+                        if response.status == "workflow_confirmation_required"
+                        else "tool"
+                    ),
+                }
             else:
                 self._pending_confirmation_id = None
+                self._pending_confirmation = None
 
             if response.selected_agent:
                 self._current_routed_agent = response.selected_agent
@@ -595,14 +627,59 @@ class OrchestratorAgent(Agent):
         ):
             targets = response.tool_invoked.parameters.get("targets") or []
             if targets:
-                self._pending_handoff_target = str(targets[0])
-                # The conversation is now routed to the target: without this,
-                # selected_agent stays on the entry agent and the transfer
-                # re-fires (and re-publishes) on every subsequent turn (#212).
-                self._current_routed_agent = self._pending_handoff_target
+                row_id = str(targets[0])
+                # Keep the raw row id: the worker publishes it on the
+                # agent_handoff topic and the FE matches it by e.id (useAgentHandoff).
+                self._pending_handoff_target = row_id
+                # PERSISTENTLY swap the worker's own agent config to the transfer
+                # target. On the voice path self._agent_config is bound once from
+                # the LiveKit metadata (the entry agent) and every turn rebuilds
+                # the active agent — and its tools — from it. Without swapping it,
+                # the entry agent's confirmation-gated transfer tool re-selects and
+                # re-fires on every subsequent turn, so the target agent never
+                # actually runs and can never present its result (#212 voice loop).
+                routed_label = row_id
+                try:
+                    from taskorbit.agent_config_util import agent_config_from_stored_blob
+                    from taskorbit.database.crud import get_agent_configuration_by_id
+
+                    async with AsyncSessionLocal() as db:
+                        record = await get_agent_configuration_by_id(
+                            db, row_id, user_id=self._user_id
+                        )
+                    if record is not None:
+                        # Map the stored (frontend-shaped) blob the same way the
+                        # text path does; AgentConfig(**blob) mis-maps
+                        # instructions/first_message and would fall back to Maya.
+                        self._agent_config = agent_config_from_stored_blob(record.config)
+                        routed_label = self._agent_config.id or row_id
+                        log.info(
+                            "voice_agent_config_swapped",
+                            to_agent=self._agent_config.id,
+                            conversation_id=self._conversation_id,
+                        )
+                    else:
+                        # Built-in target (registry name, no DB row) or unknown id:
+                        # keep today's behaviour, no swap.
+                        log.warning(
+                            "voice_agent_config_swap_no_row",
+                            target=row_id,
+                            conversation_id=self._conversation_id,
+                        )
+                except Exception as exc:  # noqa: BLE001 - a swap failure must never break the turn
+                    log.warning(
+                        "voice_agent_config_swap_failed",
+                        target=row_id,
+                        error=str(exc),
+                        conversation_id=self._conversation_id,
+                    )
+                # Route future turns to the target's clean logical id (e.g. "chris")
+                # instead of the raw row id — this is both next turn's
+                # selected_agent and the agent_routed pill label.
+                self._current_routed_agent = routed_label
                 log.info(
                     "voice_agent_handoff_pending",
-                    target=self._pending_handoff_target,
+                    target=row_id,
                     selected_agent=response.selected_agent,
                     conversation_id=self._conversation_id,
                 )
