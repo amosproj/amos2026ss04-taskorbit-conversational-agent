@@ -457,9 +457,7 @@ class ConversationOrchestrator:
                         conversation_id=request.conversation_id,
                     )
                 else:
-                    intent = _reconstruct_locked_intent(
-                        request.current_intent_name, extra_intents
-                    )
+                    intent = _reconstruct_locked_intent(request.current_intent_name, extra_intents)
                     logger.info(
                         "intent_locked",
                         intent=intent.name,
@@ -821,9 +819,7 @@ class ConversationOrchestrator:
             if db is not None and request.conversation_id:
                 from taskorbit.database.crud import get_recent_external_api_results
 
-                prior_tool_data = await get_recent_external_api_results(
-                    db, request.conversation_id
-                )
+                prior_tool_data = await get_recent_external_api_results(db, request.conversation_id)
 
             dispatch = await self._run_dispatch_step(
                 request, active_tool, slot_result, intent, agent, db=db, user_id=user_id
@@ -1159,9 +1155,7 @@ class ConversationOrchestrator:
                         conversation_id=request.conversation_id,
                     )
                 else:
-                    intent = _reconstruct_locked_intent(
-                        request.current_intent_name, extra_intents
-                    )
+                    intent = _reconstruct_locked_intent(request.current_intent_name, extra_intents)
                     logger.info(
                         "intent_locked",
                         intent=intent.name,
@@ -1492,9 +1486,7 @@ class ConversationOrchestrator:
             if db is not None and request.conversation_id:
                 from taskorbit.database.crud import get_recent_external_api_results
 
-                prior_tool_data = await get_recent_external_api_results(
-                    db, request.conversation_id
-                )
+                prior_tool_data = await get_recent_external_api_results(db, request.conversation_id)
 
             dispatch = await self._run_dispatch_step(
                 request, active_tool, slot_result, intent, agent, db=db, user_id=user_id

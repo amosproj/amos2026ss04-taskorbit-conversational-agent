@@ -266,7 +266,6 @@ class AgentRegistry:
                 _find_agent_config_by_logical_id,
                 get_agent_configuration_by_name,
             )
-            from taskorbit.types import AgentConfig as AgentConfigType
 
             # Intent routing hands us an agent_id ("chris"), but the DB name column
             # holds the display name ("Chris") and the lookup is case-sensitive, so

@@ -423,7 +423,12 @@ async def test_agent_transfer_dispatch_sets_tool_invoked() -> None:
 
     with (
         patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
-        patch.object(ConversationOrchestrator, "_select_active_tool", new_callable=AsyncMock, return_value=transfer_tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_select_active_tool",
+            new_callable=AsyncMock,
+            return_value=transfer_tool,
+        ),
         patch.object(
             ConversationOrchestrator,
             "_extract_slots",
@@ -640,7 +645,12 @@ async def test_external_api_arg_extracted_and_dispatched() -> None:
 
     with (
         patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
-        patch.object(ConversationOrchestrator, "_select_active_tool", new_callable=AsyncMock, return_value=tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_select_active_tool",
+            new_callable=AsyncMock,
+            return_value=tool,
+        ),
         patch.object(ConversationOrchestrator, "_extract_slots", new=_fake_extract),
         patch.object(ConversationOrchestrator, "_dispatch_tool", new=_fake_dispatch),
         patch.object(
@@ -702,7 +712,12 @@ async def test_no_arg_external_api_active_does_not_leak_guidance() -> None:
 
     with (
         patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
-        patch.object(ConversationOrchestrator, "_select_active_tool", new_callable=AsyncMock, return_value=tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_select_active_tool",
+            new_callable=AsyncMock,
+            return_value=tool,
+        ),
         patch.object(ConversationOrchestrator, "_extract_slots", new=_fake_extract),
         patch.object(ConversationOrchestrator, "_dispatch_tool", new=_fake_dispatch),
         patch.object(
@@ -828,7 +843,12 @@ async def test_failed_external_api_tool_makes_agent_report_not_fabricate() -> No
 
     with (
         patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
-        patch.object(ConversationOrchestrator, "_select_active_tool", new_callable=AsyncMock, return_value=tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_select_active_tool",
+            new_callable=AsyncMock,
+            return_value=tool,
+        ),
         patch.object(ConversationOrchestrator, "_extract_slots", new=_fake_extract),
         patch.object(ConversationOrchestrator, "_dispatch_tool", new=_fake_dispatch),
         patch.object(ConversationOrchestrator, "_call_llm", new=_capture_llm),
@@ -958,7 +978,12 @@ async def test_no_arg_external_api_dispatches_and_llm_sees_result() -> None:
 
     with (
         patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
-        patch.object(ConversationOrchestrator, "_select_active_tool", new_callable=AsyncMock, return_value=tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_select_active_tool",
+            new_callable=AsyncMock,
+            return_value=tool,
+        ),
         patch.object(
             ConversationOrchestrator,
             "_extract_slots",
@@ -1858,7 +1883,12 @@ async def test_auto_transfer_to_custom_agent_via_process_message() -> None:
 
     with (
         patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
-        patch.object(ConversationOrchestrator, "_select_active_tool", new_callable=AsyncMock, return_value=transfer_tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_select_active_tool",
+            new_callable=AsyncMock,
+            return_value=transfer_tool,
+        ),
         patch.object(
             ConversationOrchestrator,
             "_extract_slots",
@@ -2379,7 +2409,12 @@ async def test_transfer_tool_invoked_carries_canonical_target() -> None:
 
     with (
         patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
-        patch.object(ConversationOrchestrator, "_select_active_tool", new_callable=AsyncMock, return_value=transfer_tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_select_active_tool",
+            new_callable=AsyncMock,
+            return_value=transfer_tool,
+        ),
         patch.object(
             ConversationOrchestrator,
             "_extract_slots",

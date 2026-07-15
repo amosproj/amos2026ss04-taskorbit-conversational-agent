@@ -244,7 +244,12 @@ async def test_llm_node_swaps_agent_config_on_completed_transfer() -> None:
     ):
         # Turn 1: the transfer fires → the worker swaps its own config to Chris.
         agent.request_reply()
-        [_ async for _ in agent.llm_node(_make_chat_ctx([("user", "the conclusion")]), [], MagicMock())]
+        [
+            _
+            async for _ in agent.llm_node(
+                _make_chat_ctx([("user", "the conclusion")]), [], MagicMock()
+            )
+        ]
 
         assert agent._agent_config.id == "chris"
         assert agent._agent_config.name == "Chris"
@@ -255,7 +260,12 @@ async def test_llm_node_swaps_agent_config_on_completed_transfer() -> None:
 
         # Turn 2: the next turn must run AS Chris (swap persisted into worker state).
         agent.request_reply()
-        [_ async for _ in agent.llm_node(_make_chat_ctx([("user", "please continue")]), [], MagicMock())]
+        [
+            _
+            async for _ in agent.llm_node(
+                _make_chat_ctx([("user", "please continue")]), [], MagicMock()
+            )
+        ]
 
     assert len(captured) == 2
     assert captured[1].agent_config.id == "chris"  # worker now sends Chris, not Maya
