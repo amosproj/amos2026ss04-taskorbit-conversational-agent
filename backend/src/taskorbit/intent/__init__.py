@@ -270,14 +270,22 @@ class IntentRouter:
         messages: list[Message],
         llm_fn: LLMCallable,
         llm_config: LLMConfig,
+        extra_intents: dict[str, IntentResult] | None = None,
     ) -> IntentResult:
         """Classify *prompt* and return an IntentResult.
+
+        ``extra_intents`` are per-call routing targets for the CURRENT agent's
+        custom handoffs (keyed by agent_id, e.g. "chris"); they are merged with
+        the built-ins for this one call only and never mutate the module global,
+        so custom multi-agent configs become routable without breaking built-in
+        routing (#1).
 
         Sets ``requires_clarification=True`` when confidence is below the
         threshold or when the LLM returns no matching intent.
         """
+        candidates: dict[str, IntentResult] = {**_KNOWN_INTENTS, **(extra_intents or {})}
         intents_list = "\n".join(
-            f"- {name}: {result.description}" for name, result in _KNOWN_INTENTS.items()
+            f"- {name}: {result.description}" for name, result in candidates.items()
         )
 
         history_block = ""
@@ -331,11 +339,11 @@ class IntentRouter:
                 requires_clarification=0.5 < self._threshold,
             )
 
-        if not intent_name or intent_name not in _KNOWN_INTENTS:
+        if not intent_name or intent_name not in candidates:
             return replace(_FALLBACK_RESULT, confidence=0.0, requires_clarification=True)
 
         return replace(
-            _KNOWN_INTENTS[intent_name],
+            candidates[intent_name],
             confidence=confidence,
             requires_clarification=confidence < self._threshold,
         )

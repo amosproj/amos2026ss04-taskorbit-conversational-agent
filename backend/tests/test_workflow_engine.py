@@ -180,6 +180,51 @@ async def test_handoff_blocked_if_not_allowed(orchestrator):
 
 
 @pytest.mark.asyncio
+async def test_committed_entry_agent_answers_catch_all_intent(orchestrator):
+    """A committed custom entry agent (selected_agent == its own id, e.g. a
+    post-transfer presenter whose workflow prerequisites are satisfied) must
+    answer a general_inquiry / unknown catch-all turn itself, not refuse it.
+
+    Regression for the voice agent handoff: after Maya -> Rachel -> Chris, the
+    user asks Chris to present the conclusion. That utterance classifies as the
+    general_inquiry catch-all, which is never in Chris's allowed_handoffs, so the
+    handoff-block used to refuse every one of Chris's own turns and he could
+    never present the result.
+    """
+    config = AgentConfig(
+        id="chris",
+        name="Chris",
+        persona="I present the conclusion.",
+        greeting="Hi, I'm Chris.",
+        workflow_dependencies=["rachel"],  # dependency already satisfied below
+        allowed_handoffs=["rachel"],  # non-empty => the handoff-block could fire
+    )
+    request = ConversationRequest(
+        conversation_id="conv-1",
+        agent_config=config,
+        selected_agent="chris",  # committed: the routed agent IS the entry agent
+        completed_workflow_steps=["rachel"],
+        messages=[Message(role=MessageRole.USER, content="Please tell me the conclusion now.")],
+    )
+    catch_all = IntentResult(
+        name="general_inquiry",
+        description="d",
+        agent_name="general_inquiry",
+        confidence=0.7,
+    )
+
+    with mock.patch.object(orchestrator._intent_router, "detect", return_value=catch_all):
+        with mock.patch.object(
+            orchestrator, "_call_llm", return_value="The conclusion is that it works."
+        ):
+            response = await orchestrator.process_message(request)
+
+    assert response.status == ConversationStatus.SUCCESS
+    assert response.selected_agent == "chris"
+    assert "conclusion" in response.reply.content.lower()
+
+
+@pytest.mark.asyncio
 async def test_turn_1_entry_agent_locked(orchestrator):
     # Config says Sales
     config = AgentConfig(

@@ -68,12 +68,28 @@ def _effective_selected_agent(selected_agent: str | None) -> str | None:
     return stripped if stripped else None
 
 
-def _selected_agent_matches_dep(selected_agent: str | None, dep_id: str) -> bool:
-    """True when the session is already executing a prerequisite agent step."""
+def _selected_agent_matches_dep(
+    selected_agent: str | None, dep_id: str, dep_agent_id: str | None = None
+) -> bool:
+    """True when the session is already executing a prerequisite agent step.
+
+    ``dep_agent_id`` is the dependency's clean logical id (e.g. "rachel"); we now
+    surface that as ``selected_agent`` instead of the raw "row:<db_id>" ref (so
+    the UI pill never shows the raw id), which means the prereq-in-progress check
+    must also match on it.
+    """
     if not selected_agent:
         return False
     dep_registry = AgentRegistry.get_agent_name_for_id(dep_id)
-    return selected_agent == dep_id or selected_agent == dep_registry
+    return selected_agent in (dep_id, dep_registry, dep_agent_id)
+
+
+def _dep_agent_id(request: ConversationRequest, dep_id: str) -> str | None:
+    """Clean logical agent id of a workflow dependency (e.g. "rachel"), resolved
+    from its attached config so the UI routed-agent label is a real name, never
+    the raw "row:<db_id>" reference. None when the config is not on the request."""
+    cfg = request.dependency_configs.get(dep_id)
+    return cfg.id if cfg is not None else None
 
 
 def _resolve_missing_dependencies(
@@ -99,6 +115,10 @@ def _workflow_prereq_confirmation_message(entry_name: str, dep_name: str) -> str
 
 
 def _workflow_prereq_start_ack(next_dep: str) -> str:
+    if next_dep.startswith("row:"):
+        # Custom workflow dependency (a "row:<id>" ref): keep the ack generic so
+        # we never leak the raw row id (or a prerequisite agent's name) to the user.
+        return "Understood. Let me get the information we need for that first."
     return f"Understood. Let's start with the {next_dep.replace('-', ' ')} steps."
 
 
@@ -111,7 +131,32 @@ def _is_executing_workflow_prerequisite(
         return False
 
     _, _, missing = _resolve_missing_dependencies(request, intent)
-    return bool(missing) and _selected_agent_matches_dep(request.selected_agent, missing[0])
+    return bool(missing) and _selected_agent_matches_dep(
+        request.selected_agent, missing[0], _dep_agent_id(request, missing[0])
+    )
+
+
+def _reconstruct_locked_intent(
+    name: str, extra_intents: dict[str, IntentResult] | None = None
+) -> IntentResult:
+    """Rebuild a locked intent from its stored name across turns (#2/#5).
+
+    Built-ins come from the registry. A custom workflow target (e.g. "chris") is
+    rebuilt from the per-turn ``extra_intents``, or minimally if unavailable, so
+    its ``agent_name`` survives every follow-up turn (keeping the workflow rule
+    injecting the prerequisite) and ``_KNOWN_INTENTS[name]`` never raises
+    KeyError on the handoff-blocked revert.
+    """
+    source = {**_KNOWN_INTENTS, **(extra_intents or {})}
+    base = source.get(name)
+    if base is not None:
+        return dataclass_replace(base, confidence=1.0)
+    return IntentResult(
+        name=name,
+        description=f"Continue the workflow routed to the {name} agent.",
+        agent_name=name,
+        confidence=1.0,
+    )
 
 
 def _resolve_intent_after_clarification_gate(
@@ -126,6 +171,38 @@ def _resolve_intent_after_clarification_gate(
     if request.current_intent_name and request.current_intent_name in _KNOWN_INTENTS:
         return dataclass_replace(_KNOWN_INTENTS[request.current_intent_name], confidence=1.0)
     return dataclass_replace(intent, requires_clarification=False, confidence=1.0)
+
+
+# Catch-all fallback intents. These are NOT real handoff targets - there is no
+# "general_inquiry agent" to route to; they mean "no specific route, the current
+# agent should just answer."
+_NON_ROUTING_INTENTS = frozenset({"general_inquiry", "unknown"})
+
+
+def _keep_turn_with_committed_agent(
+    request: ConversationRequest,
+    intent: IntentResult,
+) -> IntentResult:
+    """Let a committed custom entry agent answer catch-all turns itself.
+
+    Once the conversation is committed to the entry agent (``selected_agent`` is
+    that agent's own id, e.g. a post-transfer presenter whose workflow
+    prerequisites are already satisfied), a catch-all or unclassifiable turn must
+    resolve to that agent responding directly. Otherwise the clarification gate
+    or the handoff-block refuses it - the current agent can never simply answer,
+    because a fallback intent is never in its ``allowed_handoffs``. The genuine
+    cross-agent handoff-block is untouched: it fires only when the routed agent
+    differs from the entry agent (``selected_agent != agent_config.id``).
+    """
+    if not request.selected_agent or request.selected_agent != request.agent_config.id:
+        return intent
+    if intent.requires_clarification or intent.name in _NON_ROUTING_INTENTS:
+        return dataclass_replace(
+            intent,
+            agent_name=request.agent_config.id,
+            requires_clarification=False,
+        )
+    return intent
 
 
 def _workflow_ui_selected_agent(request: ConversationRequest) -> str | None:
@@ -211,6 +288,54 @@ class ConversationOrchestrator:
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
         self._intent_router = IntentRouter()
+
+    async def _build_extra_intents(
+        self,
+        request: ConversationRequest,
+        db: AsyncSession | None,
+        user_id: int | None,
+    ) -> dict[str, IntentResult]:
+        """Per-turn custom routing targets from the entry agent's allowed_handoffs (#1).
+
+        Each allowed-handoff agent_id (e.g. "chris") becomes a candidate intent
+        keyed by that agent_id and described by the target agent's name + persona,
+        so the classifier can route to a custom agent instead of always falling to
+        a built-in. Read-only; any resolution failure is skipped so a missing or
+        renamed target can never break built-in routing.
+        """
+        extra: dict[str, IntentResult] = {}
+        handoffs = request.agent_config.allowed_handoffs or []
+        if not handoffs or db is None:
+            return extra
+
+        from taskorbit.database.crud import _find_agent_config_by_logical_id
+
+        for raw in handoffs:
+            hid = str(raw).strip()
+            if not hid or hid in _KNOWN_INTENTS or hid in extra:
+                continue
+            try:
+                record = await _find_agent_config_by_logical_id(db, hid, user_id)
+            except Exception:  # noqa: BLE001
+                record = None
+            display = record.name if record is not None else hid
+            # Concise, markdown-free routing signal. Dumping the whole persona
+            # makes the classifier less confident (it then clarifies instead of
+            # routing); prefer the greeting, fall back to the persona, and strip
+            # markdown/whitespace so the candidate list stays crisp.
+            summary = ""
+            if record is not None and isinstance(record.config, dict):
+                summary = str(
+                    record.config.get("greeting")
+                    or record.config.get("persona")
+                    or record.config.get("instructions")
+                    or ""
+                )
+            summary = summary.replace("#", " ").replace("*", " ").replace("\n", " ")
+            summary = " ".join(summary.split())[:150]
+            description = f"Route here to reach {display}. {summary}".strip()[:220]
+            extra[hid] = IntentResult(name=hid, description=description, agent_name=hid)
+        return extra
 
     async def process_message(
         self,
@@ -307,12 +432,16 @@ class ConversationOrchestrator:
 
             # 1. Detect intent — reuse locked intent when set, but still run the
             # classifier to allow genuine topic changes to break the lock.
-            if request.current_intent_name and request.current_intent_name in _KNOWN_INTENTS:
+            # extra_intents lets a custom entry agent route to its own handoff
+            # targets (e.g. Maya -> "chris"), not just the built-in intents (#1).
+            extra_intents = await self._build_extra_intents(request, db, user_id)
+            if request.current_intent_name:
                 fresh = await self._intent_router.detect(
                     last_user.content,
                     request.messages,
                     self._call_llm_json,
                     request.agent_config.llm,
+                    extra_intents=extra_intents,
                 )
                 if (
                     fresh.name != request.current_intent_name
@@ -328,8 +457,8 @@ class ConversationOrchestrator:
                         conversation_id=request.conversation_id,
                     )
                 else:
-                    intent = dataclass_replace(
-                        _KNOWN_INTENTS[request.current_intent_name], confidence=1.0
+                    intent = _reconstruct_locked_intent(
+                        request.current_intent_name, extra_intents
                     )
                     logger.info(
                         "intent_locked",
@@ -342,6 +471,7 @@ class ConversationOrchestrator:
                     request.messages,
                     self._call_llm_json,
                     request.agent_config.llm,
+                    extra_intents=extra_intents,
                 )
                 logger.info(
                     "intent_detected",
@@ -351,6 +481,7 @@ class ConversationOrchestrator:
                 )
 
             intent = _resolve_intent_after_clarification_gate(request, intent)
+            intent = _keep_turn_with_committed_agent(request, intent)
 
             # Short-circuit: ask for clarification instead of guessing
             if intent.requires_clarification:
@@ -422,7 +553,9 @@ class ConversationOrchestrator:
             executing_prereq_id: str | None = None
             if missing_dependencies:
                 next_dep = missing_dependencies[0]
-                executing_prereq = _selected_agent_matches_dep(request.selected_agent, next_dep)
+                executing_prereq = _selected_agent_matches_dep(
+                    request.selected_agent, next_dep, _dep_agent_id(request, next_dep)
+                )
 
                 if executing_prereq:
                     # User already confirmed — run the prerequisite agent, do not re-prompt.
@@ -466,10 +599,14 @@ class ConversationOrchestrator:
                     if not has_decision:
                         # Deadlock guard (AC #9): If we can't resolve the metadata for the prompt,
                         # we still offer the handoff but falling back to the ID name.
-                        dep_name = next_dep.replace("-", " ")
                         dep_config = request.dependency_configs.get(next_dep)
                         if dep_config:
                             dep_name = dep_config.name
+                        elif next_dep.startswith("row:"):
+                            # Never leak the raw "row:<db_id>" reference to the user.
+                            dep_name = "the required information"
+                        else:
+                            dep_name = next_dep.replace("-", " ")
 
                         return ConversationResponse(
                             conversation_id=request.conversation_id,
@@ -518,7 +655,7 @@ class ConversationOrchestrator:
                         conversation_id=request.conversation_id,
                         reply=self._make_assistant_message(_workflow_prereq_start_ack(next_dep)),
                         status=ConversationStatus.SUCCESS,
-                        selected_agent=next_dep,
+                        selected_agent=_dep_agent_id(request, next_dep) or next_dep,
                         selected_intent=intent.name,
                         intent_confidence=1.0,
                         locked_intent_name=intent.name,
@@ -555,8 +692,8 @@ class ConversationOrchestrator:
                     )
                     # Revert the intent name to match the selected agent's intent
                     if request.current_intent_name:
-                        intent = dataclass_replace(
-                            _KNOWN_INTENTS[request.current_intent_name], confidence=1.0
+                        intent = _reconstruct_locked_intent(
+                            request.current_intent_name, extra_intents
                         )
 
             if handoff_blocked:
@@ -584,7 +721,7 @@ class ConversationOrchestrator:
             active_config = agent.config
 
             # 3. Select active tool
-            active_tool = self._select_active_tool(
+            active_tool = await self._select_active_tool(
                 request.messages,
                 agent,
                 # confirmation_id IS the pending tool's id: pinning on it keeps
@@ -593,6 +730,9 @@ class ConversationOrchestrator:
                 active_tool_id=request.active_tool_id or request.confirmation_id,
                 intent=intent,
                 current_agent=request.selected_agent or request.agent_config.id,
+                db=db,
+                user_id=user_id,
+                executing_prereq=bool(executing_prereq_id),
             )
 
             # 3b. Extract slots from conversation history.
@@ -674,6 +814,17 @@ class ConversationOrchestrator:
             # system prompt. The stream path already runs dispatch first;
             # text path now matches so both paths behave identically and
             # external_api tools can actually answer the user's question.
+            # Reload external_api data earlier agents retrieved in this
+            # conversation, so it survives a handoff and can be re-injected into
+            # this (possibly different) agent's prompt.
+            prior_tool_data: list[dict] = []
+            if db is not None and request.conversation_id:
+                from taskorbit.database.crud import get_recent_external_api_results
+
+                prior_tool_data = await get_recent_external_api_results(
+                    db, request.conversation_id
+                )
+
             dispatch = await self._run_dispatch_step(
                 request, active_tool, slot_result, intent, agent, db=db, user_id=user_id
             )
@@ -682,13 +833,37 @@ class ConversationOrchestrator:
             tool_data = dispatch.tool_data
             response_status = dispatch.response_status
 
-            # 5. Build system prompt WITH tool_data if a tool just fired.
+            # Persist this turn's external_api result so a downstream agent (after
+            # a handoff) can reference it; otherwise it lives only for this turn.
+            if (
+                db is not None
+                and request.conversation_id
+                and active_tool is not None
+                and active_tool.type == ToolType.EXTERNAL_API
+                and isinstance(tool_data, dict)
+                and tool_data.get("data")
+                and not tool_data.get("tool_failed")
+                and not tool_data.get("aborted")
+            ):
+                from taskorbit.database.crud import create_tool_execution
+
+                await create_tool_execution(
+                    db,
+                    request.conversation_id,
+                    active_tool.id,
+                    ToolType.EXTERNAL_API.value,
+                    result=tool_data,
+                )
+
+            # 5. Build system prompt WITH tool_data if a tool just fired, plus any
+            # data a prior agent retrieved before handing off to this one.
             system_prompt = self._build_system_prompt(
                 active_config,
                 active_tool,
                 slot_result,
                 routed_agent=agent,
                 tool_data=tool_data,
+                prior_tool_data=prior_tool_data,
             )
 
             # 5b. Call LLM with a timeout from settings. Measure latency.
@@ -959,13 +1134,16 @@ class ConversationOrchestrator:
                 yield refusal_response
                 return
 
-            # 1. Detect intent.
-            if request.current_intent_name and request.current_intent_name in _KNOWN_INTENTS:
+            # 1. Detect intent. extra_intents lets a custom entry agent route to
+            # its own handoff targets (e.g. Maya -> "chris"), same as text (#1).
+            extra_intents = await self._build_extra_intents(request, db, user_id)
+            if request.current_intent_name:
                 fresh = await self._intent_router.detect(
                     last_user.content,
                     request.messages,
                     self._call_llm_json,
                     request.agent_config.llm,
+                    extra_intents=extra_intents,
                 )
                 if (
                     fresh.name != request.current_intent_name
@@ -981,8 +1159,8 @@ class ConversationOrchestrator:
                         conversation_id=request.conversation_id,
                     )
                 else:
-                    intent = dataclass_replace(
-                        _KNOWN_INTENTS[request.current_intent_name], confidence=1.0
+                    intent = _reconstruct_locked_intent(
+                        request.current_intent_name, extra_intents
                     )
                     logger.info(
                         "intent_locked",
@@ -995,6 +1173,7 @@ class ConversationOrchestrator:
                     request.messages,
                     self._call_llm_json,
                     request.agent_config.llm,
+                    extra_intents=extra_intents,
                 )
                 logger.info(
                     "intent_detected",
@@ -1004,6 +1183,7 @@ class ConversationOrchestrator:
                 )
 
             intent = _resolve_intent_after_clarification_gate(request, intent)
+            intent = _keep_turn_with_committed_agent(request, intent)
 
             if intent.requires_clarification:
                 from taskorbit.intent import _CLARIFICATION_REPLY
@@ -1063,7 +1243,9 @@ class ConversationOrchestrator:
             executing_prereq_id: str | None = None
             if missing_dependencies:
                 next_dep = missing_dependencies[0]
-                executing_prereq = _selected_agent_matches_dep(request.selected_agent, next_dep)
+                executing_prereq = _selected_agent_matches_dep(
+                    request.selected_agent, next_dep, _dep_agent_id(request, next_dep)
+                )
 
                 if executing_prereq:
                     executing_prereq_id = next_dep
@@ -1097,10 +1279,14 @@ class ConversationOrchestrator:
                     has_decision = is_decision_for_this_workflow and request.decision is not None
 
                     if not has_decision:
-                        dep_name = next_dep.replace("-", " ")
                         dep_config = request.dependency_configs.get(next_dep)
                         if dep_config:
                             dep_name = dep_config.name
+                        elif next_dep.startswith("row:"):
+                            # Never leak the raw "row:<db_id>" reference to the user.
+                            dep_name = "the required information"
+                        else:
+                            dep_name = next_dep.replace("-", " ")
 
                         yield ConversationResponse(
                             conversation_id=request.conversation_id,
@@ -1151,7 +1337,7 @@ class ConversationOrchestrator:
                         conversation_id=request.conversation_id,
                         reply=self._make_assistant_message(_workflow_prereq_start_ack(next_dep)),
                         status=ConversationStatus.SUCCESS,
-                        selected_agent=next_dep,
+                        selected_agent=_dep_agent_id(request, next_dep) or next_dep,
                         selected_intent=intent.name,
                         intent_confidence=1.0,
                         locked_intent_name=intent.name,
@@ -1190,8 +1376,8 @@ class ConversationOrchestrator:
                         user_id=user_id,
                     )
                     if request.current_intent_name:
-                        intent = dataclass_replace(
-                            _KNOWN_INTENTS[request.current_intent_name], confidence=1.0
+                        intent = _reconstruct_locked_intent(
+                            request.current_intent_name, extra_intents
                         )
 
             if handoff_blocked:
@@ -1217,7 +1403,7 @@ class ConversationOrchestrator:
             active_config = agent.config
 
             # 3. Select active tool.
-            active_tool = self._select_active_tool(
+            active_tool = await self._select_active_tool(
                 request.messages,
                 agent,
                 # confirmation_id IS the pending tool's id: pinning on it keeps
@@ -1226,6 +1412,9 @@ class ConversationOrchestrator:
                 active_tool_id=request.active_tool_id or request.confirmation_id,
                 intent=intent,
                 current_agent=request.selected_agent or request.agent_config.id,
+                db=db,
+                user_id=user_id,
+                executing_prereq=bool(executing_prereq_id),
             )
 
             # Pre-extraction scope short-circuit (parity with the text path, #168):
@@ -1297,6 +1486,16 @@ class ConversationOrchestrator:
             # before any tokens are sent to the client. Also fires BEFORE the
             # system prompt is built so tool_data (e.g. external_api results)
             # can be injected for the LLM.
+            # Reload external_api data earlier agents retrieved so it survives a
+            # handoff and can be re-injected into this agent's prompt (voice path).
+            prior_tool_data: list[dict] = []
+            if db is not None and request.conversation_id:
+                from taskorbit.database.crud import get_recent_external_api_results
+
+                prior_tool_data = await get_recent_external_api_results(
+                    db, request.conversation_id
+                )
+
             dispatch = await self._run_dispatch_step(
                 request, active_tool, slot_result, intent, agent, db=db, user_id=user_id
             )
@@ -1304,13 +1503,36 @@ class ConversationOrchestrator:
                 yield dispatch.early_response
                 return
 
-            # 4d. Build system prompt WITH tool_data if a tool just fired.
+            # Persist this turn's external_api result for a downstream agent.
+            if (
+                db is not None
+                and request.conversation_id
+                and active_tool is not None
+                and active_tool.type == ToolType.EXTERNAL_API
+                and isinstance(dispatch.tool_data, dict)
+                and dispatch.tool_data.get("data")
+                and not dispatch.tool_data.get("tool_failed")
+                and not dispatch.tool_data.get("aborted")
+            ):
+                from taskorbit.database.crud import create_tool_execution
+
+                await create_tool_execution(
+                    db,
+                    request.conversation_id,
+                    active_tool.id,
+                    ToolType.EXTERNAL_API.value,
+                    result=dispatch.tool_data,
+                )
+
+            # 4d. Build system prompt WITH tool_data if a tool just fired, plus any
+            # data a prior agent retrieved before handing off to this one.
             system_prompt = self._build_system_prompt(
                 active_config,
                 active_tool,
                 slot_result,
                 routed_agent=agent,
                 tool_data=dispatch.tool_data,
+                prior_tool_data=prior_tool_data,
             )
 
             # Pre-LLM scope short-circuit: final guard before streaming tokens (#168).
@@ -1698,6 +1920,7 @@ class ConversationOrchestrator:
         slot_result: Any | None = None,
         routed_agent: Any | None = None,
         tool_data: dict[str, Any] | None = None,
+        prior_tool_data: list[dict[str, Any]] | None = None,
     ) -> str:
         """Construct a system prompt (LLM context) for the current task.
 
@@ -1749,6 +1972,18 @@ class ConversationOrchestrator:
                 "Tool result (use this concrete data to answer the user's question, "
                 "do NOT answer from prior knowledge if the tool result is relevant): "
                 + _json.dumps(tool_data, default=str)
+            )
+        if prior_tool_data:
+            import json as _json
+
+            # Data an earlier agent retrieved in this conversation (e.g. Rachel's
+            # external_api result before a handoff to Chris). Re-inject it so the
+            # current agent can present it instead of claiming it is unavailable.
+            lines.append(
+                "Previously retrieved data (gathered earlier in this same conversation — "
+                "treat it as available and use it to answer; do NOT tell the user the "
+                "information is unavailable if it appears here): "
+                + _json.dumps(prior_tool_data, default=str)
             )
         if slot_result is not None:
             if slot_result.filled:
@@ -1838,13 +2073,16 @@ class ConversationOrchestrator:
             ]
             return SlotExtractionResult(missing=missing)
 
-    def _select_active_tool(
+    async def _select_active_tool(
         self,
         messages: list[Message],
         agent: BaseAgent,
         active_tool_id: str | None = None,
         intent: IntentResult | None = None,
         current_agent: str | None = None,
+        db: AsyncSession | None = None,
+        user_id: int | None = None,
+        executing_prereq: bool = False,
     ) -> ToolDefinition | None:
         """Decide which tool should be in scope for this turn, if any.
 
@@ -1880,8 +2118,16 @@ class ConversationOrchestrator:
             )
             return workflow_tool or tools[0]
 
-        if intent is not None and intent.agent_name:
-            from taskorbit.tools.agent_transfer import resolve_builtin_transfer_target
+        # While this turn is executing a workflow PREREQUISITE agent (e.g. Rachel),
+        # the routed intent still points at the ultimate target (e.g. "chris"), so
+        # the transfer match below would fire the prereq agent's own transfer tool
+        # and skip its data step. Prefer the prereq agent's workflow tool instead;
+        # the workflow engine advances to the target once the prereq completes (#6/#4).
+        if intent is not None and intent.agent_name and not executing_prereq:
+            from taskorbit.tools.agent_transfer import (
+                resolve_builtin_transfer_target,
+                resolve_transfer_target,
+            )
 
             # current_agent can arrive as a template slug after a completed voice
             # handoff ("technical-support-agent"), while intent.agent_name is a
@@ -1899,11 +2145,29 @@ class ConversationOrchestrator:
                     continue
                 targets = tool.parameters.get("targets") or []
                 for raw in targets:
+                    # Fast path: built-in target resolves without DB access.
                     if resolve_builtin_transfer_target(str(raw)) == intent.agent_name:
                         logger.info(
                             "agent_transfer_tool_selected",
                             destination=intent.agent_name,
                             requested_target=str(raw),
+                            tool_id=tool.id,
+                        )
+                        return tool
+                    # Custom/DB target: intent.agent_name is the logical agent_id
+                    # ("chris"), but the configured target is the DB row-id, so the
+                    # built-in match above misses it. Resolve and compare the
+                    # logical agent_id so a transfer to a custom agent fires (#4).
+                    resolved = await resolve_transfer_target(str(raw), db=db, user_id=user_id)
+                    if resolved is not None and intent.agent_name in (
+                        resolved.agent_id,
+                        resolved.canonical_id,
+                    ):
+                        logger.info(
+                            "agent_transfer_tool_selected",
+                            destination=intent.agent_name,
+                            requested_target=str(raw),
+                            resolved_agent_id=resolved.agent_id,
                             tool_id=tool.id,
                         )
                         return tool
@@ -2008,7 +2272,11 @@ class ConversationOrchestrator:
                         conversation_id=request.conversation_id,
                         reply=self._make_assistant_message(
                             active_tool.confirmation.prompt
-                            or f"I need your confirmation before I proceed with {active_tool.name}. Should I go ahead?"
+                            or (
+                                "Shall I hand you over now?"
+                                if active_tool.type == ToolType.AGENT_TRANSFER
+                                else "I need your confirmation before I proceed. Should I go ahead?"
+                            )
                         ),
                         status=ConversationStatus.CONFIRMATION_REQUIRED,
                         tool_invoked=active_tool,
