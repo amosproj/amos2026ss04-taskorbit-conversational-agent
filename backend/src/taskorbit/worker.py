@@ -60,6 +60,11 @@ _SESSION_ENDED_TOPIC: str = "taskorbit.session_ended"
 # this on end-of-speech so the frontend commits the turn even when its own
 # amplitude-based silence detection misses on background noise. #153.
 _FORCE_COMMIT_TOPIC: str = "taskorbit.force_commit"
+# Topic the FE (useVoiceConfirmation) subscribes to: mirrors the text path's
+# Approve/Deny card during a voice call. The voice path still resolves the
+# actual yes/no via speech (_voice_confirmation_decision) -- this only drives
+# the visual card, which previously never appeared in voice mode.
+_CONFIRMATION_TOPIC: str = "taskorbit.confirmation_pending"
 
 
 async def entrypoint(ctx: JobContext) -> None:
@@ -260,6 +265,34 @@ async def entrypoint(ctx: JobContext) -> None:
                 agent._pending_handoff_target = pending
             logger.warning("worker_handoff_publish_failed", error=str(exc))
 
+    async def _flush_pending_call_end() -> None:
+        """Publish session_ended exactly once when the orchestrator has ended
+        the call (bug 3 / end-call teardown race).
+
+        Mirrors _flush_pending_handoff: reads AND clears the flag before
+        awaiting, so this is safe to call from both the normal post-playout
+        path and the cancellation path without double-publishing. Without
+        this, a barge-in (e.g. the caller saying "bye bye" again while the
+        farewell is still playing) cancels the in-flight reply task before
+        it reaches the inline session_ended publish, and the room never
+        actually tears down even though end_call already dispatched.
+        """
+        if not agent._call_ended:
+            return
+        agent._call_ended = False
+        try:
+            payload = json.dumps({"type": "session_ended"})
+            await ctx.room.local_participant.publish_data(
+                payload, reliable=True, topic=_SESSION_ENDED_TOPIC
+            )
+            logger.info("worker_session_ended_published")
+        except Exception as exc:  # noqa: BLE001
+            # Restore so a later flush retries instead of losing the signal,
+            # unless a newer turn has already re-armed it meanwhile.
+            if not agent._call_ended:
+                agent._call_ended = True
+            logger.warning("worker_session_ended_publish_failed", error=str(exc))
+
     async def _commit_and_reply(turn_start: float) -> None:
         # Small delay so Deepgram can flush its final transcription segment
         # into the ChatContext before generate_reply() reads it. Without this,
@@ -307,17 +340,24 @@ async def entrypoint(ctx: JobContext) -> None:
 
             # Publish session_ended so the frontend can tear down the call
             # when the user explicitly requests to end via voice.
-            if agent._call_ended:
-                try:
-                    payload = json.dumps({"type": "session_ended"})
-                    await ctx.room.local_participant.publish_data(
-                        payload, reliable=True, topic=_SESSION_ENDED_TOPIC
-                    )
-                    logger.info("worker_session_ended_published")
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("worker_session_ended_publish_failed", error=str(exc))
-                finally:
-                    agent._call_ended = False
+            await _flush_pending_call_end()
+
+            # Publish the pending confirmation (if any) so the frontend can
+            # render the same Approve/Deny card used in text mode. Always
+            # publish either state (pending or cleared) rather than only on
+            # transitions -- the frontend applies both idempotently and this
+            # avoids tracking extra "did it change" state here.
+            try:
+                pending = agent._pending_confirmation
+                if pending is not None:
+                    payload = json.dumps({"type": "confirmation_pending", **pending})
+                else:
+                    payload = json.dumps({"type": "confirmation_cleared"})
+                await ctx.room.local_participant.publish_data(
+                    payload, reliable=True, topic=_CONFIRMATION_TOPIC
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("worker_confirmation_publish_failed", error=str(exc))
 
             # AC7: now that the orchestrator has finished (wait_for_playout
             # above), the pending target is set if a transfer dispatched this
@@ -326,27 +366,35 @@ async def entrypoint(ctx: JobContext) -> None:
             await _flush_pending_handoff()
         except asyncio.CancelledError:
             # Barge-in cancelled this reply mid-generation or mid-playout. The
-            # orchestrator may ALREADY have applied a transfer, so the card
-            # swap must not be lost (#212): flush it from a detached task,
+            # orchestrator may ALREADY have applied a transfer or ended the
+            # call, so neither the handoff swap nor the session_ended signal
+            # may be lost (#212, bug 3): flush both from detached tasks,
             # since awaiting inside a cancelled task would re-raise. Keep a
             # strong reference or the task can be GC'd before it runs.
             flush_task = asyncio.create_task(_flush_pending_handoff())
             background_tasks.add(flush_task)
             flush_task.add_done_callback(background_tasks.discard)
+            end_task = asyncio.create_task(_flush_pending_call_end())
+            background_tasks.add(end_task)
+            end_task.add_done_callback(background_tasks.discard)
             raise
         except Exception as exc:  # noqa: BLE001
             logger.warning("worker_generate_reply_failed", error=str(exc))
 
-    # Catch-all handoff flush (#212): some generations are driven by the
-    # framework's own end-of-turn (not _commit_and_reply), so their stashed
-    # handoff would otherwise wait for the next commit. Whenever the agent
-    # finishes speaking, drain any pending swap.
+    # Catch-all handoff/call-end flush (#212, bug 3): some generations are
+    # driven by the framework's own end-of-turn (not _commit_and_reply), so
+    # their stashed handoff or pending session_ended would otherwise wait
+    # for the next commit -- or never fire if that commit never comes.
+    # Whenever the agent finishes speaking, drain both.
     @session.on("agent_state_changed")
     def _flush_on_state(ev: AgentEvent) -> None:
         if getattr(ev, "new_state", None) in ("listening", "idle"):
             flush_task = asyncio.create_task(_flush_pending_handoff())
             background_tasks.add(flush_task)
             flush_task.add_done_callback(background_tasks.discard)
+            end_task = asyncio.create_task(_flush_pending_call_end())
+            background_tasks.add(end_task)
+            end_task.add_done_callback(background_tasks.discard)
 
     # When the frontend Send button is clicked, useMicRecorder.sendUtterance()
     # publishes {"type": "commit_turn"} over the data channel. Handling it here
