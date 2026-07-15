@@ -385,8 +385,15 @@ async def create_tool_execution(
     tool_type: str,
     result: dict | None = None,
     duration_ms: float | None = None,
+    confirmed: bool = False,
 ) -> ToolExecution | None:
-    """Record a tool invocation for the conversation history."""
+    """Record a tool invocation for the conversation history.
+
+    *confirmed* marks a row as an actual, successful dispatch (set by the
+    orchestrator at the point of dispatch, #224) as opposed to the
+    provenance rows written by the API/worker layer for every
+    ``tool_invoked`` response, which also fire on rejected/aborted turns.
+    """
     try:
         execution = ToolExecution(
             conversation_id=conversation_id,
@@ -394,6 +401,7 @@ async def create_tool_execution(
             tool_type=tool_type,
             result=result,
             duration_ms=duration_ms,
+            confirmed=confirmed,
         )
         db.add(execution)
         await db.commit()
@@ -439,6 +447,27 @@ async def get_recent_external_api_results(
             "get_external_api_results_failed", conversation_id=conversation_id, error=str(e)
         )
         return []
+
+
+async def tool_already_dispatched(db: AsyncSession, conversation_id: str, tool_id: str) -> bool:
+    """True if *tool_id* has a confirmed successful dispatch in this conversation (#224).
+
+    Only rows the orchestrator marks ``confirmed=True`` at the point of an
+    actual dispatch count — rejected/aborted turns never set it, so a tool
+    the user declined can still be offered again.
+    """
+    try:
+        result = await db.execute(
+            select(ToolExecution.id).where(
+                ToolExecution.conversation_id == conversation_id,
+                ToolExecution.tool_id == tool_id,
+                ToolExecution.confirmed.is_(True),
+            )
+        )
+        return result.first() is not None
+    except SQLAlchemyError as e:
+        logger.error("tool_already_dispatched_check_failed", error=str(e))
+        return False
 
 
 # ============ CONVERSATION MESSAGE CRUD ============

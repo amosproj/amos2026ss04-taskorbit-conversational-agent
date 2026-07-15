@@ -17,7 +17,8 @@ import { type TranscriptionSegment, useAgentTranscription } from "@/hooks/useAge
 import { useConnectionStatus } from "@/hooks/useConnectionStatus";
 import { useRoutedAgent } from "@/hooks/useRoutedAgent";
 import { useSessionEnded } from "@/hooks/useSessionEnded";
-import type { CallStatus } from "@/types/callState";
+import { useVoiceConfirmation } from "@/hooks/useVoiceConfirmation";
+import type { CallStatus, ConfirmationPromptState } from "@/types/callState";
 
 // A dead worker shows up as a sustained "connecting" agent state (LiveKit keeps
 // trying to redispatch it), so we wait this long before declaring the call
@@ -32,6 +33,8 @@ type Props = {
   onAgentRouted?: (agentName: string) => void;
   onSessionEnded?: () => void;
   onConnectionLost: (reason: string) => void;
+  onConfirmationPending?: (prompt: ConfirmationPromptState) => void;
+  onConfirmationCleared?: () => void;
 };
 
 export function VoiceSessionBridge({
@@ -42,6 +45,8 @@ export function VoiceSessionBridge({
   onAgentRouted,
   onSessionEnded,
   onConnectionLost,
+  onConfirmationPending,
+  onConfirmationCleared,
 }: Props) {
   const connection = useConnectionStatus();
   const { state: agentState } = useVoiceAssistant();
@@ -174,6 +179,17 @@ export function VoiceSessionBridge({
     onSessionEnded?.();
   }, [onSessionEnded]);
   useSessionEnded(handleSessionEnded);
+
+  const handleConfirmationPending = useCallback(
+    (prompt: ConfirmationPromptState) => {
+      onConfirmationPending?.(prompt);
+    },
+    [onConfirmationPending],
+  );
+  const handleConfirmationCleared = useCallback(() => {
+    onConfirmationCleared?.();
+  }, [onConfirmationCleared]);
+  useVoiceConfirmation(handleConfirmationPending, handleConfirmationCleared);
 
   return null;
 }

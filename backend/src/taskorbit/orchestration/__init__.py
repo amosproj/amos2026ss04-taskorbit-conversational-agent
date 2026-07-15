@@ -253,6 +253,30 @@ def _external_api_requires_args(tool: ToolDefinition) -> bool:
     return bool(_external_api_arg_names(tool))
 
 
+def _default_active_tool(tools: list[ToolDefinition]) -> ToolDefinition | None:
+    """Pick the safe default active tool when nothing else selected one.
+
+    Used by _select_active_tool's fallback paths (no active_tool_id pin, and
+    either no intent signal at all or intent explicitly says "stay with the
+    current agent"). END_CALL and AGENT_TRANSFER tools are excluded: both are
+    "ready" without any slot data (no_slots_tool_ready in
+    _run_dispatch_step), so picking one just because it happens to be listed
+    first can trigger a confirmation prompt for an action the caller never
+    asked for, before they've said anything relevant (#143 gap 2 — reported
+    2026-07-05, unfixed until now). Both types already have their own
+    deliberate selection path instead: end_call via the
+    _user_requested_end_call keyword shortcut (checked before intent
+    detection even runs), agent_transfer via the intent-target-match loop in
+    _select_active_tool itself. Falls back to None (no active tool this
+    turn) if the config has no data_extraction/external_api tool to default
+    to safely.
+    """
+    for tool in tools:
+        if tool.type not in (ToolType.END_CALL, ToolType.AGENT_TRANSFER):
+            return tool
+    return None
+
+
 def _build_pipeline_latency_ms(
     *,
     llm_elapsed: float | None = None,
@@ -384,7 +408,80 @@ class ConversationOrchestrator:
                 tool_types=[t.type for t in request.agent_config.tools],
                 user_requested=self._user_requested_end_call(last_user.content),
             )
-            if end_call_tool and self._user_requested_end_call(last_user.content):
+            # Carry a pending decision through even on a turn that no longer
+            # "sounds like" a goodbye (e.g. a bare "yes") -- this shortcut used
+            # to only re-enter on a fresh end-call phrase, so a decision-only
+            # follow-up fell through and confirmation.required was never
+            # actually enforced for the common "user says goodbye" path.
+            has_pending_end_call_decision = (
+                end_call_tool is not None
+                and request.confirmation_id == end_call_tool.id
+                and request.decision is not None
+            )
+            # #224: this shortcut bypasses _run_dispatch_step entirely, so it
+            # needs its own already-dispatched guard — otherwise a call that
+            # has already ended (or a stray re-entry into this block) can be
+            # asked to confirm end_call again.
+            end_call_already_dispatched = (
+                end_call_tool is not None
+                and db is not None
+                and request.conversation_id
+                and await self._tool_already_dispatched(
+                    db, request.conversation_id, end_call_tool.id
+                )
+            )
+            if (
+                end_call_tool
+                and not end_call_already_dispatched
+                and (
+                    self._user_requested_end_call(last_user.content)
+                    or has_pending_end_call_decision
+                )
+            ):
+                is_decision_for_this_tool = request.confirmation_id == end_call_tool.id
+                has_decision = is_decision_for_this_tool and request.decision is not None
+
+                if end_call_tool.confirmation.required and not has_decision:
+                    logger.info(
+                        "confirmation_required",
+                        tool_id=end_call_tool.id,
+                        conversation_id=request.conversation_id,
+                    )
+                    return ConversationResponse(
+                        conversation_id=request.conversation_id,
+                        reply=self._make_assistant_message(
+                            end_call_tool.confirmation.prompt
+                            or f"I need your confirmation before I proceed with {end_call_tool.name}. Should I go ahead?"
+                        ),
+                        status=ConversationStatus.CONFIRMATION_REQUIRED,
+                        tool_invoked=end_call_tool,
+                        confirmation=ConfirmationResponsePayload(
+                            confirmation_id=end_call_tool.id,
+                            action=end_call_tool.name,
+                            description=end_call_tool.confirmation.prompt
+                            or f"Execute {end_call_tool.name}",
+                        ),
+                        selected_intent="",
+                        selected_agent=request.selected_agent or "",
+                        next_active_tool_id=end_call_tool.id,
+                    )
+
+                if has_decision and request.decision == "reject":
+                    logger.info(
+                        "tool_execution_rejected",
+                        tool_id=end_call_tool.id,
+                        conversation_id=request.conversation_id,
+                    )
+                    return ConversationResponse(
+                        conversation_id=request.conversation_id,
+                        reply=self._make_assistant_message(
+                            "Understood, I won't end the call. How else can I help you?"
+                        ),
+                        status=ConversationStatus.REJECTED,
+                        selected_intent="",
+                        selected_agent=request.selected_agent or "",
+                    )
+
                 try:
                     farewell = await asyncio.wait_for(
                         self._call_llm(
@@ -410,6 +507,10 @@ class ConversationOrchestrator:
                     conversation_id=request.conversation_id,
                     tool_call_latency_ms=_seconds_to_ms(tool_elapsed),
                 )
+                if db is not None and request.conversation_id:
+                    await self._mark_tool_dispatched(
+                        db, request.conversation_id, end_call_tool, {}, tool_elapsed
+                    )
                 return ConversationResponse(
                     conversation_id=request.conversation_id,
                     reply=self._make_assistant_message(farewell),
@@ -781,7 +882,14 @@ class ConversationOrchestrator:
                 return refusal_response
 
             slot_result = await self._extract_slots(
-                request.messages, extraction_inputs, active_config.llm, guidance=extraction_guidance
+                request.messages,
+                extraction_inputs,
+                active_config.llm,
+                db=db,
+                conversation_id=request.conversation_id,
+                tool_id=active_tool.id if active_tool is not None else None,
+                user_id=user_id,
+                guidance=extraction_guidance,
             )
             logger.info(
                 "slots_extracted",
@@ -1083,7 +1191,77 @@ class ConversationOrchestrator:
                 tool_types=[t.type for t in request.agent_config.tools],
                 user_requested=self._user_requested_end_call(last_user.content),
             )
-            if end_call_tool and self._user_requested_end_call(last_user.content):
+            # See the equivalent block in process_message for why a decision-only
+            # follow-up (e.g. a bare "yes") must also re-enter this shortcut.
+            has_pending_end_call_decision = (
+                end_call_tool is not None
+                and request.confirmation_id == end_call_tool.id
+                and request.decision is not None
+            )
+            # #224: same already-dispatched guard as the text path — this
+            # shortcut bypasses _run_dispatch_step entirely.
+            end_call_already_dispatched = (
+                end_call_tool is not None
+                and db is not None
+                and request.conversation_id
+                and await self._tool_already_dispatched(
+                    db, request.conversation_id, end_call_tool.id
+                )
+            )
+            if (
+                end_call_tool
+                and not end_call_already_dispatched
+                and (
+                    self._user_requested_end_call(last_user.content)
+                    or has_pending_end_call_decision
+                )
+            ):
+                is_decision_for_this_tool = request.confirmation_id == end_call_tool.id
+                has_decision = is_decision_for_this_tool and request.decision is not None
+
+                if end_call_tool.confirmation.required and not has_decision:
+                    logger.info(
+                        "confirmation_required",
+                        tool_id=end_call_tool.id,
+                        conversation_id=request.conversation_id,
+                    )
+                    yield ConversationResponse(
+                        conversation_id=request.conversation_id,
+                        reply=self._make_assistant_message(
+                            end_call_tool.confirmation.prompt
+                            or f"I need your confirmation before I proceed with {end_call_tool.name}. Should I go ahead?"
+                        ),
+                        status=ConversationStatus.CONFIRMATION_REQUIRED,
+                        tool_invoked=end_call_tool,
+                        confirmation=ConfirmationResponsePayload(
+                            confirmation_id=end_call_tool.id,
+                            action=end_call_tool.name,
+                            description=end_call_tool.confirmation.prompt
+                            or f"Execute {end_call_tool.name}",
+                        ),
+                        selected_intent="",
+                        selected_agent=request.selected_agent or "",
+                        next_active_tool_id=end_call_tool.id,
+                    )
+                    return
+
+                if has_decision and request.decision == "reject":
+                    logger.info(
+                        "tool_execution_rejected",
+                        tool_id=end_call_tool.id,
+                        conversation_id=request.conversation_id,
+                    )
+                    yield ConversationResponse(
+                        conversation_id=request.conversation_id,
+                        reply=self._make_assistant_message(
+                            "Understood, I won't end the call. How else can I help you?"
+                        ),
+                        status=ConversationStatus.REJECTED,
+                        selected_intent="",
+                        selected_agent=request.selected_agent or "",
+                    )
+                    return
+
                 try:
                     farewell = await asyncio.wait_for(
                         self._call_llm(
@@ -1109,6 +1287,10 @@ class ConversationOrchestrator:
                     conversation_id=request.conversation_id,
                     tool_call_latency_ms=_seconds_to_ms(tool_elapsed),
                 )
+                if db is not None and request.conversation_id:
+                    await self._mark_tool_dispatched(
+                        db, request.conversation_id, end_call_tool, {}, tool_elapsed
+                    )
                 yield ConversationResponse(
                     conversation_id=request.conversation_id,
                     reply=self._make_assistant_message(farewell),
@@ -1462,7 +1644,14 @@ class ConversationOrchestrator:
                     extraction_guidance = active_tool.description
 
             slot_result = await self._extract_slots(
-                request.messages, extraction_inputs, active_config.llm, guidance=extraction_guidance
+                request.messages,
+                extraction_inputs,
+                active_config.llm,
+                db=db,
+                conversation_id=request.conversation_id,
+                tool_id=active_tool.id if active_tool is not None else None,
+                user_id=user_id,
+                guidance=extraction_guidance,
             )
             logger.info(
                 "slots_extracted",
@@ -2034,9 +2223,18 @@ class ConversationOrchestrator:
         messages: list[Message],
         required_inputs: list[dict[str, Any]],
         llm_config: LLMConfig,
+        db: AsyncSession | None = None,
+        conversation_id: str | None = None,
+        tool_id: str | None = None,
+        user_id: int | None = None,
         guidance: str = "",
     ) -> Any:
         """Run slot extraction over the conversation history.
+
+        When *db*/*conversation_id*/*tool_id* are given, the fresh result is
+        folded together with slots already persisted for this tool (#226) so a
+        slot filled on an earlier turn cannot regress to missing just because
+        this pass's full-history re-derivation missed it.
 
         ``guidance`` is optional per-tool text (an external_api tool's
         description) that tells the extractor how to convert what the user
@@ -2048,7 +2246,7 @@ class ConversationOrchestrator:
             return SlotExtractionResult()
         try:
             extractor = SlotExtractor(llm_fn=self._call_llm_json, llm_config=llm_config)
-            return await extractor.extract(messages, required_inputs, guidance=guidance)
+            result = await extractor.extract(messages, required_inputs, guidance=guidance)
         except LLMError:
             # Provider failures must surface (#197) — treating them as "all slots
             # missing" would make the agent re-ask for data the user already gave.
@@ -2064,6 +2262,66 @@ class ConversationOrchestrator:
                 if f.get("required", True)
             ]
             return SlotExtractionResult(missing=missing)
+
+        if db is not None and conversation_id and tool_id:
+            result = await self._merge_persisted_slots(
+                db, conversation_id, tool_id, required_inputs, result, user_id=user_id
+            )
+        return result
+
+    async def _merge_persisted_slots(
+        self,
+        db: AsyncSession,
+        conversation_id: str,
+        tool_id: str,
+        required_inputs: list[dict[str, Any]],
+        result: Any,
+        user_id: int | None = None,
+    ) -> Any:
+        """Fold slots already persisted for *tool_id* into a fresh extraction (#226).
+
+        A slot once filled and persisted is authoritative — it is restored if
+        this pass dropped it, and is not replaced by a differing value this
+        pass produced, since the extractor re-derives from the full history
+        every turn and can drift (wrong field, hallucinated spelling). Newly
+        filled slots (not seen before) are persisted so later turns can pin
+        them in turn.
+        """
+        from taskorbit.database.crud import create_slot_extractions, get_slot_extractions
+        from taskorbit.slots import SlotExtractionResult, SlotValue
+
+        type_map = {f["name"]: f["type"] for f in required_inputs}
+        persisted = {
+            row.field_name: row.field_value
+            for row in await get_slot_extractions(db, conversation_id)
+            if row.tool_id == tool_id and row.field_value is not None
+        }
+
+        filled: dict[str, Any] = {
+            name: SlotValue(name=name, value=value, slot_type=type_map[name])
+            for name, value in persisted.items()
+            if name in type_map
+        }
+        for name, slot_value in result.filled.items():
+            filled.setdefault(name, slot_value)
+
+        missing = [name for name in result.missing if name not in filled]
+        merged = SlotExtractionResult(filled=filled, missing=missing)
+
+        new_values = {
+            name: slot_value.value
+            for name, slot_value in merged.filled.items()
+            if name not in persisted
+        }
+        if new_values:
+            await create_slot_extractions(
+                db,
+                conversation_id=conversation_id,
+                tool_id=tool_id,
+                slots=new_values,
+                user_id=user_id,
+            )
+        return merged
 
     async def _select_active_tool(
         self,
@@ -2083,17 +2341,8 @@ class ConversationOrchestrator:
         config carries an agent_transfer tool for that destination, the
         transfer owns the turn (#212 — multi-tool configs otherwise never
         reach tools[1:], because neither client round-trips
-        next_active_tool_id); otherwise the first configured *workflow* tool
-        (data_extraction / external_api).
-
-        end_call and agent_transfer are deliberately excluded from that last
-        default: _run_dispatch_step treats either type as "ready to fire the
-        moment it's active" with no slot-filling gate, so defaulting to one
-        of them (e.g. an end_call tool saved before the data_extraction
-        tools) would hang up or transfer the call on the very first turn
-        regardless of what the user said. Those types only become active
-        via an explicit signal — the end-call short-circuit earlier in the
-        pipeline, or the intent-routed agent_transfer match below.
+        next_active_tool_id); otherwise the first configured tool that isn't
+        END_CALL/AGENT_TRANSFER (#143 gap 2 — see _default_active_tool).
         """
         tools = agent.get_task_definitions()
         if not tools:
@@ -2102,13 +2351,6 @@ class ConversationOrchestrator:
             match = next((t for t in tools if t.id == active_tool_id), None)
             if match:
                 return match
-
-        def default_tool() -> ToolDefinition:
-            workflow_tool = next(
-                (t for t in tools if t.type not in (ToolType.END_CALL, ToolType.AGENT_TRANSFER)),
-                None,
-            )
-            return workflow_tool or tools[0]
 
         # While this turn is executing a workflow PREREQUISITE agent (e.g. Rachel),
         # the routed intent still points at the ultimate target (e.g. "chris"), so
@@ -2131,7 +2373,7 @@ class ConversationOrchestrator:
                 else current_agent
             )
             if intent.agent_name == effective_current:
-                return default_tool()
+                return _default_active_tool(tools)
             for tool in tools:
                 if tool.type != ToolType.AGENT_TRANSFER:
                     continue
@@ -2164,7 +2406,7 @@ class ConversationOrchestrator:
                         )
                         return tool
 
-        return default_tool()
+        return _default_active_tool(tools)
 
     async def _call_llm(
         self,
@@ -2249,7 +2491,26 @@ class ConversationOrchestrator:
             and not _external_api_requires_args(active_tool)
         )
 
-        if no_slots_tool_ready or slots_ready or external_api_no_args_ready:
+        # #224: once a tool has actually dispatched in this conversation, later
+        # turns must not re-ask for confirmation or re-dispatch it just because
+        # intent reclassification (#227) or a fresh slots_ready re-selected the
+        # same tool — that produced repeated confirmations and duplicate
+        # dispatches for a step that had already completed.
+        already_dispatched = False
+        if active_tool is not None and db is not None and request.conversation_id:
+            already_dispatched = await self._tool_already_dispatched(
+                db, request.conversation_id, active_tool.id
+            )
+            if already_dispatched:
+                logger.info(
+                    "tool_already_dispatched_skip",
+                    tool_id=active_tool.id,
+                    conversation_id=request.conversation_id,
+                )
+
+        if (
+            no_slots_tool_ready or slots_ready or external_api_no_args_ready
+        ) and not already_dispatched:
             is_decision_for_this_tool = request.confirmation_id == active_tool.id
             has_decision = is_decision_for_this_tool and request.decision is not None
 
@@ -2353,6 +2614,14 @@ class ConversationOrchestrator:
                     conversation_id=request.conversation_id,
                     tool_call_latency_ms=_seconds_to_ms(tool_call_elapsed),
                 )
+                if db is not None and request.conversation_id:
+                    await self._mark_tool_dispatched(
+                        db,
+                        request.conversation_id,
+                        active_tool,
+                        tool_data,
+                        tool_call_elapsed,
+                    )
                 if active_tool.type == ToolType.END_CALL:
                     response_status = ConversationStatus.ENDED
                 elif active_tool.type == ToolType.AGENT_TRANSFER:
@@ -2384,6 +2653,35 @@ class ConversationOrchestrator:
             llm_text_override=llm_text_override,
             tool_call_elapsed=tool_call_elapsed,
             tool_invoked_override=tool_invoked_override,
+        )
+
+    async def _tool_already_dispatched(
+        self, db: AsyncSession, conversation_id: str, tool_id: str
+    ) -> bool:
+        """Has *tool_id* already been successfully dispatched in this conversation (#224)?"""
+        from taskorbit.database.crud import tool_already_dispatched
+
+        return await tool_already_dispatched(db, conversation_id, tool_id)
+
+    async def _mark_tool_dispatched(
+        self,
+        db: AsyncSession,
+        conversation_id: str,
+        tool: ToolDefinition,
+        tool_data: dict[str, Any],
+        tool_call_elapsed: float | None,
+    ) -> None:
+        """Record a confirmed dispatch so later turns can't re-trigger this tool (#224)."""
+        from taskorbit.database.crud import create_tool_execution
+
+        await create_tool_execution(
+            db,
+            conversation_id=conversation_id,
+            tool_id=tool.id,
+            tool_type=tool.type.value,
+            result=tool_data or None,
+            duration_ms=_seconds_to_ms(tool_call_elapsed),
+            confirmed=True,
         )
 
     async def _dispatch_tool(
