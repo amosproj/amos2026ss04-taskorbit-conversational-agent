@@ -262,13 +262,29 @@ class AgentRegistry:
         if db is not None:
             from pydantic import ValidationError
 
-            from taskorbit.database.crud import get_agent_configuration_by_name
-            from taskorbit.types import AgentConfig as AgentConfigType
+            from taskorbit.database.crud import (
+                _find_agent_config_by_logical_id,
+                get_agent_configuration_by_name,
+            )
 
+            # Intent routing hands us an agent_id ("chris"), but the DB name column
+            # holds the display name ("Chris") and the lookup is case-sensitive, so
+            # by-name misses custom agents and silently falls back to the default
+            # (#8 / the "custom agent not found" symptom). Resolve by logical
+            # agent_id (config.agent_id / config.id) when the name lookup misses.
             record = await get_agent_configuration_by_name(db, agent_name, user_id=user_id)
+            if record is None:
+                record = await _find_agent_config_by_logical_id(db, agent_name, user_id)
             if record is not None:
                 try:
-                    custom_config = AgentConfigType(**record.config)
+                    from taskorbit.agent_config_util import agent_config_from_stored_blob
+
+                    # record.config is the stored (frontend-shaped) blob using
+                    # instructions/first_message; map it the way the text path does
+                    # rather than validating it raw as AgentConfig, which is missing
+                    # persona/greeting and silently falls back to the default agent
+                    # (that's why a transferred-to custom agent behaved like Maya).
+                    custom_config = agent_config_from_stored_blob(record.config)
                 except (ValidationError, Exception) as exc:
                     logger.error(
                         "custom_agent_invalid_config",

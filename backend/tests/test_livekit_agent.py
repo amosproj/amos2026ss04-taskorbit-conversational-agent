@@ -177,6 +177,102 @@ async def test_llm_node_yields_orchestrator_reply() -> None:
 
 
 @pytest.mark.asyncio
+async def test_llm_node_swaps_agent_config_on_completed_transfer() -> None:
+    """A completed voice agent_transfer PERSISTENTLY swaps the worker's own agent
+    config to the target (loaded from the DB and mapped via
+    agent_config_from_stored_blob), so the NEXT turn runs the target agent — not
+    the entry agent, whose confirmation-gated transfer tool would otherwise
+    re-fire on every turn (#212 voice loop). Also asserts the routed id becomes
+    the target's clean logical id (the pill fix) while the FE handoff target
+    stays the row id.
+    """
+    from taskorbit.types import ConversationStatus, ToolDefinition, ToolType
+
+    row_id = "3e0d2d7475a348a0a08ab9d4b3f4f931"
+    transfer_resp = ConversationResponse(
+        conversation_id="test-conv",
+        reply=Message(role=MessageRole.ASSISTANT, content="Handing you over."),
+        status=ConversationStatus.SUCCESS,
+        selected_agent="maya",
+        tool_invoked=ToolDefinition(
+            id="transfer_to_chris",
+            name="transfer_to_chris",
+            type=ToolType.AGENT_TRANSFER,
+            parameters={"targets": [row_id]},
+        ),
+    )
+    chris_resp = ConversationResponse(
+        conversation_id="test-conv",
+        reply=Message(role=MessageRole.ASSISTANT, content="The conclusion is X."),
+        status=ConversationStatus.SUCCESS,
+        selected_agent="chris",
+    )
+
+    orchestrator = MagicMock()
+    captured: list[Any] = []
+    responses = [transfer_resp, chris_resp]
+
+    async def _process_message_stream(request: Any, db: Any = None, user_id: Any = None):
+        captured.append(request)
+        yield responses[len(captured) - 1]
+
+    orchestrator.process_message_stream = _process_message_stream
+    orchestrator._captured = captured
+    agent = OrchestratorAgent(
+        orchestrator=orchestrator,
+        agent_config=AgentConfig(id="maya", name="Maya", persona="Maya.", greeting="Hi, Maya."),
+        conversation_id="test-conv",
+        user_id=1,
+    )
+
+    # Chris's STORED (frontend-shaped) blob: instructions/first_message, NOT persona/greeting.
+    chris_blob = {
+        "agent_id": "chris",
+        "name": "Chris",
+        "instructions": "You are Chris, the presentation agent.",
+        "first_message": {"type": "text", "message": "Hi, I'm Chris.", "prompt": ""},
+        "tools": [{"id": "end_call", "name": "end_call", "type": "end_call", "description": "end"}],
+        "llm": {"provider": "google", "model": "gemini-2.5-flash"},
+    }
+    fake_record = MagicMock()
+    fake_record.config = chris_blob
+
+    with patch(
+        "taskorbit.database.crud.get_agent_configuration_by_id",
+        new_callable=AsyncMock,
+        return_value=fake_record,
+    ):
+        # Turn 1: the transfer fires → the worker swaps its own config to Chris.
+        agent.request_reply()
+        [
+            _
+            async for _ in agent.llm_node(
+                _make_chat_ctx([("user", "the conclusion")]), [], MagicMock()
+            )
+        ]
+
+        assert agent._agent_config.id == "chris"
+        assert agent._agent_config.name == "Chris"
+        # instructions mapped to persona proves the FE-blob mapper ran (not AgentConfig(**blob)).
+        assert agent._agent_config.persona.startswith("You are Chris")
+        assert agent._current_routed_agent == "chris"  # clean pill label, not the row id
+        assert agent._pending_handoff_target == row_id  # FE agent_handoff match preserved
+
+        # Turn 2: the next turn must run AS Chris (swap persisted into worker state).
+        agent.request_reply()
+        [
+            _
+            async for _ in agent.llm_node(
+                _make_chat_ctx([("user", "please continue")]), [], MagicMock()
+            )
+        ]
+
+    assert len(captured) == 2
+    assert captured[1].agent_config.id == "chris"  # worker now sends Chris, not Maya
+    assert captured[1].selected_agent == "chris"
+
+
+@pytest.mark.asyncio
 async def test_llm_node_skips_empty_reply() -> None:
     agent, _ = _make_agent("")
     chat_ctx = _make_chat_ctx([("user", "Hi")])

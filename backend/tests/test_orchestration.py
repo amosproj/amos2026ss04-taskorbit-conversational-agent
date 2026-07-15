@@ -427,7 +427,12 @@ async def test_agent_transfer_dispatch_sets_tool_invoked() -> None:
 
     with (
         patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
-        patch.object(ConversationOrchestrator, "_select_active_tool", return_value=transfer_tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_select_active_tool",
+            new_callable=AsyncMock,
+            return_value=transfer_tool,
+        ),
         patch.object(
             ConversationOrchestrator,
             "_extract_slots",
@@ -645,7 +650,12 @@ async def test_external_api_arg_extracted_and_dispatched() -> None:
 
     with (
         patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
-        patch.object(ConversationOrchestrator, "_select_active_tool", return_value=tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_select_active_tool",
+            new_callable=AsyncMock,
+            return_value=tool,
+        ),
         patch.object(ConversationOrchestrator, "_extract_slots", new=_fake_extract),
         patch.object(ConversationOrchestrator, "_dispatch_tool", new=_fake_dispatch),
         patch.object(
@@ -708,7 +718,12 @@ async def test_no_arg_external_api_active_does_not_leak_guidance() -> None:
 
     with (
         patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
-        patch.object(ConversationOrchestrator, "_select_active_tool", return_value=tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_select_active_tool",
+            new_callable=AsyncMock,
+            return_value=tool,
+        ),
         patch.object(ConversationOrchestrator, "_extract_slots", new=_fake_extract),
         patch.object(ConversationOrchestrator, "_dispatch_tool", new=_fake_dispatch),
         patch.object(
@@ -835,7 +850,12 @@ async def test_failed_external_api_tool_makes_agent_report_not_fabricate() -> No
 
     with (
         patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
-        patch.object(ConversationOrchestrator, "_select_active_tool", return_value=tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_select_active_tool",
+            new_callable=AsyncMock,
+            return_value=tool,
+        ),
         patch.object(ConversationOrchestrator, "_extract_slots", new=_fake_extract),
         patch.object(ConversationOrchestrator, "_dispatch_tool", new=_fake_dispatch),
         patch.object(ConversationOrchestrator, "_call_llm", new=_capture_llm),
@@ -965,7 +985,12 @@ async def test_no_arg_external_api_dispatches_and_llm_sees_result() -> None:
 
     with (
         patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
-        patch.object(ConversationOrchestrator, "_select_active_tool", return_value=tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_select_active_tool",
+            new_callable=AsyncMock,
+            return_value=tool,
+        ),
         patch.object(
             ConversationOrchestrator,
             "_extract_slots",
@@ -1865,7 +1890,12 @@ async def test_auto_transfer_to_custom_agent_via_process_message() -> None:
 
     with (
         patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
-        patch.object(ConversationOrchestrator, "_select_active_tool", return_value=transfer_tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_select_active_tool",
+            new_callable=AsyncMock,
+            return_value=transfer_tool,
+        ),
         patch.object(
             ConversationOrchestrator,
             "_extract_slots",
@@ -2191,11 +2221,11 @@ def _intent_for(agent_name: str):
     return IntentResult(name=agent_name or "unknown", description="", agent_name=agent_name)
 
 
-def test_select_transfer_when_intent_routes_away() -> None:
+async def test_select_transfer_when_intent_routes_away() -> None:
     """#212: intent routing away + matching transfer tool selects the transfer,
     not tools[0], even though the target is the sloppy prod value."""
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool(
+    tool = await orch._select_active_tool(
         [],
         _FakeAgent(_john_max_tools()),
         intent=_intent_for("general_inquiry"),
@@ -2205,10 +2235,10 @@ def test_select_transfer_when_intent_routes_away() -> None:
     assert tool.id == "transfer_to_inquiry_agent"
 
 
-def test_select_pin_wins_over_transfer_rule() -> None:
+async def test_select_pin_wins_over_transfer_rule() -> None:
     """A confirmation round-trip pin must still take precedence."""
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool(
+    tool = await orch._select_active_tool(
         [],
         _FakeAgent(_john_max_tools()),
         active_tool_id="collect_user_info",
@@ -2219,9 +2249,9 @@ def test_select_pin_wins_over_transfer_rule() -> None:
     assert tool.id == "collect_user_info"
 
 
-def test_select_stays_on_first_tool_when_intent_matches_current_agent() -> None:
+async def test_select_stays_on_first_tool_when_intent_matches_current_agent() -> None:
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool(
+    tool = await orch._select_active_tool(
         [],
         _FakeAgent(_john_max_tools()),
         intent=_intent_for("general_inquiry"),
@@ -2231,9 +2261,9 @@ def test_select_stays_on_first_tool_when_intent_matches_current_agent() -> None:
     assert tool.id == "collect_user_info"
 
 
-def test_select_stays_on_first_tool_when_no_target_matches_destination() -> None:
+async def test_select_stays_on_first_tool_when_no_target_matches_destination() -> None:
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool(
+    tool = await orch._select_active_tool(
         [],
         _FakeAgent(_john_max_tools()),
         intent=_intent_for("sales"),
@@ -2243,9 +2273,9 @@ def test_select_stays_on_first_tool_when_no_target_matches_destination() -> None
     assert tool.id == "collect_user_info"
 
 
-def test_select_stays_on_first_tool_for_unknown_intent() -> None:
+async def test_select_stays_on_first_tool_for_unknown_intent() -> None:
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool(
+    tool = await orch._select_active_tool(
         [],
         _FakeAgent(_john_max_tools()),
         intent=_intent_for(""),
@@ -2255,18 +2285,18 @@ def test_select_stays_on_first_tool_for_unknown_intent() -> None:
     assert tool.id == "collect_user_info"
 
 
-def test_select_unchanged_without_intent_argument() -> None:
+async def test_select_unchanged_without_intent_argument() -> None:
     """Callers that never pass intent keep the legacy tools[0] behaviour."""
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool([], _FakeAgent(_john_max_tools()))
+    tool = await orch._select_active_tool([], _FakeAgent(_john_max_tools()))
     assert tool is not None
     assert tool.id == "collect_user_info"
 
 
-def test_select_no_tools_returns_none_still() -> None:
+async def test_select_no_tools_returns_none_still() -> None:
     orch = ConversationOrchestrator()
     assert (
-        orch._select_active_tool(
+        await orch._select_active_tool(
             [], _FakeAgent([]), intent=_intent_for("general_inquiry"), current_agent="x"
         )
         is None
@@ -2307,12 +2337,12 @@ def _end_call_first_tools():
     ]
 
 
-def test_select_skips_end_call_default_when_saved_first() -> None:
+async def test_select_skips_end_call_default_when_saved_first() -> None:
     """An end_call tool saved before data_extraction tools must never win the
     no-pin default — it would otherwise fire on the very first turn regardless
     of user intent, and the data_extraction tools would never be reached."""
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool(
+    tool = await orch._select_active_tool(
         [],
         _FakeAgent(_end_call_first_tools()),
         intent=_intent_for("general_inquiry"),
@@ -2322,26 +2352,26 @@ def test_select_skips_end_call_default_when_saved_first() -> None:
     assert tool.id == "collect_contact_info"
 
 
-def test_select_skips_end_call_default_without_intent_argument() -> None:
+async def test_select_skips_end_call_default_without_intent_argument() -> None:
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool([], _FakeAgent(_end_call_first_tools()))
+    tool = await orch._select_active_tool([], _FakeAgent(_end_call_first_tools()))
     assert tool is not None
     assert tool.id == "collect_contact_info"
 
 
-def test_select_pin_still_reaches_end_call_when_explicitly_targeted() -> None:
+async def test_select_pin_still_reaches_end_call_when_explicitly_targeted() -> None:
     """The default skips end_call, but an explicit pin (e.g. after the
     end-call short-circuit or a confirmation round-trip) must still resolve
     it — the skip only applies to the no-signal fallback."""
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool(
+    tool = await orch._select_active_tool(
         [], _FakeAgent(_end_call_first_tools()), active_tool_id="end_call"
     )
     assert tool is not None
     assert tool.id == "end_call"
 
 
-def test_select_returns_none_when_no_workflow_tool_exists() -> None:
+async def test_select_returns_none_when_no_workflow_tool_exists() -> None:
     """An agent with only end_call/agent_transfer tools (no data_extraction or
     external_api) must return None, not an unsafe default."""
     from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
@@ -2358,7 +2388,7 @@ def test_select_returns_none_when_no_workflow_tool_exists() -> None:
         ),
     ]
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool([], _FakeAgent(tools))
+    tool = await orch._select_active_tool([], _FakeAgent(tools))
     assert tool is None
 
 
@@ -2406,28 +2436,28 @@ def _tools_led_by(*, first: str, confirm_first: bool = True):
     return [lead, data_extraction]
 
 
-def test_select_skips_end_call_listed_first_without_intent() -> None:
+async def test_select_skips_end_call_listed_first_without_intent() -> None:
     """The bug scenario: no active_tool_id pin, no intent -- the final
     catch-all fallback must not hand back a confirmation-required end_call
     just because it's tools[0]; it should skip to collect_user_info."""
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool([], _FakeAgent(_tools_led_by(first="end_call")))
+    tool = await orch._select_active_tool([], _FakeAgent(_tools_led_by(first="end_call")))
     assert tool is not None
     assert tool.id == "collect_user_info"
 
 
-def test_select_skips_agent_transfer_listed_first_without_intent() -> None:
+async def test_select_skips_agent_transfer_listed_first_without_intent() -> None:
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool([], _FakeAgent(_tools_led_by(first="transfer")))
+    tool = await orch._select_active_tool([], _FakeAgent(_tools_led_by(first="transfer")))
     assert tool is not None
     assert tool.id == "collect_user_info"
 
 
-def test_select_skips_end_call_listed_first_when_intent_matches_current_agent() -> None:
+async def test_select_skips_end_call_listed_first_when_intent_matches_current_agent() -> None:
     """Same bug, via the OTHER tools[0] fallback branch (intent explicitly
     says "stay with the current agent" -- not the pure no-intent case)."""
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool(
+    tool = await orch._select_active_tool(
         [],
         _FakeAgent(_tools_led_by(first="end_call")),
         intent=_intent_for("general_inquiry"),
@@ -2437,7 +2467,7 @@ def test_select_skips_end_call_listed_first_when_intent_matches_current_agent() 
     assert tool.id == "collect_user_info"
 
 
-def test_select_returns_none_when_only_end_call_and_transfer_configured() -> None:
+async def test_select_returns_none_when_only_end_call_and_transfer_configured() -> None:
     """No safe default exists (no data_extraction/external_api tool at all)
     -- must return None rather than positionally pick a dangerous tool."""
     from taskorbit.types import ConfirmationConfig, ToolDefinition, ToolType
@@ -2462,15 +2492,15 @@ def test_select_returns_none_when_only_end_call_and_transfer_configured() -> Non
         ),
     ]
     orch = ConversationOrchestrator()
-    assert orch._select_active_tool([], _FakeAgent(tools)) is None
+    assert await orch._select_active_tool([], _FakeAgent(tools)) is None
 
 
-def test_select_transfer_tool_still_selected_via_explicit_intent_match() -> None:
+async def test_select_transfer_tool_still_selected_via_explicit_intent_match() -> None:
     """The fix must not break the legitimate path: an agent_transfer tool
     IS still selected when intent explicitly routes to its target, even
     though it's listed first and requires confirmation."""
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool(
+    tool = await orch._select_active_tool(
         [],
         _FakeAgent(_tools_led_by(first="transfer")),
         intent=_intent_for("general_inquiry"),
@@ -2514,7 +2544,12 @@ async def test_transfer_tool_invoked_carries_canonical_target() -> None:
 
     with (
         patch.object(orch._intent_router, "detect", new_callable=AsyncMock, return_value=intent),
-        patch.object(ConversationOrchestrator, "_select_active_tool", return_value=transfer_tool),
+        patch.object(
+            ConversationOrchestrator,
+            "_select_active_tool",
+            new_callable=AsyncMock,
+            return_value=transfer_tool,
+        ),
         patch.object(
             ConversationOrchestrator,
             "_extract_slots",
@@ -2545,11 +2580,11 @@ async def test_transfer_tool_invoked_carries_canonical_target() -> None:
     assert response.tool_invoked.parameters["targets"] == ["general_inquiry"]
 
 
-def test_select_no_refire_when_current_agent_is_template_slug() -> None:
+async def test_select_no_refire_when_current_agent_is_template_slug() -> None:
     """After a completed voice handoff the worker reports the canonical
     template slug as the current agent; the transfer must NOT re-fire (#212)."""
     orch = ConversationOrchestrator()
-    tool = orch._select_active_tool(
+    tool = await orch._select_active_tool(
         [],
         _FakeAgent(_john_max_tools()),
         intent=_intent_for("general_inquiry"),
